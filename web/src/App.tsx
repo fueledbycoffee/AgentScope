@@ -1,23 +1,48 @@
-import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import DashboardPage from './pages/Dashboard'
+import { lazy, Suspense } from 'react'
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { AppShell } from './AppShell'
+import { FileBar, ScopeBar, ScopeReceipt } from './components'
+import { ShellProvider } from './shellContext'
+import { useShellContext } from './shellHooks'
+import DefinitionsPage from './pages/Definitions'
 import ImportPage from './pages/Import'
 import { ImportsPage, ReportPage } from './pages/Imports'
+import MappingsPage from './pages/Mappings'
+import OverviewPage from './pages/Overview'
 import SessionPage from './pages/Session'
+import SessionsPage from './pages/Sessions'
+
+// The component gallery exists in development only; the production bundle never includes it.
+const GalleryPage = import.meta.env.DEV ? lazy(() => import('./pages/Gallery')) : null
+
+function RedirectKeepingSearch({ to }: { to: string }) {
+  const { search } = useLocation()
+  return <Navigate to={{ pathname: to, search }} replace />
+}
+
+function Bar() {
+  const { pathname } = useLocation()
+  const { dimensions, receipt, receiptLoading, file } = useShellContext()
+  const dataRoute = pathname === '/overview' || pathname.startsWith('/sessions')
+  if (dataRoute) return <ScopeBar dimensions={dimensions} loading={receiptLoading} receipt={receipt && <ScopeReceipt {...receipt} />} />
+  return <FileBar items={file.items} title={file.title} />
+}
 
 export default function App() {
-  return <>
-    <a className="skip-link" href="#main">Skip to content</a>
-    <header><Link className="brand" to="/dashboard">AgentScope</Link>
-      <nav aria-label="Main navigation"><NavLink to="/import">Import</NavLink><NavLink to="/imports">Imports history</NavLink><NavLink to="/dashboard">Dashboard</NavLink></nav>
-    </header>
-    <main id="main"><Routes>
-      <Route path="/" element={<Navigate to="/import" replace />} />
+  return <ShellProvider><AppShell bar={<Bar />}>
+    <Routes>
+      <Route path="/" element={<RedirectKeepingSearch to="/overview" />} />
+      <Route path="/dashboard" element={<RedirectKeepingSearch to="/overview" />} />
+      <Route path="/overview" element={<OverviewPage />} />
+      <Route path="/sessions" element={<SessionsPage />} />
+      <Route path="/sessions/:id" element={<SessionPage />} />
       <Route path="/import" element={<ImportPage />} />
       <Route path="/imports" element={<ImportsPage />} />
       <Route path="/imports/:id" element={<ReportPage />} />
-      <Route path="/dashboard" element={<DashboardPage />} />
-      <Route path="/sessions/:id" element={<SessionPage />} />
-      <Route path="*" element={<><h1>Page not found</h1><Link to="/import">Import traces</Link></>} />
-    </Routes></main>
-  </>
+      <Route path="/mappings" element={<MappingsPage />} />
+      <Route path="/definitions" element={<DefinitionsPage />} />
+      {GalleryPage && <Route path="/gallery" element={<Suspense fallback={<p>Loading gallery…</p>}><GalleryPage /></Suspense>} />}
+      <Route path="*" element={<><h1>Page not found</h1><Link to="/overview">Back to the overview</Link></>} />
+    </Routes>
+  </AppShell></ShellProvider>
 }

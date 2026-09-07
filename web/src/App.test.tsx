@@ -70,7 +70,7 @@ describe('Import flow', () => {
     expect(await screen.findByRole('table', { name: 'Rejected records' })).toHaveTextContent('invalid_value')
     expect(screen.getByRole('link', { name: 'View rejects (1)' })).toHaveAttribute('href', '#rejects')
     fireEvent.click(screen.getByRole('link', { name: 'Open dashboard' }))
-    expect(await screen.findByRole('region', { name: 'Sessions' })).toHaveTextContent('1')
+    expect((await screen.findAllByRole('region', { name: 'Sessions' }))[0]).toHaveTextContent('1')
   })
 
   it.each([{}, { session: 1, model_call: 2 }])('fills missing preview entity kinds with zero for %j and renders null reject fields', async entities => {
@@ -195,10 +195,10 @@ describe('Import flow', () => {
     let finish!: (response: Response) => void
     fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
     fireEvent.click(screen.getByRole('button', { name: 'Import' }))
-    fireEvent.click(screen.getByRole('link', { name: 'Dashboard' }))
-    await screen.findByRole('region', { name: 'Sessions' })
+    fireEvent.click(screen.getByRole('link', { name: 'Overview' }))
+    await screen.findAllByRole('region', { name: 'Sessions' })
     await act(async () => finish(json(report)))
-    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Import report' })).not.toBeInTheDocument()
   })
 })
@@ -210,7 +210,7 @@ describe('Dashboard', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Metrics temporarily unavailable')
     expect(await screen.findByRole('link', { name: 'claude:native_1' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-    await screen.findByRole('region', { name: 'Sessions' })
+    await screen.findAllByRole('region', { name: 'Sessions' })
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -218,13 +218,13 @@ describe('Dashboard', () => {
     start('/dashboard')
     const tokens = await screen.findByRole('region', { name: 'Input tokens' })
     expect(within(tokens).getByText('Unavailable')).toBeInTheDocument()
-    expect(tokens).toHaveTextContent('Coverage: 0 / 2 calls')
+    expect(tokens).toHaveTextContent('coverage 0 / 2 calls')
     expect(within(tokens).queryByText('0', { exact: true })).not.toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Tool calls' })).getByText('0')).toBeInTheDocument()
-    expect(within(screen.getByRole('region', { name: 'Sessions' })).getByText('1')).toBeInTheDocument()
+    expect(within(screen.getAllByRole('region', { name: 'Sessions' })[0]).getByText('1')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Model calls' })).getByText('2')).toBeInTheDocument()
-    fireEvent.click(within(tokens).getByText('Definition'))
-    expect(within(tokens).getByText(metrics.input_tokens.definition)).toBeVisible()
+    fireEvent.click(within(tokens).getByRole('button', { name: 'Definition of Input tokens' }))
+    expect(screen.getByRole('dialog', { name: 'Input tokens' })).toHaveTextContent(metrics.input_tokens.definition)
   })
 
   it('renders known input tokens and the semantics breakdown', async () => {
@@ -234,10 +234,10 @@ describe('Dashboard', () => {
     start('/dashboard')
     const tokens = await screen.findByRole('region', { name: 'Input tokens' })
     expect(tokens).toHaveTextContent('123')
-    expect(tokens).toHaveTextContent('Coverage: 1 / 2 calls')
+    expect(tokens).toHaveTextContent('coverage 1 / 2 calls')
     expect(within(tokens).queryByText('Unavailable')).not.toBeInTheDocument()
-    fireEvent.click(within(tokens).getByText('Token semantics'))
-    expect(within(tokens).getByText('tracelab-claude')).toBeVisible()
+    fireEvent.click(within(tokens).getByRole('button', { name: 'Definition of Input tokens' }))
+    expect(screen.getByRole('dialog', { name: 'Input tokens' })).toHaveTextContent('tracelab-claude: 123')
   })
 
   it('filters KPIs and sessions together and ignores late responses for an old scope', async () => {
@@ -247,13 +247,14 @@ describe('Dashboard', () => {
     start('/dashboard')
     await screen.findByRole('table', { name: 'Sessions in scope' })
     fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'trace & lab' } })
+    fireEvent.keyDown(screen.getByLabelText('Source'), { key: 'Enter' })
     fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'claude-code' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
-    await screen.findByRole('region', { name: 'Sessions' })
+    fireEvent.keyDown(screen.getByLabelText('Agent'), { key: 'Enter' })
+    await screen.findAllByRole('region', { name: 'Sessions' })
     expect(fetchMock).toHaveBeenCalledWith('/api/metrics/summary?source=trace+%26+lab&agent=claude-code', undefined)
-    expect(fetchMock).toHaveBeenCalledWith('/api/sessions?source=trace+%26+lab&agent=claude-code&limit=50&offset=0', undefined)
+    expect(fetchMock).toHaveBeenCalledWith('/api/sessions?source=trace+%26+lab&agent=claude-code&limit=8&offset=0', undefined)
     await act(async () => finishOld(json({ ...metrics, sessions: { ...metrics.sessions, value: 999 } })))
-    expect(screen.getByRole('region', { name: 'Sessions' })).not.toHaveTextContent('999')
+    for (const region of screen.getAllByRole('region', { name: 'Sessions' })) expect(region).not.toHaveTextContent('999')
   })
 })
 
@@ -263,7 +264,7 @@ describe('Reports, history, and session detail', () => {
       ? Promise.resolve(json({ ...report, status, entities: {}, error: status === 'failed' ? 'IntegrityError: Transaction rolled back' : null }))
       : defaultResponse(url, options))
     start('/imports/imp_1')
-    await screen.findByText(status, { selector: 'dd' })
+    await screen.findByText(status, { selector: 'dd .pill' })
     expect(screen.getByText(/No observations were inserted/)).toBeInTheDocument()
     const counts = screen.getByRole('heading', { name: 'Entity observations' }).parentElement!
     expect(within(counts).getAllByText('0', { exact: true })).toHaveLength(3)
@@ -281,7 +282,7 @@ describe('Reports, history, and session detail', () => {
     start('/imports')
     const table = await screen.findByRole('table', { name: 'Import attempts, newest first' })
     expect(table).toHaveTextContent('IntegrityError: Transaction rolled back')
-    expect(within(table).getAllByText('session: 0, model_call: 0, tool_call: 0')).toHaveLength(2)
+    expect(table.querySelectorAll('td .muted')).toHaveLength(2)  // no entities on duplicate and failed rows, never zeros
     expect(table).not.toHaveTextContent('undefined')
   })
 

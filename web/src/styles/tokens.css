@@ -1,0 +1,127 @@
+/* Console design tokens (research/design/claude/3-console, ADR-006).
+   Light is the complete definition on :root. Dark is redefined twice so that the
+   viewer's explicit choice wins in both directions and the un-stamped "system"
+   state follows the OS. Components read tokens only; never a literal colour. */
+
+:root {
+  --bg: #F4F5F7;
+  --surface: #FFFFFF;
+  --surface-2: #F8F9FB;
+  --surface-3: #EEF0F3;
+  --line: #E2E5E9;
+  --line-strong: #C6CCD4;
+  --ink: #171A1F;
+  --ink-2: #3F4753;
+  --ink-3: #5F6B7A;
+  --ink-4: #63707E;
+  --accent: #1D5BD6;
+  --accent-ink: #1A4FBB;
+  --accent-soft: #E8EFFC;
+  --accent-line: #B7CBF5;
+  --s1: #1D5BD6;
+  --s2: #0E8C7F;
+  --s3: #B9730A;
+  --s4: #7C8794;
+  --s5: #6A4FC9;
+  --ok: #157A46;
+  --ok-soft: #E4F4EA;
+  --warn: #9A6200;
+  --warn-soft: #FBF1DC;
+  --bad: #B42318;
+  --bad-soft: #FCE9E6;
+  --info-soft: #EAF0FA;
+  --focus: #1D5BD6;
+  --shadow-pop: 0 1px 2px rgba(23, 26, 31, .06), 0 8px 24px rgba(23, 26, 31, .12);
+  --shadow-drawer: -8px 0 32px rgba(23, 26, 31, .18);
+  --r-1: 4px;
+  --r-2: 6px;
+  --r-3: 10px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --fs-0: 11px;
+  --fs-1: 12px;
+  --fs-2: 13px;
+  --fs-3: 14px;
+  --fs-4: 16px;
+  --fs-5: 20px;
+  --fs-6: 28px;
+  --fs-7: 36px;
+  --sans: "Geist Variable", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --rail-h: 48px;
+  --scope-h: 52px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1013;
+    --surface: #15181D;
+    --surface-2: #1A1E24;
+    --surface-3: #22272F;
+    --line: #262B33;
+    --line-strong: #39404A;
+    --ink: #E7EAEE;
+    --ink-2: #C2C8D0;
+    --ink-3: #98A1AD;
+    --ink-4: #8C95A2;
+    --accent: #6E9BFF;
+    --accent-ink: #8AB0FF;
+    --accent-soft: #182643;
+    --accent-line: #2E4A85;
+    --s1: #6E9BFF;
+    --s2: #3FBFAE;
+    --s3: #E5A340;
+    --s4: #8B96A5;
+    --s5: #A48CF0;
+    --ok: #4CC27F;
+    --ok-soft: #12301E;
+    --warn: #E5B04A;
+    --warn-soft: #332A12;
+    --bad: #F27466;
+    --bad-soft: #3A1A17;
+    --info-soft: #1B2536;
+    --focus: #6E9BFF;
+    --shadow-pop: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .5);
+    --shadow-drawer: -8px 0 32px rgba(0, 0, 0, .6);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0E1013;
+  --surface: #15181D;
+  --surface-2: #1A1E24;
+  --surface-3: #22272F;
+  --line: #262B33;
+  --line-strong: #39404A;
+  --ink: #E7EAEE;
+  --ink-2: #C2C8D0;
+  --ink-3: #98A1AD;
+  --ink-4: #8C95A2;
+  --accent: #6E9BFF;
+  --accent-ink: #8AB0FF;
+  --accent-soft: #182643;
+  --accent-line: #2E4A85;
+  --s1: #6E9BFF;
+  --s2: #3FBFAE;
+  --s3: #E5A340;
+  --s4: #8B96A5;
+  --s5: #A48CF0;
+  --ok: #4CC27F;
+  --ok-soft: #12301E;
+  --warn: #E5B04A;
+  --warn-soft: #332A12;
+  --bad: #F27466;
+  --bad-soft: #3A1A17;
+  --info-soft: #1B2536;
+  --focus: #6E9BFF;
+  --shadow-pop: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .5);
+  --shadow-drawer: -8px 0 32px rgba(0, 0, 0, .6);
+  color-scheme: dark;
+}

@@ -4,20 +4,22 @@ import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getImport, listImports, listRejects } from '../api'
 import type { ImportedFile } from '../api'
-import { Counts, JsonView, Pagination, ResourceState, Table } from '../components'
+import { Counts, JsonView, Pagination, ResourceState, StatusPill, Table } from '../components'
+import { useFileBar } from '../shellHooks'
 
 export function ImportsPage() {
   const [offset, setOffset] = useState(0)
   const resource = useResource(useCallback(() => listImports({ limit: PAGE_SIZE, offset }), [offset]))
+  useFileBar('Imports', [])
   return <><h1>Imports history</h1><ResourceState {...resource} />
     {resource.data && <>
       <Table caption="Import attempts, newest first" headers={['Import', 'Source', 'Status', 'Started', 'Files', 'Records', 'Entities', 'Error']}>
         {resource.data.map(report => <tr key={report.import_id}>
           <td><Link to={`/imports/${encodeURIComponent(report.import_id)}`}>{report.import_id}</Link></td>
-          <td>{report.source}</td><td>{report.status}</td><td>{report.started_at}</td>
+          <td>{report.source}</td><td><StatusPill status={report.status} /></td><td className="mono">{report.started_at}</td>
           <td>{report.files.map(file => file.filename).join(', ')}</td>
           <td>{Object.entries(report.records).map(([key, value]) => `${key}: ${value}`).join(', ')}</td>
-          <td>{Object.entries(entityCounts(report.entities)).map(([key, value]) => `${key}: ${value}`).join(', ')}</td>
+          <td>{report.status === 'committed' ? Object.entries(entityCounts(report.entities)).map(([key, value]) => `${key}: ${value}`).join(', ') : <span className="muted">—</span>}</td>
           <td>{report.error ?? '—'}</td>
         </tr>)}
       </Table>
@@ -52,9 +54,15 @@ export function ReportPage() {
   const { id = '' } = useParams()
   const resource = useResource(useCallback(() => getImport(id), [id]))
   const report = resource.data
+  useFileBar('Import', report ? [
+    { label: 'Import', value: report.import_id, mono: true },
+    { label: 'Source', value: report.source },
+    { label: 'Mapping', value: `${report.mapping.name} · revision ${report.mapping.revision}` },
+    { label: 'Started', value: report.started_at, mono: true },
+  ] : [])
   return <><h1>Import report</h1><ResourceState {...resource} />
     {report && <>
-      <dl><dt>Import ID</dt><dd>{report.import_id}</dd><dt>Status</dt><dd>{report.status}</dd>
+      <dl className="facts"><dt>Import ID</dt><dd className="mono">{report.import_id}</dd><dt>Status</dt><dd><StatusPill status={report.status} /></dd>
         <dt>Source</dt><dd>{report.source}</dd><dt>Mapping</dt><dd>{report.mapping.name} · revision {report.mapping.revision} · {report.mapping.id}</dd>
         <dt>Started</dt><dd>{report.started_at}</dd><dt>Finished</dt><dd>{report.finished_at}</dd></dl>
       {report.status === 'duplicate' && <p className="notice">These bytes were already imported for this source. No observations were inserted.</p>}

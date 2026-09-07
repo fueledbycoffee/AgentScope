@@ -1,65 +1,80 @@
-import { display } from '../format'
-import { useResource } from '../useResource'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { getRawRecord, getSession } from '../api'
+import { useCallback, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { getSession } from '../api'
 import type { RawReference } from '../api'
-import { ResourceState, Table } from '../components'
+import { DataTable, Notice, SourceRecordDialog, StateBlock } from '../components'
+import type { Column } from '../components'
+import { display } from '../format'
+import { useScope } from '../scope'
+import { useScopeBar } from '../shellHooks'
+import { useResource } from '../useResource'
+import type { ModelCall, ToolCall } from '../api'
 
-function SourceDrawer({ reference, onClose }: { reference: RawReference; onClose: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null)
-  const resource = useResource(useCallback(() => getRawRecord(reference), [reference]))
-  useEffect(() => {
-    const element = dialog.current!
-    const opener = document.activeElement as HTMLElement | null
-    element.showModal()
-    return () => { element.close(); opener?.focus() }
-  }, [])
-  return <dialog ref={dialog} className="drawer" aria-labelledby="source-title" onCancel={onClose}>
-    <button onClick={onClose}>Close source record</button>
-    <h2 id="source-title">Source record</h2>
-    <dl><dt>File SHA-256</dt><dd className="hash">{reference.file_sha256}</dd><dt>Locator</dt><dd>{reference.locator}</dd></dl>
-    <ResourceState {...resource} />
-    {resource.data && <pre>{resource.data.payload_text}</pre>}
-  </dialog>
-}
-
+/**
+ * One session: identity, interval (declared vs observed), tokens with
+ * coverage, the two observation tables, diagnostics only when there are any,
+ * and the Source record drawer. The scope bar stays for context but is not
+ * applied to the detail.
+ */
 export default function SessionPage() {
   const { id = '' } = useParams()
+  const { link } = useScope()
   const resource = useResource(useCallback(() => getSession(id), [id]))
   const [source, setSource] = useState<{ sessionId: string; reference: RawReference }>()
+  useScopeBar([{ key: 'source', label: 'Source', options: [] }, { key: 'agent', label: 'Agent', options: [] }], undefined, false)
   const session = resource.data
-  return <><h1>Session detail</h1><ResourceState {...resource} />
-    {session && <>
-      <dl className="session-fields">{Object.entries({
-        'Session ID': session.id, 'External ID': session.external_id, Source: session.source, Agent: session.agent,
-        Repository: session.repo, User: session.user,
-        'Observed start': session.observed_start_at, 'Observed end': session.observed_end_at,
-        'Declared start': session.declared_started_at, 'Declared end': session.declared_ended_at,
-        'Model calls': session.model_call_count, 'Tool calls': session.tool_call_count,
-        'Input tokens': session.input_tokens.value,
-        'Input token coverage': `${session.input_tokens.coverage.known} / ${session.input_tokens.coverage.total} calls`,
-      }).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{display(value)}</dd></div>)}</dl>
-      <p>Observed timestamps describe the span in imported data, not active time.</p>
-      <Table caption="Recorded model-call observations" headers={['ID', 'Sequence', 'Model', 'Started', 'Ended', 'Input tokens', 'Output tokens', 'Token semantics', 'Source']}>
-        {session.model_calls.map(call => <tr key={call.id}><td>{call.id}</td><td>{display(call.sequence)}</td><td>{display(call.model)}</td>
-          <td>{display(call.started_at)}</td><td>{display(call.ended_at)}</td><td>{display(call.input_tokens)}</td><td>{display(call.output_tokens)}</td><td>{display(call.token_semantics)}</td>
-          <td><button aria-label={`Source record for model call ${call.id}`} onClick={() => setSource({ sessionId: id, reference: call.raw_record })}>Source record</button></td>
-        </tr>)}
-      </Table>
-      {session.model_calls.length === 0 && <p>No model calls recorded.</p>}
-      <Table caption="Recorded tool-call observations" headers={['ID', 'Model call', 'Tool', 'Started', 'Ended', 'Wall latency (ms)', 'Error', 'Source']}>
-        {session.tool_calls.map(call => <tr key={call.id}><td>{call.id}</td><td>{display(call.model_call_id)}</td><td>{display(call.tool_name)}</td>
-          <td>{display(call.started_at)}</td><td>{display(call.ended_at)}</td><td>{display(call.wall_latency_ms)}</td><td>{call.is_error === null ? 'Unavailable' : call.is_error ? 'Yes' : 'No'}</td>
-          <td><button aria-label={`Source record for tool call ${call.id}`} onClick={() => setSource({ sessionId: id, reference: call.raw_record })}>Source record</button></td>
-        </tr>)}
-      </Table>
-      {session.tool_calls.length === 0 && <p>No tool calls recorded.</p>}
-      <h2>Diagnostics</h2>
-      {session.diagnostics.length === 0 ? <p>No diagnostics.</p> : <Table caption="Session diagnostics" headers={['Code', 'Field', 'Message']}>
-        {session.diagnostics.map((item, index) => <tr key={index}><td>{item.code}</td><td>{item.field ?? '—'}</td><td>{item.message}</td></tr>)}
-      </Table>}
-    </>}
-    {source?.sessionId === id && <SourceDrawer reference={source.reference} onClose={() => setSource(undefined)} />}
+  const modelColumns: Column<ModelCall>[] = [
+    { key: 'id', header: 'ID', mono: true, render: call => call.id },
+    { key: 'seq', header: 'Seq', align: 'num', render: call => display(call.sequence) },
+    { key: 'model', header: 'Model', render: call => display(call.model) },
+    { key: 'started', header: 'Started', mono: true, render: call => display(call.started_at) },
+    { key: 'ended', header: 'Ended', mono: true, render: call => display(call.ended_at) },
+    { key: 'in', header: 'Input tokens', align: 'num', render: call => display(call.input_tokens) },
+    { key: 'out', header: 'Output tokens', align: 'num', render: call => display(call.output_tokens) },
+    { key: 'sem', header: 'Semantics', render: call => display(call.token_semantics) },
+    { key: 'src', header: 'Source', render: call => <button className="btn small" aria-label={`Source record for model call ${call.id}`} onClick={() => setSource({ sessionId: id, reference: call.raw_record })}>Source record</button> },
+  ]
+  const toolColumns: Column<ToolCall>[] = [
+    { key: 'id', header: 'ID', mono: true, render: call => call.id },
+    { key: 'call', header: 'Model call', mono: true, render: call => call.model_call_id ?? <span className="pill">unlinked</span> },
+    { key: 'tool', header: 'Tool', render: call => display(call.tool_name) },
+    { key: 'started', header: 'Started', mono: true, render: call => display(call.started_at) },
+    { key: 'ended', header: 'Ended', mono: true, render: call => display(call.ended_at) },
+    { key: 'wall', header: 'Wall latency (ms)', align: 'num', render: call => display(call.wall_latency_ms) },
+    { key: 'error', header: 'Error', render: call => call.is_error === null ? 'Unavailable' : call.is_error ? 'Yes' : 'No' },
+    { key: 'src', header: 'Source', render: call => <button className="btn small" aria-label={`Source record for tool call ${call.id}`} onClick={() => setSource({ sessionId: id, reference: call.raw_record })}>Source record</button> },
+  ]
+  return <>
+    <nav className="crumbs" aria-label="Breadcrumb"><Link to={link('/sessions')}>Sessions</Link><span>/</span><span className="mono">{id}</span></nav>
+    <div className="page-head"><h1>Session detail</h1>{session && <span className="sub mono">{session.external_id}</span>}</div>
+    <StateBlock loading={resource.loading} error={resource.error} retry={resource.retry} lines={6}>
+      {resource.error ? <p><Link to={link('/sessions')}>Back to sessions in scope</Link></p> : null}
+      {session && <>
+        <div className="grid panels">
+          <section className="panel"><div className="panel-head"><h2>Identity</h2></div>
+            <dl className="facts"><dt>Session ID</dt><dd className="mono">{session.id}</dd><dt>External ID</dt><dd className="mono">{session.external_id}</dd>
+              <dt>Source</dt><dd>{session.source}</dd><dt>Agent</dt><dd>{display(session.agent)}</dd><dt>Repository</dt><dd>{display(session.repo)}</dd><dt>User</dt><dd>{display(session.user)}</dd></dl></section>
+          <section className="panel"><div className="panel-head"><h2>Interval</h2></div>
+            <dl className="facts"><dt>Observed start</dt><dd className="mono">{display(session.observed_start_at)}</dd><dt>Observed end</dt><dd className="mono">{display(session.observed_end_at)}</dd>
+              <dt>Declared start</dt><dd className="mono">{display(session.declared_started_at)}</dd><dt>Declared end</dt><dd className="mono">{display(session.declared_ended_at)}</dd></dl>
+            <p style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)', marginTop: 8 }}>Observed timestamps describe the span in imported data, not active time.</p></section>
+          <section className="panel"><div className="panel-head"><h2>Tokens</h2></div>
+            <dl className="facts"><dt>Model calls</dt><dd>{display(session.model_call_count)}</dd><dt>Tool calls</dt><dd>{display(session.tool_call_count)}</dd>
+              <dt>Input tokens</dt><dd>{display(session.input_tokens.value)}</dd><dt>Input token coverage</dt><dd>{session.input_tokens.coverage.known} / {session.input_tokens.coverage.total} calls</dd></dl></section>
+        </div>
+        {session.diagnostics.length > 0 && <Notice kind="warn" title={`${session.diagnostics.length} diagnostic${session.diagnostics.length > 1 ? 's' : ''}`}>
+          <DataTable caption="Session diagnostics" hideCaption columns={[
+            { key: 'code', header: 'Code', mono: true, render: item => item.code },
+            { key: 'field', header: 'Field', render: item => item.field ?? '—' },
+            { key: 'message', header: 'Message', wrap: true, render: item => item.message },
+          ]} rows={session.diagnostics} rowKey={(item) => `${item.code}:${item.field}:${item.message}`} empty="" />
+        </Notice>}
+        <section className="panel"><div className="panel-head"><h2>Recorded model-call observations</h2><span className="count">{session.model_calls.length}</span></div>
+          <DataTable caption="Recorded model-call observations" hideCaption columns={modelColumns} rows={session.model_calls} rowKey={call => call.id} empty="No model calls recorded." /></section>
+        <section className="panel"><div className="panel-head"><h2>Recorded tool-call observations</h2><span className="count">{session.tool_calls.length}</span></div>
+          <DataTable caption="Recorded tool-call observations" hideCaption columns={toolColumns} rows={session.tool_calls} rowKey={call => call.id} empty="No tool calls recorded." /></section>
+      </>}
+    </StateBlock>
+    {source?.sessionId === id && <SourceRecordDialog reference={source.reference} onClose={() => setSource(undefined)} />}
   </>
 }
