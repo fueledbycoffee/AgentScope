@@ -19,8 +19,11 @@ import re
 from collections import Counter
 from typing import Any, Final
 
-SANITIZER_VERSION: Final = 1
+SANITIZER_VERSION: Final = 2
 MAX_TEXT_CHARS: Final = 200
+# Above this length no pattern runs at all: the whole string becomes ``<text N chars>``
+# anyway, and scanning must stay cheap on adversarial input (a 4 MiB line is accepted).
+MAX_SCANNED_CHARS: Final = 20_000
 
 POLICY: Final = (
     "Values are redacted by shape: private-key blocks, known credential formats "
@@ -43,14 +46,15 @@ _TOKENS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(r"\bxox[abp]-[A-Za-z0-9-]{10,}"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bAIza[0-9A-Za-z_-]{30,}"),
-    re.compile(r"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{5,2048}\.[A-Za-z0-9_-]{5,4096}\.[A-Za-z0-9_-]{5,2048}\b"),
 )
 _BEARER = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}")
 _ASSIGNMENT = re.compile(
     r"(?i)\b((?:authorization|api[_-]?key|api[_-]?token|access[_-]?token|secret|password"
     r"|passwd|token)['\"]?)(\s*[:=]\s*)['\"]?(?!Bearer\b)([^\s'\",;]{6,})['\"]?"
 )
-_URL_CREDENTIALS = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)([^/\s@]+)@")
+# every quantifier is bounded and the caller skips texts without "://" or "@": linear scans
+_URL_CREDENTIALS = re.compile(r"(?i)\b([a-z][a-z0-9+.-]{0,31}://)([^/\s@]{1,512})@")
 # bounded quantifiers keep the scan linear; the caller also skips texts without "@"
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}")
 # a key whose *name* says its value is a credential: the value is replaced whatever it looks like
@@ -95,13 +99,17 @@ def redact_text(text: str, *, long_text: bool = True) -> tuple[str, Counter[str]
             counts[reason] += n
 
     original_length = len(text)
+    if long_text and original_length > MAX_SCANNED_CHARS:
+        counts["long_text"] += 1
+        return f"<text {original_length} chars>", counts
     sub(_PRIVATE_KEY, "private_key", "<private-key>")
     for pattern in _TOKENS:
         sub(pattern, "token", "<token>")
     sub(_BEARER, "token", "Bearer <token>")
     sub(_ASSIGNMENT, "token", r"\1\2<token>")
     if "@" in text:
-        sub(_URL_CREDENTIALS, "credentials", r"\1<credentials>@")
+        if "://" in text:
+            sub(_URL_CREDENTIALS, "credentials", r"\1<credentials>@")
         sub(_EMAIL, "email", "<email>")
     sub(_PATH, "path", "<path>")
     for pattern, repl in ((_IPV4, _ipv4), (_IPV6, _ipv6)):
@@ -135,8 +143,14 @@ def key_is_credential(key: Any) -> bool:
 
 
 def credential_value(value: Any) -> Any:
-    """What a credential-named key's value becomes: ``<token>`` for any non-empty string."""
-    return "<token>" if isinstance(value, str) and value else value
+    """What a credential-named key's value becomes: ``<token>`` for anything but null/empty.
+
+    Strings, numbers, booleans, arrays and objects alike: the key says it is a
+    credential, so no part of the value leaves.
+    """
+    if value is None or value == "" or value == [] or value == {}:
+        return value
+    return "<token>"
 
 
 def sanitize(value: Any) -> tuple[Any, dict[str, int]]:
@@ -162,9 +176,11 @@ def _sanitize(value: Any, counts: Counter[str]) -> Any:
             if key_sensitivity(key) is not None:
                 counts["key_withheld"] += 1
                 continue
-            if key_is_credential(key) and isinstance(item, str) and item:
-                counts["token"] += 1
-                clean[key] = "<token>"
+            if key_is_credential(key):
+                replaced = credential_value(item)
+                if replaced is not item:
+                    counts["token"] += 1
+                clean[key] = replaced
                 continue
             clean[key] = _sanitize(item, counts)
         return clean

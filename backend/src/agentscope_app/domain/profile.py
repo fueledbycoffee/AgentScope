@@ -34,6 +34,7 @@ from typing import Any, Final
 from agentscope_app.domain.mapping.paths import _NAME as _KEY_NAME
 from agentscope_app.domain.mapping.paths import parse_path
 from agentscope_app.domain.redaction import (
+    credential_value,
     key_is_credential,
     key_sensitivity,
     redact_text,
@@ -277,9 +278,11 @@ class _Profiler:
                 if reason is not None:
                     self.note_unaddressable(path, str(key), reason)
                     continue
-                if key_is_credential(key) and isinstance(item, str) and item:
-                    item = "<token>"  # the value is a credential by name, whatever it looks like
-                    self.credential_values += 1
+                if key_is_credential(key):
+                    replaced = credential_value(item)  # a credential by name, whatever its shape
+                    if replaced is not item:
+                        item = replaced
+                        self.credential_values += 1
                 self.visit(item, f"{path}.{key}", selector, f"{relative}.{key}", depth + 1)
             return
         if isinstance(value, list | tuple):

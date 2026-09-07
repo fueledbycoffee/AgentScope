@@ -167,3 +167,49 @@ def test_redaction_cost_is_linear_in_the_text_length() -> None:
     started = time.perf_counter()
     redact_text(with_at)
     assert time.perf_counter() - started < 0.1
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "a-" * 16_000 + "@",
+        "eyJ" * 10_000 + ".",
+        "sk-" * 10_000,
+        "~/" * 10_000,
+        "https://" * 4_000 + "@",
+        "AKIA" * 8_000,
+        "1.2.3." * 5_000,
+        "a:" * 16_000,
+        "-----BEGIN PRIVATE KEY-----" * 1_000,
+        "password=" * 3_000,
+    ],
+)
+def test_adversarial_texts_are_redacted_in_bounded_time(text: str) -> None:
+    import time
+
+    started = time.perf_counter()
+    redacted, counts = redact_text(text)
+    elapsed = time.perf_counter() - started
+    assert elapsed < 0.05, elapsed
+    assert redacted == f"<text {len(text)} chars>"
+    short = text[:2_000]  # below the scan cut-off the patterns do run, still cheaply
+    started = time.perf_counter()
+    redact_text(short)
+    assert time.perf_counter() - started < 0.05
+
+
+def test_credential_named_keys_hide_arrays_and_numbers_too() -> None:
+    value = {
+        "Authorization": ["Basic dXNlcjpwYXNz"],
+        "password": 123456,
+        "token": None,
+        "secret": {},
+    }
+    cleaned, counts = sanitize(value)
+    assert cleaned == {
+        "Authorization": "<token>",
+        "password": "<token>",
+        "token": None,
+        "secret": {},
+    }
+    assert counts == {"token": 2}

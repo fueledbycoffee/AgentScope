@@ -265,3 +265,21 @@ def test_saved_mapping_documents_round_trip_with_their_number_types(client: Test
     assert fetched == document
     again = client.post("/api/mappings", json={"document": fetched})
     assert again.status_code == 200 and again.json()["id"] == created.json()["id"]
+
+
+def test_saved_literals_keep_their_json_type_so_execution_does_not_change(
+    client: TestClient,
+) -> None:
+    import json
+
+    document = json.loads((BUNDLED / "tracelab-v1.json").read_text())
+    document["name"] = "float-literal"
+    document["rules"][0]["fields"]["repo"] = {"literal": 1.0}
+    created = client.post("/api/mappings", json={"document": document})
+    assert created.status_code == 201, created.text
+    fetched = client.get(f"/api/mappings/{created.json()['id']}").json()["document"]
+    assert fetched["rules"][0]["fields"]["repo"]["literal"] == 1.0
+    assert isinstance(fetched["rules"][0]["fields"]["repo"]["literal"], float)
+    assert fetched == document
+    again = client.post("/api/mappings", json={"document": fetched})
+    assert again.status_code == 200 and again.json()["id"] == created.json()["id"]

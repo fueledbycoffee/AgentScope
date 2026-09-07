@@ -287,3 +287,16 @@ def test_credential_named_keys_never_show_their_value_in_examples() -> None:
     assert stats["$.api_key"].examples == ["<token>"]
     assert profile.redactions == {"token": 6}
     assert "hunter" not in dumps_exact(profile.to_dict())
+
+
+def test_credential_named_keys_hide_containers_and_numbers_in_the_profile() -> None:
+    records = [{"Authorization": ["Basic dXNlcjpwYXNz"], "password": 123456 + i} for i in range(3)]
+    profile = profile_records(records)
+    stats = by_path(profile)
+    assert stats["$.password"].examples == ["<token>"]
+    assert stats["$.password"].min is None and stats["$.password"].max is None
+    assert stats["$.Authorization"].examples == ["<token>"]
+    assert "$.Authorization[*]" not in stats
+    text = dumps_exact(profile.to_dict())
+    assert "dXNlcjpwYXNz" not in text and "123456" not in text
+    assert profile.redactions == {"token": 6}

@@ -413,7 +413,8 @@ def test_repair_request_is_sanitised_and_bounded() -> None:
     assert outcome.attempts == 2 and outcome.proposal is not None and outcome.proposal.executable
     repair = leaky.repairs[1]
     assert repair is not None
-    assert "sk-or-v1" not in repair.candidate_text and "<token>" in repair.candidate_text
+    # the whole oversized note leaves as a placeholder; the key inside it never does
+    assert "sk-or-v1" not in repair.candidate_text and "<text 40040 chars>" in repair.candidate_text
     assert len(repair.candidate_text.encode()) <= 16 * 1024 + 40
     assert len(repair.issues_text.encode()) <= 4 * 1024 + 40
     assert "sk-or" not in repair.issues_text and "unsupported_version" in repair.issues_text
@@ -565,3 +566,28 @@ def test_structured_credentials_never_reach_the_prepared_text() -> None:
     assert "hunter22" not in prepared.text and "abcdef123456" not in prepared.text
     assert prepared.redactions["token"] >= 2
     assert prepared.document["sample"][0]["record"]["password"] == "<token>"
+
+
+def test_parseable_replies_are_sanitised_structurally_before_repair_and_diagnostics() -> None:
+    class Escaped:
+        def __init__(self) -> None:
+            self.repairs: list[RepairRequest | None] = []
+
+        def complete(
+            self, prepared: PreparedContext, *, repair: RepairRequest | None = None
+        ) -> AssistantReply:
+            self.repairs.append(repair)
+            if repair is None:
+                mapping = {"notes": "C:\\Users\\Alice\\private.txt", "api_key": "abc"}
+                return AssistantReply(json.dumps({"mapping": mapping}), "m", "stop")
+            return AssistantReply(json.dumps({"mapping": _tracelab_mapping()}), "m", "stop")
+
+    h = Harness()
+    adapter = Escaped()
+    h.run = RunAssistant(h.prepare, adapter)
+    outcome = h.go(h.request(h.tracelab_upload()))
+    repair = adapter.repairs[1]
+    assert repair is not None
+    assert "Alice" not in repair.candidate_text and "<path>" in repair.candidate_text
+    assert '"api_key":"<token>"' in repair.candidate_text
+    assert "Alice" not in outcome.diagnostics["raw_text"]

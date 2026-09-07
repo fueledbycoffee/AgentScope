@@ -309,9 +309,7 @@ class RunAssistant:
             diagnostics={
                 "finish": attempt.reply.finish,
                 "model": attempt.reply.model,
-                "raw_text": _bounded(
-                    redact_text(attempt.reply.text, long_text=False)[0], MAX_RAW_TEXT_BYTES
-                ),
+                "raw_text": _bounded(attempt.safe_text(), MAX_RAW_TEXT_BYTES),
                 "failure": attempt.terminal_failure,
                 "context_sha256": prepared.sha256,
                 "sample_included": prepared.sample_included,
@@ -350,6 +348,14 @@ class _Attempt:
         self.repairable = False
         self.terminal_failure: str | None = None
         self._candidate: dict[str, Any] | None = None
+        self._envelope: dict[str, Any] | None = None
+
+    def safe_text(self) -> str:
+        """The reply as it may leave the server again: structurally sanitised when it parsed
+        (so escaped values are seen decoded), otherwise the raw text through the redactor."""
+        if self._envelope is not None:
+            return dumps_exact(sanitize(self._envelope)[0])
+        return redact_text(self.reply.text, long_text=False)[0]
 
     @classmethod
     def from_reply(
@@ -364,6 +370,7 @@ class _Attempt:
             attempt.terminal_failure = "truncated" if reply.finish == "length" else "malformed"
             attempt.repairable = True
             return attempt
+        attempt._envelope = envelope
         mapping = dict(envelope["mapping"])
         # identity is the user's, the format is the upload's; versions are validated, not rewritten
         mapping["name"] = request.identity.name
@@ -389,7 +396,7 @@ class _Attempt:
         return attempt
 
     def repair_request(self) -> RepairRequest:
-        candidate, _ = redact_text(self.reply.text, long_text=False)
+        candidate = self.safe_text()
         issues = [
             {
                 "path": redact_text(str(i["path"]), long_text=False)[0],

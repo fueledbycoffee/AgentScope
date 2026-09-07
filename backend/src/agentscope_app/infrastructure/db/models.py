@@ -17,6 +17,7 @@ observed bounds and counts on ``sessions`` (derived from children, documented).
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -52,6 +53,24 @@ class UtcDateTime(TypeDecorator[datetime]):
 
     def process_result_value(self, value: datetime | None, dialect: Any) -> datetime | None:
         return None if value is None else value.replace(tzinfo=UTC)
+
+
+class PlainJson(TypeDecorator[Any]):
+    """JSON documents that must round-trip with Python's own number types.
+
+    The engine's exact codec (used for raw payloads) reloads fractions as Decimal;
+    a mapping document is authored as JSON and executed on its JSON types, so a
+    ``1.0`` literal must come back as the float ``1.0``, not ``Decimal("1.0")``.
+    """
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value: Any, dialect: Any) -> str | None:
+        return None if value is None else json.dumps(value, ensure_ascii=False, allow_nan=False)
+
+    def process_result_value(self, value: str | None, dialect: Any) -> Any:
+        return None if value is None else json.loads(value)
 
 
 class Base(DeclarativeBase):
@@ -95,7 +114,7 @@ class Mapping(Base):
     revision: Mapped[int]
     created_by: Mapped[str] = mapped_column(String(200))
     input_format: Mapped[str] = mapped_column(String(20))
-    document: Mapped[dict[str, Any]]
+    document: Mapped[dict[str, Any]] = mapped_column(PlainJson)
     content_hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime]
     __table_args__ = (UniqueConstraint("name", "revision", name="uq_mappings_name_revision"),)

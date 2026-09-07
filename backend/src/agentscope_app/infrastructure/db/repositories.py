@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import Integer, cast, func, insert, select
@@ -118,19 +117,6 @@ class SqlAlchemyUploads:
         )
 
 
-def _json_numbers(value: Any) -> Any:
-    """Mapping documents are JSON: the exact codec reloads fractions as Decimal, which the API
-    would render as strings and a resave would turn into a different (string-typed) document.
-    Documents only ever held JSON numbers, so the float form is the original value."""
-    if isinstance(value, Decimal):
-        return int(value) if value == value.to_integral_value() else float(value)
-    if isinstance(value, dict):
-        return {k: _json_numbers(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_json_numbers(v) for v in value]
-    return value
-
-
 class SqlAlchemyMappings:
     def __init__(self, session: Session) -> None:
         self._s = session
@@ -144,7 +130,7 @@ class SqlAlchemyMappings:
             revision=row.revision,
             created_by=row.created_by,
             input_format=row.input_format,
-            document=_json_numbers(dict(row.document)),
+            document=dict(row.document),
             content_hash=row.content_hash,
             created_at=row.created_at,
         )
