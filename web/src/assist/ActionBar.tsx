@@ -67,7 +67,12 @@ export function ActionBar(props: ActionBarProps) {
           <Counts title="Entity observations" counts={entityCounts(preview.entities)} />
           <Counts title="Warnings" counts={preview.warnings} />
           <p className="muted">{preview.rejects.length} reject{preview.rejects.length === 1 ? '' : 's'} in the sample of {preview.records.sampled}. The full import can differ.</p>
-          {preview.emissions[0] && <p className="muted mono">first emission: {preview.emissions[0].entity} {JSON.stringify(preview.emissions[0].fields).slice(0, 160)}</p>}
+          <ul className="emissions" aria-label="First emission of each entity">
+            {['session', 'model_call', 'tool_call'].map(entity => {
+              const first = preview.emissions.find(e => e.entity === entity)
+              return first ? <li key={entity} className="muted mono">first {entity}: {JSON.stringify(first.fields).slice(0, 200)}</li> : null
+            })}
+          </ul>
           {props.importReason === null && (
             <p>
               Import all {props.recordCount?.toLocaleString('en-US') ?? '?'} records of <strong>{props.filename}</strong>

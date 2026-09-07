@@ -5,7 +5,6 @@ import { FileBar, ScopeBar, ScopeReceipt } from './components'
 import { ShellProvider } from './shellContext'
 import { useShellContext } from './shellHooks'
 import DefinitionsPage from './pages/Definitions'
-import AssistPage from './pages/Assist'
 import ImportPage from './pages/Import'
 import { ImportsPage, ReportPage } from './pages/Imports'
 import MappingsPage from './pages/Mappings'
@@ -15,6 +14,8 @@ import SessionsPage from './pages/Sessions'
 
 // The component gallery exists in development only; the production bundle never includes it.
 const GalleryPage = import.meta.env.DEV ? lazy(() => import('./pages/Gallery')) : null
+// The assistant page carries the chat library: loaded only when someone opens it.
+const AssistPage = lazy(() => import('./pages/Assist'))
 
 function RedirectKeepingSearch({ to }: { to: string }) {
   const { search } = useLocation()
@@ -38,7 +39,7 @@ export default function App() {
       <Route path="/sessions" element={<SessionsPage />} />
       <Route path="/sessions/:id" element={<SessionPage />} />
       <Route path="/import" element={<ImportPage />} />
-      <Route path="/import/assist/:uploadId" element={<AssistPage />} />
+      <Route path="/import/assist/:uploadId" element={<Suspense fallback={<p>Loading the assistant…</p>}><AssistPage /></Suspense>} />
       <Route path="/imports" element={<ImportsPage />} />
       <Route path="/imports/:id" element={<ReportPage />} />
       <Route path="/mappings" element={<MappingsPage />} />
