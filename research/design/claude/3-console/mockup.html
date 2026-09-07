@@ -1,0 +1,1109 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentScope · Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ---------- tokens ---------- */
+:root{
+  --bg:#F4F5F7; --surface:#FFFFFF; --surface-2:#F8F9FB; --surface-3:#EEF0F3;
+  --line:#E2E5E9; --line-strong:#C6CCD4;
+  --ink:#171A1F; --ink-2:#3F4753; --ink-3:#5F6B7A; --ink-4:#63707E;
+  --accent:#1D5BD6; --accent-ink:#1A4FBB; --accent-soft:#E8EFFC; --accent-line:#B7CBF5;
+  --s1:#1D5BD6; --s2:#0E8C7F; --s3:#B9730A; --s4:#7C8794; --s5:#6A4FC9;
+  --ok:#157A46; --ok-soft:#E4F4EA; --warn:#9A6200; --warn-soft:#FBF1DC; --bad:#B42318; --bad-soft:#FCE9E6; --info-soft:#EAF0FA;
+  --focus:#1D5BD6;
+  --shadow-pop:0 1px 2px rgba(23,26,31,.06),0 8px 24px rgba(23,26,31,.12);
+  --shadow-drawer:-8px 0 32px rgba(23,26,31,.18);
+  --r-1:4px; --r-2:6px; --r-3:10px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px; --sp-7:48px;
+  --fs-0:11px; --fs-1:12px; --fs-2:13px; --fs-3:14px; --fs-4:16px; --fs-5:20px; --fs-6:28px; --fs-7:36px;
+  --sans:"Geist",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --rail-h:48px; --scope-h:52px;
+  color-scheme:light;
+}
+[data-theme="dark"]{
+  --bg:#0E1013; --surface:#15181D; --surface-2:#1A1E24; --surface-3:#22272F;
+  --line:#262B33; --line-strong:#39404A;
+  --ink:#E7EAEE; --ink-2:#C2C8D0; --ink-3:#98A1AD; --ink-4:#8C95A2;
+  --accent:#6E9BFF; --accent-ink:#8AB0FF; --accent-soft:#182643; --accent-line:#2E4A85;
+  --s1:#6E9BFF; --s2:#3FBFAE; --s3:#E5A340; --s4:#8B96A5; --s5:#A48CF0;
+  --ok:#4CC27F; --ok-soft:#12301E; --warn:#E5B04A; --warn-soft:#332A12; --bad:#F27466; --bad-soft:#3A1A17; --info-soft:#1B2536;
+  --shadow-pop:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+
+/* ---------- base ---------- */
+*,*::before,*::after{box-sizing:border-box}
+html{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 var(--fs-2)/1.45 var(--sans);font-feature-settings:"tnum" 1,"cv11" 1;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;min-height:100%}
+h1,h2,h3,h4{margin:0;font-weight:500;line-height:1.25;letter-spacing:-0.005em}
+h1{font-size:var(--fs-5)}
+h2{font-size:var(--fs-4)}
+h3{font-size:var(--fs-3)}
+p{margin:0}
+a{color:var(--accent-ink);text-decoration:none;text-underline-offset:.18em}
+a:hover{text-decoration:underline}
+code,.mono,kbd{font-family:var(--mono);font-size:.94em;font-feature-settings:normal}
+kbd{border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:var(--r-1);padding:0 5px;font-size:var(--fs-0);color:var(--ink-3);background:var(--surface)}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0;padding:0}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--r-1)}
+.visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:12px;top:-60px;background:var(--surface);padding:8px 12px;border:1px solid var(--line);z-index:50;border-radius:var(--r-2)}
+.skip:focus{top:8px}
+.muted{color:var(--ink-3)}
+.faint{color:var(--ink-4)}
+.num{font-feature-settings:"tnum" 1;font-variant-numeric:tabular-nums}
+.ellip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hash{font-family:var(--mono);font-size:var(--fs-1);overflow-wrap:anywhere;color:var(--ink-2)}
+.stack>*+*{margin-top:var(--sp-4)}
+.row{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
+.grow{flex:1 1 auto}
+.right{margin-left:auto}
+hr.rule{border:0;border-top:1px solid var(--line);margin:var(--sp-4) 0}
+
+/* ---------- rail ---------- */
+.rail{position:sticky;top:0;z-index:30;height:var(--rail-h);background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:var(--sp-5);padding:0 var(--sp-5)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:var(--fs-3);color:var(--ink)}
+.brand .mark{width:18px;height:18px;border-radius:5px;background:var(--ink);position:relative}
+.brand .mark::after{content:"";position:absolute;inset:5px;border-radius:2px;background:var(--surface)}
+.rail nav{display:flex;gap:2px;height:100%}
+.rail nav a{display:flex;align-items:center;padding:0 12px;color:var(--ink-3);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;border-radius:0}
+.rail nav a:hover{color:var(--ink);text-decoration:none}
+.rail nav a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--ink)}
+.rail .tools{margin-left:auto;display:flex;gap:var(--sp-2);align-items:center}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:var(--r-2);border:1px solid var(--line-strong);background:var(--surface);font-weight:500;font-size:var(--fs-2);color:var(--ink);white-space:nowrap}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.btn.primary:hover{background:#2B313A}
+[data-theme="dark"] .btn.primary:hover{background:#D0D5DC}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--ink-2)}
+.btn.quiet:hover{background:var(--surface-3)}
+.btn.sm{height:26px;padding:0 9px;font-size:var(--fs-1)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn[disabled]{opacity:.5;cursor:default}
+.btn:focus-visible{outline-offset:1px}
+.iconbtn{width:22px;height:22px;display:inline-grid;place-items:center;border-radius:var(--r-1);color:var(--ink-4)}
+.iconbtn:hover{background:var(--surface-3);color:var(--ink)}
+.link{color:var(--accent-ink);font-weight:500}
+.link:hover{text-decoration:underline}
+
+/* ---------- scope bar ---------- */
+.scope{position:sticky;top:var(--rail-h);z-index:25;height:var(--scope-h);background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-5)}
+.scope .lab{font-size:var(--fs-1);color:var(--ink-4);font-weight:500;margin-right:2px}
+.sel{position:relative;display:inline-flex;align-items:center;height:30px;border:1px solid var(--line-strong);border-radius:var(--r-2);background:var(--surface);padding:0 8px 0 10px;gap:6px}
+.sel:focus-within{outline:2px solid var(--focus);outline-offset:1px}
+.sel select{appearance:none;-webkit-appearance:none;border:0;background:transparent;padding:0 16px 0 0;font-weight:500;font-size:var(--fs-2);cursor:pointer;color:var(--ink);max-width:170px}
+.sel select:focus{outline:0}
+.sel .k{font-size:var(--fs-1);color:var(--ink-3);font-weight:400}
+.sel::after{content:"";position:absolute;right:9px;top:11px;width:6px;height:6px;border-right:1.5px solid var(--ink-3);border-bottom:1.5px solid var(--ink-3);transform:rotate(45deg);pointer-events:none}
+.sel.on{border-color:var(--accent);background:var(--accent-soft)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 6px 0 10px;border-radius:var(--r-2);background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent-ink);font-weight:500;font-size:var(--fs-2)}
+.chip .k{color:var(--ink-3);font-weight:400}
+.chip button{width:18px;height:18px;border-radius:3px;display:grid;place-items:center;color:var(--accent-ink)}
+.chip button:hover{background:var(--accent-line)}
+.receipt{margin-left:auto;font-size:var(--fs-1);color:var(--ink-3);display:flex;gap:14px;white-space:nowrap}
+.receipt b{font-weight:500;color:var(--ink)}
+.filebar{position:sticky;top:var(--rail-h);z-index:25;min-height:var(--scope-h);background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:var(--sp-4);padding:0 var(--sp-5);font-size:var(--fs-1);color:var(--ink-3)}
+.filebar b{color:var(--ink);font-weight:500}
+
+/* ---------- page ---------- */
+main{padding:var(--sp-5);max-width:1600px;margin:0 auto}
+.screen[hidden]{display:none}
+.pagehead{display:flex;align-items:baseline;gap:var(--sp-3);margin-bottom:var(--sp-4)}
+.pagehead .sub{color:var(--ink-3);font-size:var(--fs-2)}
+.crumbs{display:flex;gap:6px;align-items:center;font-size:var(--fs-1);color:var(--ink-4);margin-bottom:var(--sp-2)}
+.crumbs a{color:var(--ink-3)}
+.crumbs span::before{content:"/";margin-right:6px;color:var(--line-strong)}
+
+/* ---------- panels ---------- */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-3)}
+.panel>header,.panelhead{display:flex;align-items:center;gap:var(--sp-2);padding:10px 14px;border-bottom:1px solid var(--line);min-height:40px}
+.panel>header h2,.panelhead h2{font-size:var(--fs-2);font-weight:500}
+.panel .body{padding:14px}
+.grid{display:grid;gap:var(--sp-4)}
+.grid.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+.grid.charts{grid-template-columns:1.4fr 1fr 1fr}
+@media (max-width:1100px){.grid.charts{grid-template-columns:1fr 1fr}.grid.charts>:first-child{grid-column:1/-1}}
+@media (max-width:900px){.grid.kpis{grid-template-columns:1fr 1fr}.grid.charts{grid-template-columns:1fr}}
+
+/* ---------- KPI ---------- */
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-3);padding:14px 16px 12px;display:flex;flex-direction:column;gap:6px;min-width:0;position:relative}
+.kpi .t{display:flex;align-items:center;gap:6px;font-size:var(--fs-2);color:var(--ink-3);font-weight:500}
+.kpi .t button.def{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;border:1px solid var(--line-strong);font-size:10px;color:var(--ink-3);font-weight:600;line-height:1}
+.kpi .t button.def:hover,.kpi .t button.def[aria-expanded="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.kpi .v{font-size:var(--fs-6);font-weight:500;letter-spacing:-0.02em;line-height:1.1;color:var(--ink);font-variant-numeric:tabular-nums}
+.kpi .v.na{color:var(--ink-4);font-size:var(--fs-5);font-weight:500}
+.kpi .c{font-size:var(--fs-1);color:var(--ink-3);display:flex;gap:8px;align-items:center}
+.kpi .c .cov{display:inline-flex;align-items:center;gap:5px}
+.kpi .c .cov i{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block}
+.kpi .c .cov.partial i{background:var(--warn)}
+.kpi .c .cov.none i{background:var(--bad)}
+.kpi .spark{position:absolute;right:16px;top:14px;opacity:.9}
+
+/* ---------- popover ---------- */
+.pop{position:absolute;z-index:40;min-width:280px;max-width:360px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-3);box-shadow:var(--shadow-pop);padding:12px 14px;font-size:var(--fs-1);color:var(--ink-2)}
+.pop[hidden]{display:none}
+.pop h4{font-size:var(--fs-2);font-weight:500;color:var(--ink);margin-bottom:4px}
+.pop dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:8px 0 0}
+.pop dt{color:var(--ink-4)}
+.pop dd{margin:0;color:var(--ink)}
+.pop .foot{margin-top:10px;padding-top:8px;border-top:1px solid var(--line);display:flex;gap:12px}
+
+/* ---------- charts ---------- */
+.chart{padding:12px 14px 10px}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart .bar{fill:var(--s1);cursor:pointer;transition:opacity .12s}
+.chart .bar:hover,.chart .bar:focus-visible{opacity:.75}
+.chart .bar.dim{opacity:.35}
+.chart .axis{fill:var(--ink-4);font-size:10px;font-family:var(--sans)}
+.chart .gl{stroke:var(--line);stroke-width:1}
+.chart .lbl{fill:var(--ink-2);font-size:11px;font-family:var(--sans)}
+.chart .val{fill:var(--ink);font-size:11px;font-family:var(--sans);font-weight:500}
+.chart .hbar{cursor:pointer}
+.chart .hbar:hover rect,.chart .hbar:focus-visible rect{opacity:.75}
+.chart .hint{font-size:var(--fs-1);color:var(--ink-4);margin-top:6px;min-height:16px}
+.chart .hint b{color:var(--ink);font-weight:500}
+.tip{position:fixed;z-index:45;pointer-events:none;background:var(--ink);color:var(--surface);font-size:var(--fs-1);padding:5px 8px;border-radius:var(--r-1);white-space:nowrap;transform:translate(-50%,calc(-100% - 8px))}
+.tip[hidden]{display:none}
+.tip b{font-weight:500}
+
+/* ---------- quality strip ---------- */
+.qstrip{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-3);overflow:hidden}
+.qstrip .line{display:flex;align-items:stretch;min-height:40px}
+.qstrip .line .lead{display:flex;align-items:center;padding:0 14px;color:var(--ink-3);font-size:var(--fs-1);font-weight:500;border-right:1px solid var(--line);white-space:nowrap}
+.qstrip .q{display:flex;align-items:center;gap:8px;padding:0 14px;border-right:1px solid var(--line);font-size:var(--fs-2);color:var(--ink-2);text-align:left}
+.qstrip .q:hover{background:var(--surface-2)}
+.qstrip .q[aria-expanded="true"]{background:var(--surface-3);color:var(--ink)}
+.qstrip .q b{font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums}
+.qstrip .q i{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
+.qstrip .q i.warn{background:var(--warn)} .qstrip .q i.bad{background:var(--bad)} .qstrip .q i.off{background:var(--line-strong)}
+.qstrip .detail{border-top:1px solid var(--line);padding:12px 14px;background:var(--surface-2);font-size:var(--fs-2);display:grid;grid-template-columns:1fr auto;gap:var(--sp-4);align-items:start}
+.qstrip .detail[hidden]{display:none}
+.qstrip .detail h3{font-size:var(--fs-2);margin-bottom:4px}
+.qstrip .detail ul{margin:6px 0 0;padding-left:18px;color:var(--ink-2)}
+
+/* ---------- tables ---------- */
+.tscroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-2)}
+caption{text-align:left;padding:10px 14px;font-weight:500;color:var(--ink);border-bottom:1px solid var(--line);font-size:var(--fs-2)}
+caption .n{color:var(--ink-3);font-weight:400;margin-left:6px}
+th,td{text-align:left;padding:0 12px;height:36px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+th{font-weight:500;color:var(--ink-3);font-size:var(--fs-1);background:var(--surface-2);position:sticky;top:0}
+th.r,td.r{text-align:right;font-variant-numeric:tabular-nums}
+td.mono{font-family:var(--mono);font-size:var(--fs-1)}
+tbody tr:hover{background:var(--surface-2)}
+tbody tr:last-child td{border-bottom:0}
+tr.rowlink{cursor:pointer}
+td .cov{color:var(--ink-4);font-size:var(--fs-1);margin-left:6px}
+.pill{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:999px;font-size:var(--fs-0);font-weight:500;background:var(--surface-3);color:var(--ink-2);white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.info{background:var(--info-soft);color:var(--accent-ink)}
+.pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tfoot{display:flex;align-items:center;gap:var(--sp-3);padding:8px 14px;border-top:1px solid var(--line);font-size:var(--fs-1);color:var(--ink-3)}
+
+/* ---------- states ---------- */
+.state{padding:40px 20px;text-align:center;color:var(--ink-3);font-size:var(--fs-2)}
+.state h3{color:var(--ink);font-weight:500;margin-bottom:4px}
+.state .act{margin-top:12px;display:flex;gap:8px;justify-content:center}
+.state.error{text-align:left;display:grid;grid-template-columns:auto 1fr;gap:12px;padding:16px;align-items:start}
+.state.error .dot{width:8px;height:8px;border-radius:50%;background:var(--bad);margin-top:6px}
+.state.error code{background:var(--surface-3);padding:1px 5px;border-radius:3px}
+.skel{background:linear-gradient(90deg,var(--surface-3) 25%,var(--surface-2) 50%,var(--surface-3) 75%);background-size:200% 100%;animation:sh 1.2s linear infinite;border-radius:4px;height:12px}
+@keyframes sh{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.skel{animation:none}*{transition:none!important}}
+.notice{display:flex;gap:10px;padding:10px 12px;border-radius:var(--r-2);font-size:var(--fs-2);border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);align-items:flex-start}
+.notice.warn{background:var(--warn-soft);border-color:transparent;color:#5F3D00}
+.notice.bad{background:var(--bad-soft);border-color:transparent;color:#7A1710}
+.notice.ok{background:var(--ok-soft);border-color:transparent;color:#0E4F2E}
+[data-theme="dark"] .notice.warn{color:var(--warn)} [data-theme="dark"] .notice.bad{color:var(--bad)} [data-theme="dark"] .notice.ok{color:var(--ok)}
+.notice i{width:7px;height:7px;border-radius:50%;background:currentColor;margin-top:6px;flex:none}
+
+/* ---------- drawer (dialog) ---------- */
+dialog.drawer{position:fixed;inset:0 0 0 auto;margin:0;width:min(720px,92vw);height:100dvh;max-height:100dvh;border:0;border-left:1px solid var(--line);background:var(--surface);color:var(--ink);padding:0;box-shadow:var(--shadow-drawer);display:flex;flex-direction:column}
+dialog.drawer:not([open]){display:none}
+dialog.drawer::backdrop{background:rgba(23,26,31,.35)}
+dialog.drawer .dhead{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line);min-height:48px}
+dialog.drawer .dhead h2{font-size:var(--fs-3)}
+dialog.drawer .dbody{padding:18px;overflow:auto;flex:1}
+dialog.drawer .dbody dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:var(--fs-2);margin:0 0 16px}
+dialog.drawer dt{color:var(--ink-3)} dialog.drawer dd{margin:0}
+pre.json{margin:0;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-2);padding:12px 14px;font:400 var(--fs-1)/1.55 var(--mono);white-space:pre;overflow:auto;color:var(--ink-2)}
+pre.json .k{color:var(--accent-ink)} pre.json .n{color:var(--s3)} pre.json .s{color:var(--s2)}
+pre.json mark{background:var(--warn-soft);color:inherit;border-radius:2px;outline:1px solid var(--warn)}
+
+/* ---------- definition lists ---------- */
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;font-size:var(--fs-2);margin:0}
+.kv dt{color:var(--ink-3)} .kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.kv.cols{grid-template-columns:auto 1fr auto 1fr}
+@media (max-width:1000px){.kv.cols{grid-template-columns:auto 1fr}}
+
+/* ---------- import page ---------- */
+.steps{display:grid;gap:var(--sp-4)}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-3)}
+.step>header{display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:44px}
+.step>header .num{width:22px;height:22px;border-radius:50%;border:1px solid var(--line-strong);display:grid;place-items:center;font-size:var(--fs-0);color:var(--ink-3);font-weight:500;flex:none}
+.step.done>header .num{background:var(--ok);border-color:var(--ok);color:#fff}
+.step.active>header .num{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.step>header h2{font-size:var(--fs-2);font-weight:500}
+.step>header .sum{color:var(--ink-3);font-size:var(--fs-1);margin-left:4px;min-width:0}
+.step>header .sum b{color:var(--ink);font-weight:500}
+.step .body{padding:0 14px 14px 48px;border-top:1px solid var(--line);padding-top:14px}
+.step .body[hidden]{display:none}
+.step.locked{opacity:.55}
+.drop{border:1.5px dashed var(--line-strong);border-radius:var(--r-3);padding:28px;text-align:center;color:var(--ink-3);background:var(--surface-2)}
+.drop b{color:var(--ink);font-weight:500}
+.drop input{display:none}
+.counts{display:flex;gap:var(--sp-5);flex-wrap:wrap}
+.counts div{min-width:96px}
+.counts dt{font-size:var(--fs-1);color:var(--ink-3)}
+.counts dd{margin:0;font-size:var(--fs-4);font-weight:500;font-variant-numeric:tabular-nums}
+.counts dd.faint{color:var(--ink-4)}
+.radio{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-2);cursor:pointer}
+.radio:has(input:checked){border-color:var(--ink);background:var(--surface-2)}
+.radio input{margin-top:3px;accent-color:var(--ink)}
+.radio .d{font-size:var(--fs-1);color:var(--ink-3)}
+details.more>summary{cursor:pointer;color:var(--accent-ink);font-weight:500;font-size:var(--fs-1);list-style:none;display:inline-flex;gap:6px;align-items:center}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::before{content:"";width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .12s}
+details.more[open]>summary::before{transform:rotate(45deg)}
+details.more>*:not(summary){margin-top:10px}
+.confirm{display:grid;grid-template-columns:1fr auto;gap:var(--sp-4);align-items:center;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-2);padding:12px 14px}
+.progress{height:6px;background:var(--surface-3);border-radius:3px;overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:var(--ink);transition:width .4s}
+
+/* ---------- assistant ---------- */
+.split{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:var(--sp-4);align-items:start}
+@media (max-width:1100px){.split{grid-template-columns:1fr}}
+.maptable td,.maptable th{height:auto;padding:8px 12px;white-space:normal;vertical-align:top}
+.maptable td.mono{white-space:nowrap}
+.maptable .field{display:flex;flex-direction:column;gap:2px}
+.maptable .expl{font-size:var(--fs-1);color:var(--ink-3)}
+.maptable input,.maptable select{height:26px;border:1px solid var(--line-strong);border-radius:var(--r-1);padding:0 6px;background:var(--surface);font-size:var(--fs-1);font-family:var(--mono);width:100%}
+.maptable .err{font-size:var(--fs-0);color:var(--bad);margin-top:3px}
+.maptable .amb{font-size:var(--fs-0);color:var(--warn);margin-top:3px}
+.chat{display:flex;flex-direction:column;height:calc(100dvh - var(--rail-h) - var(--scope-h) - 48px - var(--sp-5)*2);min-height:460px;position:sticky;top:calc(var(--rail-h) + var(--scope-h) + var(--sp-5))}
+.chat .log{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.msg{font-size:var(--fs-2);max-width:100%}
+.msg .who{font-size:var(--fs-0);color:var(--ink-4);margin-bottom:3px;font-weight:500}
+.msg .b{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-2);padding:8px 10px;color:var(--ink-2)}
+.msg.me .b{background:var(--accent-soft);border-color:var(--accent-line);color:var(--ink)}
+.msg .b ul{margin:6px 0 0;padding-left:16px}
+.chat form{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+.chat textarea{flex:1;resize:none;height:60px;border:1px solid var(--line-strong);border-radius:var(--r-2);padding:8px 10px;font-size:var(--fs-2);background:var(--surface)}
+.profile{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.profile .f{border:1px solid var(--line);border-radius:var(--r-2);padding:8px 10px;font-size:var(--fs-1)}
+.profile .f b{display:block;font-family:var(--mono);font-weight:500;color:var(--ink);font-size:var(--fs-1)}
+.profile .f span{color:var(--ink-3)}
+.profile .f .bar{height:3px;background:var(--surface-3);margin-top:6px;border-radius:2px;overflow:hidden}
+.profile .f .bar i{display:block;height:100%;background:var(--s2)}
+
+/* ---------- demo controls ---------- */
+.demo{position:fixed;right:16px;bottom:16px;z-index:35;display:flex;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:999px;box-shadow:var(--shadow-pop);align-items:center}
+.demo span{font-size:var(--fs-0);color:var(--ink-4);padding:0 6px 0 10px;font-weight:500}
+.demo button{height:24px;padding:0 10px;border-radius:999px;font-size:var(--fs-0);font-weight:500;color:var(--ink-3)}
+.demo button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.demo button:hover:not([aria-pressed="true"]){background:var(--surface-3)}
+
+@media (max-width:900px){
+  .rail{padding:0 var(--sp-4);gap:var(--sp-3)}
+  .rail nav a{padding:0 8px}
+  .scope{padding:0 var(--sp-4);overflow-x:auto;height:auto;min-height:var(--scope-h)}
+  .receipt{display:none}
+  main{padding:var(--sp-4)}
+  .split{grid-template-columns:1fr}
+  .chat{position:static;height:auto}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="rail">
+  <a class="brand" href="#/overview" aria-label="AgentScope home"><span class="mark" aria-hidden="true"></span>AgentScope</a>
+  <nav aria-label="Primary" id="nav">
+    <a href="#/overview" data-route="overview">Overview</a>
+    <a href="#/sessions" data-route="sessions">Sessions</a>
+    <a href="#/imports" data-route="imports">Imports</a>
+    <a href="#/mappings" data-route="mappings">Mappings</a>
+    <a href="#/definitions" data-route="definitions">Definitions</a>
+  </nav>
+  <div class="tools">
+    <button class="btn quiet sm" id="themeBtn" aria-pressed="false" title="Toggle dark theme">Dark</button>
+    <a class="btn primary" href="#/import">Import</a>
+  </div>
+</header>
+
+<!-- Scope bar: the console's spine. Every number on a data screen is computed under it. -->
+<form class="scope" id="scope" aria-label="Scope" onsubmit="return false">
+  <span class="lab">Scope</span>
+  <label class="sel" id="selSource"><span class="k">Source</span>
+    <select id="fSource" aria-label="Source"><option value="">All</option><option value="tracelab">tracelab</option><option value="swe-chat" disabled>swe-chat (no import yet)</option></select></label>
+  <label class="sel" id="selAgent"><span class="k">Agent</span>
+    <select id="fAgent" aria-label="Agent"><option value="">All</option><option value="claude-code">claude-code</option><option value="codex">codex</option></select></label>
+  <label class="sel" id="selModel"><span class="k">Model</span>
+    <select id="fModel" aria-label="Model"><option value="">All</option><option value="claude-opus-4-6">claude-opus-4-6</option><option value="claude-opus-4-7">claude-opus-4-7</option><option value="gpt-5.5-codex">gpt-5.5-codex</option></select></label>
+  <label class="sel" id="selPeriod"><span class="k">Period</span>
+    <select id="fPeriod" aria-label="Period"><option value="all">All data</option><option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30">Last 30 days</option></select></label>
+  <span id="chips" class="row" style="gap:6px"></span>
+  <button type="button" class="btn quiet sm" id="clearScope" hidden>Clear</button>
+  <div class="receipt" id="receipt" aria-live="polite"></div>
+</form>
+<div class="filebar" id="filebar" hidden></div>
+
+<main id="main">
+
+<!-- ============ 4. Overview (dashboard) ============ -->
+<section class="screen" id="s-overview" aria-labelledby="h-overview">
+  <div class="pagehead"><h1 id="h-overview">Overview</h1><span class="sub" id="ovSub"></span></div>
+  <div class="stack" id="ovBody">
+    <div class="grid kpis" id="kpis"></div>
+    <div class="grid charts">
+      <section class="panel chart" aria-labelledby="c1h"><h2 id="c1h" class="muted" style="font-size:var(--fs-2);font-weight:500">Activity by day <span class="faint" style="font-weight:400">model calls</span></h2><div id="chartDays"></div><p class="hint" id="hintDays">Click a day to list its sessions.</p></section>
+      <section class="panel chart" aria-labelledby="c2h"><h2 id="c2h" class="muted" style="font-size:var(--fs-2);font-weight:500">Tokens by model <span class="faint" style="font-weight:400">input</span></h2><div id="chartModels"></div><p class="hint" id="hintModels">Click a model to scope to it.</p></section>
+      <section class="panel chart" aria-labelledby="c3h"><h2 id="c3h" class="muted" style="font-size:var(--fs-2);font-weight:500">Tool calls <span class="faint" style="font-weight:400">by tool</span></h2><div id="chartTools"></div><p class="hint" id="hintTools">Click a tool to list sessions using it.</p></section>
+    </div>
+    <div class="qstrip" id="qstrip"></div>
+    <section class="panel" aria-label="Sessions in scope">
+      <div class="tscroll" id="ovSessions"></div>
+    </section>
+  </div>
+</section>
+
+<!-- ============ Sessions list (drill target) ============ -->
+<section class="screen" id="s-sessions" aria-labelledby="h-sessions" hidden>
+  <div class="pagehead"><h1 id="h-sessions">Sessions</h1><span class="sub" id="sessSub"></span></div>
+  <section class="panel" aria-label="Sessions"><div class="tscroll" id="sessTable"></div></section>
+</section>
+
+<!-- ============ 5. Session detail ============ -->
+<section class="screen" id="s-session" aria-labelledby="h-session" hidden>
+  <div class="crumbs"><a href="#/sessions">Sessions</a><span id="sessCrumb"></span></div>
+  <div class="pagehead"><h1 id="h-session">Session</h1><span class="sub" id="sessIdSub"></span></div>
+  <div class="stack" id="sessBody"></div>
+</section>
+
+<!-- ============ 3. Imports history ============ -->
+<section class="screen" id="s-imports" aria-labelledby="h-imports" hidden>
+  <div class="pagehead"><h1 id="h-imports">Imports</h1><span class="sub">Every attempt, including duplicates and failures.</span></div>
+  <section class="panel" aria-label="Import attempts"><div class="tscroll" id="importsTable"></div></section>
+</section>
+
+<!-- ============ 2. Import report ============ -->
+<section class="screen" id="s-report" aria-labelledby="h-report" hidden>
+  <div class="crumbs"><a href="#/imports">Imports</a><span id="repCrumb"></span></div>
+  <div class="pagehead"><h1 id="h-report">Import report</h1><span class="sub" id="repSub"></span></div>
+  <div class="stack" id="repBody"></div>
+</section>
+
+<!-- ============ 1. Import ============ -->
+<section class="screen" id="s-import" aria-labelledby="h-import" hidden>
+  <div class="pagehead"><h1 id="h-import">Import traces</h1><span class="sub">JSONL, JSONL.gz or Parquet, up to 25 MiB.</span></div>
+  <div class="steps" id="importSteps"></div>
+</section>
+
+<!-- ============ 6. Mapping assistant ============ -->
+<section class="screen" id="s-assistant" aria-labelledby="h-assistant" hidden>
+  <div class="crumbs"><a href="#/import">Import</a><span>Mapping assistant</span></div>
+  <div class="pagehead"><h1 id="h-assistant">Map an unknown file</h1><span class="sub">The assistant proposes; you decide. Nothing is written until you import.</span></div>
+  <div class="split">
+    <div class="stack" id="asstMain"></div>
+    <aside class="panel chat" aria-label="Conversation with the mapping assistant" id="asstChat"></aside>
+  </div>
+</section>
+
+<!-- ============ Mappings (secondary) ============ -->
+<section class="screen" id="s-mappings" aria-labelledby="h-mappings" hidden>
+  <div class="pagehead"><h1 id="h-mappings">Mappings</h1><span class="sub">Immutable revisions. Editing creates a new revision.</span></div>
+  <section class="panel" aria-label="Mapping revisions"><div class="tscroll" id="mappingsTable"></div></section>
+</section>
+
+<!-- ============ 7. Definitions ============ -->
+<section class="screen" id="s-definitions" aria-labelledby="h-definitions" hidden>
+  <div class="pagehead"><h1 id="h-definitions">Definitions</h1><span class="sub">What each number means, in what unit, and when it may be compared.</span></div>
+  <section class="panel" aria-label="Metric definitions"><div class="tscroll" id="defsTable"></div></section>
+</section>
+
+</main>
+
+<!-- ============ drawers ============ -->
+<dialog class="drawer" id="dSource" aria-labelledby="dSourceH">
+  <div class="dhead"><h2 id="dSourceH">Source record</h2><span class="muted" id="dSourceSub" style="font-size:var(--fs-1)"></span><button class="btn quiet sm right" data-close="dSource">Close <kbd>Esc</kbd></button></div>
+  <div class="dbody" id="dSourceBody"></div>
+</dialog>
+<dialog class="drawer" id="dReject" aria-labelledby="dRejectH">
+  <div class="dhead"><h2 id="dRejectH">Rejected record</h2><button class="btn quiet sm right" data-close="dReject">Close <kbd>Esc</kbd></button></div>
+  <div class="dbody" id="dRejectBody"></div>
+</dialog>
+<dialog class="drawer" id="dRedaction" aria-labelledby="dRedactionH" style="width:min(560px,92vw)">
+  <div class="dhead"><h2 id="dRedactionH">What leaves this machine</h2><button class="btn quiet sm right" data-close="dRedaction">Close <kbd>Esc</kbd></button></div>
+  <div class="dbody" id="dRedactionBody"></div>
+</dialog>
+<dialog class="drawer" id="dRecord" aria-labelledby="dRecordH">
+  <div class="dhead"><h2 id="dRecordH">Decoded record</h2><span class="muted" id="dRecordSub" style="font-size:var(--fs-1)"></span><button class="btn quiet sm right" data-close="dRecord">Close <kbd>Esc</kbd></button></div>
+  <div class="dbody" id="dRecordBody"></div>
+</dialog>
+
+<div class="pop" id="pop" hidden role="dialog" aria-modal="false"></div>
+<div class="tip" id="tip" hidden aria-hidden="true"></div>
+
+<div class="demo" role="group" aria-label="Demo data state">
+  <span>Demo state</span>
+  <button type="button" data-state="ready" aria-pressed="true">Data</button>
+  <button type="button" data-state="loading" aria-pressed="false">Loading</button>
+  <button type="button" data-state="empty" aria-pressed="false">Empty</button>
+  <button type="button" data-state="error" aria-pressed="false">Error</button>
+</div>
+
+<script>
+/* =====================================================================
+   Demo data. Deterministic, sums exactly to the brief's import result.
+   ===================================================================== */
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const fmt = n => n === null || n === undefined ? 'Unavailable' : Number(n).toLocaleString('en-US');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = (n, w=2) => String(n).padStart(w, '0');
+const iso = d => d.toISOString();
+const short = s => s.replace('T',' ').replace(/\.\d{3}Z$/,'').slice(5); // "06-04 02:51:06"
+const abbr = n => n===null?'Unavailable': n>=1e9? (n/1e9).toFixed(2)+'B' : n>=1e6? (n/1e6).toFixed(1)+'M' : n>=1e3? (n/1e3).toFixed(1)+'k' : String(n);
+function rng(seed){ let s = seed>>>0; return () => { s = (s*1664525 + 1013904223)>>>0; return s/4294967296; }; }
+const rnd = rng(20260907);
+const hex = n => { let o=''; for(let i=0;i<n;i++) o += Math.floor(rnd()*16).toString(16); return o; };
+const uuid = () => `${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}`;
+function apportion(total, weights){ // largest remainder, exact integer sum
+  const sum = weights.reduce((a,b)=>a+b,0);
+  const raw = weights.map(w => total*w/sum);
+  const base = raw.map(Math.floor);
+  let rest = total - base.reduce((a,b)=>a+b,0);
+  const order = raw.map((v,i)=>[v-Math.floor(v),i]).sort((a,b)=>b[0]-a[0]);
+  for (let k=0;k<rest;k++) base[order[k%order.length][1]]++;
+  return base;
+}
+
+const FILE = { name:'tracelab-sample.jsonl.gz', bytes:681057, sha:'d044a766e12c7eceae2eb1ed71e42d95cf0aec2f10c8d61a06cecc0381fb9897', records:4770, format:'jsonl', gzip:true };
+const MAPPING = { id:'map_82934058a2f6af1cbfc6', name:'tracelab-v1', revision:1, source:'tracelab', created_by:'bundled', input_format:'jsonl' };
+const IMPORT_ID = 'imp_3e21f89dbaef419a8f60';
+const TOTAL = { sessions:80, model_calls:4770, tool_calls:5723, input:553447877, output:1204331, cache_read:98214560 };
+const TOOLS = ['Bash','Read','Edit','Grep','Glob','Agent','WebFetch'];
+const DAYS = []; for (let i=0;i<14;i++){ const d = new Date(Date.UTC(2026,4,28+i)); DAYS.push(d.toISOString().slice(0,10)); }
+const TODAY = '2026-06-10';
+
+// sessions ----------------------------------------------------------
+const sessions = [];
+const N = TOTAL.sessions;
+const agentOf = i => i < 52 ? 'claude-code' : 'codex';
+const modelOf = i => i < 30 ? 'claude-opus-4-6' : i < 52 ? 'claude-opus-4-7' : 'gpt-5.5-codex';
+const wCalls = [], wTools = [], wIn = [], wOut = [];
+for (let i=0;i<N;i++){ const a = 0.4+rnd()*1.6; wCalls.push(a); wTools.push(a*(0.6+rnd())); wIn.push(a*(0.5+rnd()*1.5)); wOut.push(a*(0.5+rnd()*1.5)); }
+// fix session 0 to the brief's example, apportion the remainder
+const ex = { calls:2, tools:3, input:48187, output:1943 };
+const calls = [ex.calls, ...apportion(TOTAL.model_calls-ex.calls, wCalls.slice(1))];
+const tools = [ex.tools, ...apportion(TOTAL.tool_calls-ex.tools, wTools.slice(1))];
+const inputs = [ex.input, ...apportion(TOTAL.input-ex.input, wIn.slice(1))];
+const outputs = [ex.output, ...apportion(TOTAL.output-ex.output, wOut.slice(1))];
+const dayWeights = DAYS.map((d,i)=> (i===5?2.6:i===6?2.1:i===9?1.8:i===12?0.3:0.6+rnd()*1.2));
+for (let i=0;i<N;i++){
+  const dayIdx = i===0 ? 7 : weightedDay();
+  const d = DAYS[dayIdx];
+  const startMs = i===0 ? Date.parse('2026-06-04T02:51:06.901Z') : Date.parse(d+'T00:00:00Z') + Math.floor(rnd()*86400000);
+  const durMs = i===0 ? (Date.parse('2026-06-04T02:52:00.698Z')-startMs) : Math.floor(30000 + rnd()*2400000);
+  const agent = agentOf(i), model = modelOf(i);
+  const toolW = agent==='codex' ? [0.42,0.26,0.2,0.06,0.06,0,0] : [0.3,0.28,0.17,0.1,0.07,0.05,0.03];
+  const byTool = apportion(tools[i], toolW.map(w => w*(0.7+rnd()*0.6)+0.0001));
+  const missingOut = agent==='codex' && rnd()<0.33 ? Math.min(calls[i], 1+Math.floor(rnd()*3)) : 0;
+  const unlinked = rnd()<0.3 ? Math.min(tools[i], Math.floor(rnd()*4)) : 0;
+  sessions.push({
+    id: i===0 ? 'ses_c736618a4b1e4d0f9a2c' : 'ses_'+hex(20),
+    external_id: i===0 ? 'claude:781a3b4c-a1a5-9325-16d3-4029ecc3fe43' : (agent==='claude-code'?'claude:':'codex:')+uuid(),
+    source:'tracelab', agent, model, day:d,
+    repo: i===0 ? 'project_8f998460' : 'project_'+hex(8), user: i===0 ? 'user_b87fa13e' : 'user_'+hex(8),
+    observed_start_at: iso(new Date(startMs)), observed_end_at: iso(new Date(startMs+durMs)),
+    declared: agent==='claude-code' ? [iso(new Date(startMs-1200)), iso(new Date(startMs+durMs+800))] : null,
+    model_call_count: calls[i], tool_call_count: tools[i], input_tokens: inputs[i], output_tokens: outputs[i],
+    out_known: calls[i]-missingOut, tools_by: Object.fromEntries(TOOLS.map((t,k)=>[t,byTool[k]])),
+    unlinked_tools: unlinked, unknown_ts: agent==='codex' && calls[i]<=1,
+    diagnostics: i%17===3 ? [{code:'conflicting_value', field:'agent', message:'Records claim both "claude-code" and "claude"; the first accepted value was kept.'}] : [],
+  });
+}
+function weightedDay(){ const s = dayWeights.reduce((a,b)=>a+b,0); let r = rnd()*s; for (let i=0;i<dayWeights.length;i++){ r -= dayWeights[i]; if (r<=0) return i; } return 13; }
+sessions.sort((a,b)=> a.observed_start_at < b.observed_start_at ? 1 : -1);
+const sessionById = Object.fromEntries(sessions.map(s=>[s.id,s]));
+
+// imports ----------------------------------------------------------
+const imports = [
+  { id:'imp_e7a10c3d5b2f4a9e8d01', status:'running', source:'swe-chat', mapping:{id:'map_5d1c9e7a0b2f4c3d8e6f', name:'swe-chat-draft', revision:2}, started_at:'2026-09-07T11:41:02Z', finished_at:null,
+    files:[{filename:'swe-chat-export.jsonl', sha256:'8b1f0c2e6a9d4f3b7c5e1a0d9f8b7c6e5d4a3b2c1f0e9d8c7b6a5f4e3d2c1b0a', size_bytes:9_412_776, format:'jsonl', record_count:2000}],
+    records:{accepted:1180, partial:0, duplicate:0, rejected:9, ignored:0}, entities:{}, warnings:{absent:2310, null:96}, reject_count:9, error:null, progress:0.59 },
+  { id:'imp_b52e0f9a7d3c4b6e91f2', status:'failed', source:'swe-chat', mapping:{id:'map_1a4f9c2e7d0b4a6c8e3f', name:'swe-chat-draft', revision:1}, started_at:'2026-09-07T11:05:19Z', finished_at:'2026-09-07T11:05:47Z',
+    files:[{filename:'swe-chat-export.jsonl', sha256:'8b1f0c2e6a9d4f3b7c5e1a0d9f8b7c6e5d4a3b2c1f0e9d8c7b6a5f4e3d2c1b0a', size_bytes:9_412_776, format:'jsonl', record_count:2000}],
+    records:{accepted:1588, partial:0, duplicate:0, rejected:412, ignored:0}, entities:{}, warnings:{absent:3904, null:161, invalid_value:412}, reject_count:412,
+    error:'RejectCeilingExceeded: 412 of 2,000 records rejected (20.6 %); ceiling for this mapping is 5 %. Transaction rolled back, nothing inserted.' },
+  { id:'imp_9c0d4e7b21aa4f0c8e11', status:'duplicate', source:'tracelab', mapping:{...MAPPING}, started_at:'2026-09-07T09:40:12Z', finished_at:'2026-09-07T09:40:13Z',
+    files:[{filename:FILE.name, sha256:FILE.sha, size_bytes:FILE.bytes, format:'jsonl', record_count:FILE.records}],
+    records:{accepted:0, partial:0, duplicate:4770, rejected:0, ignored:0}, entities:{}, warnings:{}, reject_count:0, error:null },
+  { id:IMPORT_ID, status:'committed', source:'tracelab', mapping:{...MAPPING}, started_at:'2026-09-07T09:12:04Z', finished_at:'2026-09-07T09:12:31Z',
+    files:[{filename:FILE.name, sha256:FILE.sha, size_bytes:FILE.bytes, format:'jsonl', record_count:FILE.records}],
+    records:{accepted:4770, partial:0, duplicate:0, rejected:0, ignored:0}, entities:{session:80, model_call:4770, tool_call:5723}, warnings:{null:11168, absent:14633}, reject_count:0, error:null },
+];
+const importById = Object.fromEntries(imports.map(i=>[i.id,i]));
+const REJECT_CODES = { invalid_type:388, missing_required:21, invalid_timestamp:3 };
+const rejectsSample = [
+  { locator:'line:1042', rule_id:'model_call', path:'$.usage.input_tokens', code:'invalid_type', field:'input_tokens', message:"expected integer, got string '12,431'",
+    payload:{conversation_id:'conv_7f21c9', model:'gpt-5.5-codex', usage:{prompt_tokens:'12,431', completion_tokens:288}, created_at:1780451235, repo:'org/repo-441', turns:[{role:'user', content:'…'},{role:'assistant', content:'…', tool_calls:[{name:'bash'}]}]}, hl:'"prompt_tokens": "12,431"' },
+  { locator:'line:1043', rule_id:'model_call', path:'$.usage.input_tokens', code:'invalid_type', field:'input_tokens', message:"expected integer, got string '9,880'",
+    payload:{conversation_id:'conv_7f21d0', model:'gpt-5.5-codex', usage:{prompt_tokens:'9,880', completion_tokens:141}, created_at:1780451301, repo:'org/repo-441', turns:[]}, hl:'"prompt_tokens": "9,880"' },
+  { locator:'line:1188', rule_id:'session', path:'$.conversation_id', code:'missing_required', field:'conversation_id', message:'identity field conversation_id is absent',
+    payload:{model:'gpt-5.5-codex', usage:{prompt_tokens:6120, completion_tokens:77}, created_at:1780452110, repo:'org/repo-102', turns:[]}, hl:'"model"' },
+  { locator:'line:1310', rule_id:'model_call', path:'$.created_at', code:'invalid_timestamp', field:'started_at', message:"value 1780452110000 is out of range for unit 'seconds' (looks like milliseconds)",
+    payload:{conversation_id:'conv_80aa1e', model:'gpt-5.5-codex', usage:{prompt_tokens:4102, completion_tokens:63}, created_at:1780452110000, repo:'org/repo-102', turns:[]}, hl:'1780452110000' },
+  { locator:'line:1522', rule_id:'model_call', path:'$.usage.input_tokens', code:'invalid_type', field:'input_tokens', message:"expected integer, got string '31,004'",
+    payload:{conversation_id:'conv_91be22', model:'gpt-5.5-codex', usage:{prompt_tokens:'31,004', completion_tokens:955}, created_at:1780453990, repo:'org/repo-77', turns:[]}, hl:'"prompt_tokens": "31,004"' },
+];
+
+const DEFINITIONS = [
+  { metric:'Sessions', unit:'count', def:'Distinct sessions in scope. A session is one observed identity key per source namespace and harness.', sem:['identity','per-source'], comp:'Comparable across sources only when both sources declare a session identity key.' },
+  { metric:'Model calls', unit:'count', def:'Recorded model-call observations in scope. Overlapping exports are not reconciled; the count is of observations, not of unique requests.', sem:['observation'], comp:'Comparable within one source. Across sources, compare only after checking export overlap.' },
+  { metric:'Input tokens', unit:'tokens', def:'Sum of input_tokens over model calls with a known value. Missing values are excluded, never treated as 0; coverage states how many calls contributed.', sem:['tracelab-claude','tracelab-codex'], comp:'Not comparable across token semantics: tracelab-claude counts cached prefix tokens separately from tracelab-codex.' },
+  { metric:'Output tokens', unit:'tokens', def:'Sum of output_tokens over model calls with a known value, with coverage.', sem:['tracelab-claude','tracelab-codex'], comp:'Comparable across semantics when reasoning tokens are reported the same way; flagged otherwise.' },
+  { metric:'Cache read tokens', unit:'tokens', def:'Sum of cache_read_tokens where the semantics tag defines it.', sem:['tracelab-claude'], comp:'Defined for tracelab-claude only. Unavailable elsewhere, not 0.' },
+  { metric:'Tool calls', unit:'count', def:'Recorded tool-call observations. A tool call without a parent model call is kept and counted as unlinked.', sem:['observation'], comp:'Comparable within one source.' },
+  { metric:'Observed interval', unit:'UTC timestamps', def:'Earliest and latest accepted child timestamp of a session. Describes the span in imported data, not active time.', sem:['derived'], comp:'Never compare to declared intervals as durations; they measure different things.' },
+  { metric:'Wall latency', unit:'ms', def:'result_at minus emitted_at of a tool call. Internal latency reported by the harness is stored separately.', sem:['observation'], comp:'Comparable within one harness.' },
+];
+
+/* =====================================================================
+   State, scope and routing
+   ===================================================================== */
+const state = { source:'', agent:'', model:'', period:'all', chips:[], demo:'ready', route:'overview', param:null, q:null, importFile:null, importStep:1, importMapping:null, previewed:false, running:false, qOpen:null };
+
+function inScope(s){
+  if (state.source && s.source!==state.source) return false;
+  if (state.agent && s.agent!==state.agent) return false;
+  if (state.model && s.model!==state.model) return false;
+  if (state.period!=='all'){ const from = new Date(Date.parse(TODAY+'T00:00:00Z') - (Number(state.period)-1)*86400000).toISOString().slice(0,10); if (s.day < from) return false; }
+  for (const c of state.chips){
+    if (c.k==='day' && s.day!==c.v) return false;
+    if (c.k==='tool' && !(s.tools_by[c.v]>0)) return false;
+    if (c.k==='quality' && c.v==='missing usage' && s.out_known===s.model_call_count) return false;
+    if (c.k==='quality' && c.v==='unknown timestamps' && !s.unknown_ts) return false;
+    if (c.k==='quality' && c.v==='unlinked tools' && !s.unlinked_tools) return false;
+  }
+  return true;
+}
+function scoped(){ return state.demo==='empty' ? [] : sessions.filter(inScope); }
+function totals(list){
+  const t = { sessions:list.length, calls:0, tools:0, input:0, output:0, inKnown:0, outKnown:0, cache:0, cacheKnown:0, byDay:Object.fromEntries(DAYS.map(d=>[d,0])), byModel:{}, byTool:Object.fromEntries(TOOLS.map(t=>[t,0])), missingOut:0, unknownTs:0, unlinked:0 };
+  for (const s of list){
+    t.calls += s.model_call_count; t.tools += s.tool_call_count; t.input += s.input_tokens; t.output += s.output_tokens;
+    t.inKnown += s.model_call_count; t.outKnown += s.out_known; t.missingOut += s.model_call_count - s.out_known;
+    t.byDay[s.day] += s.model_call_count; t.byModel[s.model] = (t.byModel[s.model]||0) + s.input_tokens;
+    for (const k of TOOLS) t.byTool[k] += s.tools_by[k];
+    if (s.model.startsWith('claude')){ t.cacheKnown += s.model_call_count; t.cache += Math.floor(s.input_tokens*0.1775); }
+    if (s.unknown_ts) t.unknownTs++; t.unlinked += s.unlinked_tools;
+  }
+  if (!list.length){ t.input = null; t.output = null; }
+  return t;
+}
+function importsInScope(){ return state.demo==='empty' ? 0 : imports.filter(i => i.status==='committed' && (!state.source || i.source===state.source)).length; }
+
+function readScope(){
+  state.source = $('#fSource').value; state.agent = $('#fAgent').value; state.model = $('#fModel').value; state.period = $('#fPeriod').value;
+  render();
+}
+['#fSource','#fAgent','#fModel','#fPeriod'].forEach(id => $(id).addEventListener('change', readScope));
+$('#clearScope').addEventListener('click', () => { state.chips=[]; ['#fSource','#fAgent','#fModel'].forEach(id=>$(id).value=''); $('#fPeriod').value='all'; readScope(); });
+function addChip(k, v){ state.chips = state.chips.filter(c => c.k!==k); state.chips.push({k,v}); }
+function renderScope(){
+  $('#selSource').classList.toggle('on', !!state.source); $('#selAgent').classList.toggle('on', !!state.agent); $('#selModel').classList.toggle('on', !!state.model); $('#selPeriod').classList.toggle('on', state.period!=='all');
+  $('#chips').innerHTML = state.chips.map((c,i) => `<span class="chip"><span class="k">${esc(c.k)}</span>${esc(c.v)}<button type="button" aria-label="Remove ${esc(c.k)} ${esc(c.v)}" data-chip="${i}">×</button></span>`).join('');
+  $$('#chips button').forEach(b => b.addEventListener('click', () => { state.chips.splice(Number(b.dataset.chip),1); render(); }));
+  const any = state.source||state.agent||state.model||state.period!=='all'||state.chips.length;
+  $('#clearScope').hidden = !any;
+  const t = totals(scoped());
+  $('#receipt').innerHTML = state.demo==='loading' ? '<span class="skel" style="width:180px"></span>' :
+    `<span><b>${fmt(t.sessions)}</b> sessions</span><span><b>${fmt(t.calls)}</b> model calls</span><span>from <b>${importsInScope()}</b> import${importsInScope()===1?'':'s'}</span>`;
+}
+
+// router ------------------------------------------------------------
+const DATA_ROUTES = new Set(['overview','sessions','session']);
+function parseHash(){
+  const h = location.hash.replace(/^#\/?/, '') || 'overview';
+  const [path, qs] = h.split('?');
+  const [route, param] = path.split('/');
+  state.param = param ? decodeURIComponent(param) : null;
+  state.route = route === 'sessions' && param ? 'session' : route === 'imports' && param ? 'report' : (route || 'overview');
+  state.q = qs ? Object.fromEntries(new URLSearchParams(qs)) : null;
+}
+function go(hash){ location.hash = hash; }
+window.addEventListener('hashchange', () => { parseHash(); render(); window.scrollTo(0,0); });
+
+function render(){
+  const route = ['overview','sessions','session','imports','report','import','assistant','mappings','definitions'].includes(state.route) ? state.route : 'overview';
+  const navRoute = { session:'sessions', report:'imports', import:null, assistant:null }[route] ?? route;
+  $$('#nav a').forEach(a => { if (a.dataset.route===navRoute) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
+  $$('.screen').forEach(s => s.hidden = s.id !== 's-'+route);
+  const dataScreen = DATA_ROUTES.has(route);
+  $('#scope').hidden = !dataScreen; $('#filebar').hidden = dataScreen;
+  if (dataScreen) renderScope(); else renderFilebar(route);
+  ({ overview:renderOverview, sessions:renderSessions, session:renderSession, imports:renderImports, report:renderReport, import:renderImport, assistant:renderAssistant, mappings:renderMappings, definitions:renderDefinitions })[route]();
+  closePop();
+}
+function renderFilebar(route){
+  const fb = $('#filebar');
+  if (route==='import'){
+    fb.innerHTML = state.importFile ? `<span>File <b>${esc(state.importFile.name)}</b></span><span>SHA-256 <b class="mono">${state.importFile.sha.slice(0,12)}…</b></span><span><b>${fmt(state.importFile.records)}</b> records</span><span>Mapping <b>${state.importMapping ? esc(state.importMapping.name)+' r'+state.importMapping.revision : 'not chosen'}</b></span>` : `<span>No file yet. Drop one below or pick a demo file.</span>`;
+  } else if (route==='assistant'){
+    fb.innerHTML = `<span>File <b>swe-chat-conversations.parquet</b></span><span>excerpt <b>2,000</b> rows of 1.3 GB upstream</span><span>Format <b>parquet</b></span><span>Assistant <b>openai_compatible · qwen3-coder (local)</b></span><span class="right"><button class="link" type="button" id="openRedaction">What leaves this machine</button></span>`;
+    $('#openRedaction').addEventListener('click', openRedaction);
+  } else if (route==='report'){
+    const imp = importById[state.param] || imports[3];
+    fb.innerHTML = `<span>Import <b class="mono">${esc(imp.id)}</b></span><span>Source <b>${esc(imp.source)}</b></span><span>Mapping <b>${esc(imp.mapping.name)} r${imp.mapping.revision}</b></span><span>Started <b>${esc(imp.started_at.replace('T',' ').replace('Z',' UTC'))}</b></span>`;
+  } else if (route==='definitions'){
+    fb.innerHTML = `<span>Definitions are versioned with the metric layer. <b>metrics v0.1</b></span>`;
+  } else if (route==='mappings'){
+    fb.innerHTML = `<span><b>3</b> mappings · <b>4</b> revisions</span>`;
+  } else fb.innerHTML = `<span>Scope does not apply here; this is the import ledger.</span>`;
+}
+</script>
+
+<script>
+/* =====================================================================
+   Shared UI helpers: popover, tooltip, drawers, states
+   ===================================================================== */
+const pop = $('#pop');
+let popAnchor = null;
+function openPop(anchor, html){
+  if (popAnchor === anchor){ closePop(); return; }
+  closePop();
+  pop.innerHTML = html; pop.hidden = false; popAnchor = anchor; anchor.setAttribute('aria-expanded','true');
+  const r = anchor.getBoundingClientRect(); const pw = pop.offsetWidth;
+  let left = r.left + window.scrollX; if (left + pw > window.innerWidth - 12) left = window.innerWidth - pw - 12;
+  pop.style.left = left+'px'; pop.style.top = (r.bottom + window.scrollY + 6)+'px';
+  const f = pop.querySelector('a,button'); if (f) f.focus({preventScroll:true});
+}
+function closePop(){ if (!popAnchor) return; pop.hidden = true; popAnchor.setAttribute('aria-expanded','false'); const a = popAnchor; popAnchor = null; if (document.activeElement===document.body || pop.contains(document.activeElement)) a.focus({preventScroll:true}); }
+document.addEventListener('click', e => { if (popAnchor && !pop.contains(e.target) && !popAnchor.contains(e.target)) closePop(); });
+document.addEventListener('keydown', e => { if (e.key==='Escape' && popAnchor) closePop(); });
+
+const tip = $('#tip');
+function showTip(e, html){ tip.innerHTML = html; tip.hidden = false; moveTip(e); }
+function moveTip(e){ tip.style.left = e.clientX+'px'; tip.style.top = e.clientY+'px'; }
+function hideTip(){ tip.hidden = true; }
+
+function openDrawer(id){ const d = $('#'+id); if (!d.open) d.showModal(); }
+$$('dialog.drawer').forEach(d => { d.addEventListener('click', e => { if (e.target === d) d.close(); }); });
+$$('[data-close]').forEach(b => b.addEventListener('click', () => $('#'+b.dataset.close).close()));
+
+function jsonHtml(obj, hl){
+  let t = JSON.stringify(obj, null, 2);
+  t = esc(t).replace(/("(?:[^"\\]|\\.)*")(\s*:)?/g, (m,k,c) => c ? `<span class="k">${k}</span>${c}` : `<span class="s">${k}</span>`).replace(/\b(-?\d+(?:\.\d+)?)\b(?![^<]*<\/span>)/g, '<span class="n">$1</span>');
+  if (hl){ const h = esc(hl).replace(/("(?:[^"\\]|\\.)*")(\s*:)?/g, (m,k,c)=> c?`<span class="k">${k}</span>${c}`:`<span class="s">${k}</span>`).replace(/\b(-?\d+(?:\.\d+)?)\b(?![^<]*<\/span>)/g,'<span class="n">$1</span>'); t = t.replace(h, `<mark>${h}</mark>`); }
+  return `<pre class="json" tabindex="0">${t}</pre>`;
+}
+const skeletonRows = (n, cols) => Array.from({length:n}, () => `<tr>${Array.from({length:cols}, (_,i)=>`<td><span class="skel" style="width:${40+((i*37)%50)}%;display:block"></span></td>`).join('')}</tr>`).join('');
+function stateBlock(kind, opts={}){
+  if (kind==='loading') return `<div class="state" role="status" aria-live="polite"><span class="visually-hidden">Loading</span><div class="stack" style="max-width:420px;margin:0 auto"><span class="skel" style="width:60%;display:block"></span><span class="skel" style="width:90%;display:block"></span><span class="skel" style="width:75%;display:block"></span></div></div>`;
+  if (kind==='empty') return `<div class="state"><h3>${esc(opts.title||'Nothing in scope')}</h3><p>${esc(opts.text||'No sessions match the current scope.')}</p><div class="act">${opts.actions||'<button class="btn" type="button" onclick="$(\'#clearScope\').click()">Clear scope</button><a class="btn" href="#/import">Import traces</a>'}</div></div>`;
+  if (kind==='error') return `<div class="state error" role="alert"><span class="dot" aria-hidden="true"></span><div><h3 style="font-size:var(--fs-2)">${esc(opts.title||'Could not load metrics')}</h3><p class="muted" style="margin-top:2px">${opts.text||'The API answered <code>503 backend_unavailable</code>: the SQLite file is locked by another process. Numbers on this screen are not shown rather than shown stale.'}</p><div class="row" style="margin-top:10px"><button class="btn sm" type="button" onclick="setDemo(\'ready\')">Retry</button><a class="link" href="#/imports" style="font-size:var(--fs-1)">Open imports ledger</a></div></div></div>`;
+  return '';
+}
+
+/* =====================================================================
+   4. Overview
+   ===================================================================== */
+const KPI_DEFS = {
+  sessions: { label:'Sessions', def:DEFINITIONS[0].def, unit:'count' },
+  calls: { label:'Model calls', def:DEFINITIONS[1].def, unit:'count' },
+  input: { label:'Input tokens', def:DEFINITIONS[2].def, unit:'tokens' },
+  output: { label:'Output tokens', def:DEFINITIONS[3].def, unit:'tokens' },
+};
+function kpiCard(key, value, cov, extra){
+  const na = value===null || (cov && cov.known===0);
+  const covClass = !cov ? '' : cov.known===0 ? 'none' : cov.known<cov.total ? 'partial' : '';
+  return `<section class="kpi" aria-labelledby="k-${key}">
+    <div class="t"><span id="k-${key}">${KPI_DEFS[key].label}</span><button type="button" class="def" aria-expanded="false" aria-label="Definition and coverage of ${KPI_DEFS[key].label}" data-kpi="${key}">i</button></div>
+    <div class="v${na?' na':''}" title="${na?'':fmt(value)}">${na?'Unavailable':(value>99999?abbr(value):fmt(value))}</div>
+    <div class="c">${cov ? `<span class="cov ${covClass}"><i aria-hidden="true"></i>${na?'coverage 0 / '+fmt(cov.total)+' calls':fmt(cov.known)+' / '+fmt(cov.total)+' calls'}</span>` : `<span>${extra||''}</span>`}${value>99999 && !na ? `<span class="faint">exact ${fmt(value)}</span>`:''}</div>
+  </section>`;
+}
+function kpiPop(key, t){
+  const d = KPI_DEFS[key];
+  let rows = '';
+  if (key==='input') rows = `<dt>Coverage</dt><dd>${fmt(t.inKnown)} / ${fmt(t.calls)} calls have a value</dd><dt>Exact</dt><dd class="num">${fmt(t.input)}</dd><dt>By semantics</dt><dd>tracelab-claude ${fmt((t.byModel['claude-opus-4-6']||0) + (t.byModel['claude-opus-4-7']||0))}<br>tracelab-codex ${fmt(t.byModel['gpt-5.5-codex']||0)}</dd><dt>Cache read</dt><dd>${t.cacheKnown ? fmt(t.cache)+' <span class="faint">('+fmt(t.cacheKnown)+' / '+fmt(t.calls)+' calls, tracelab-claude only)</span>' : 'Unavailable <span class="faint">(no tracelab-claude calls in scope)</span>'}</dd>`;
+  if (key==='output') rows = `<dt>Coverage</dt><dd>${fmt(t.outKnown)} / ${fmt(t.calls)} calls have a value${t.missingOut?`<br><span class="faint">${fmt(t.missingOut)} gpt-5.5-codex calls report no completion usage</span>`:''}</dd><dt>Exact</dt><dd class="num">${fmt(t.output)}</dd>`;
+  if (key==='sessions') rows = `<dt>Identity</dt><dd>source namespace + session_id</dd><dt>Imports</dt><dd>${importsInScope()} committed</dd>`;
+  if (key==='calls') rows = `<dt>Counting</dt><dd>observations, not unique requests</dd><dt>Suspected duplicates</dt><dd>0 flagged</dd>`;
+  return `<h4>${d.label} <span class="faint" style="font-weight:400">· ${d.unit}</span></h4><p>${esc(d.def)}</p><dl>${rows}</dl><div class="foot"><a href="#/definitions">All definitions</a><a href="#/sessions">Contributing sessions</a></div>`;
+}
+
+function renderOverview(){
+  const list = scoped(); const t = totals(list);
+  const body = $('#ovBody');
+  $('#ovSub').textContent = state.demo==='ready' ? `${fmt(t.sessions)} sessions under scope, ${DAYS[0]} to ${DAYS[13]}` : '';
+  if (state.demo==='error'){ body.innerHTML = stateBlock('error'); body.dataset.state='error'; return; }
+  if (body.dataset.state){ body.dataset.state=''; body.innerHTML = `<div class="grid kpis" id="kpis"></div><div class="grid charts">
+      <section class="panel chart" aria-labelledby="c1h"><h2 id="c1h" class="muted" style="font-size:var(--fs-2);font-weight:500">Activity by day <span class="faint" style="font-weight:400">model calls</span></h2><div id="chartDays"></div><p class="hint" id="hintDays">Click a day to list its sessions.</p></section>
+      <section class="panel chart" aria-labelledby="c2h"><h2 id="c2h" class="muted" style="font-size:var(--fs-2);font-weight:500">Tokens by model <span class="faint" style="font-weight:400">input</span></h2><div id="chartModels"></div><p class="hint" id="hintModels">Click a model to scope to it.</p></section>
+      <section class="panel chart" aria-labelledby="c3h"><h2 id="c3h" class="muted" style="font-size:var(--fs-2);font-weight:500">Tool calls <span class="faint" style="font-weight:400">by tool</span></h2><div id="chartTools"></div><p class="hint" id="hintTools">Click a tool to list sessions using it.</p></section></div>
+    <div class="qstrip" id="qstrip"></div><section class="panel" aria-label="Sessions in scope"><div class="tscroll" id="ovSessions"></div></section>`; }
+  // KPIs
+  if (state.demo==='loading'){
+    $('#kpis').innerHTML = Object.keys(KPI_DEFS).map(k=>`<section class="kpi" aria-busy="true"><div class="t">${KPI_DEFS[k].label}</div><span class="skel" style="width:55%;height:26px"></span><span class="skel" style="width:40%"></span></section>`).join('');
+  } else {
+    $('#kpis').innerHTML = kpiCard('sessions', list.length||null, null, `${importsInScope()} import${importsInScope()===1?'':'s'} in scope`) + kpiCard('calls', list.length?t.calls:null, null, `${fmt(t.tools)} tool calls`) + kpiCard('input', t.input, {known:t.inKnown,total:t.calls}) + kpiCard('output', t.output, {known:t.outKnown,total:t.calls});
+    $$('#kpis button.def').forEach(b => b.addEventListener('click', () => openPop(b, kpiPop(b.dataset.kpi, t))));
+  }
+  renderCharts(t, list.length);
+  renderQuality(t, list.length);
+  $('#ovSessions').innerHTML = sessionsTable(list.slice(0,8), `Sessions in scope`, `<a class="link" href="#/sessions">All ${fmt(list.length)} sessions</a>`);
+  bindRows();
+}
+
+function renderCharts(t, n){
+  const loading = state.demo==='loading';
+  // activity by day
+  const W=560,H=150,P={l:34,r:6,t:8,b:22}; const vals = DAYS.map(d=>t.byDay[d]); const max = Math.max(1,...vals);
+  const bw = (W-P.l-P.r)/DAYS.length; const ticks = [0, Math.round(max/2), max];
+  const activeDay = (state.chips.find(c=>c.k==='day')||{}).v;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Model calls per day, ${DAYS[0]} to ${DAYS[13]}">`;
+  ticks.forEach(v => { const y = P.t + (H-P.t-P.b)*(1-v/max); svg += `<line class="gl" x1="${P.l}" x2="${W-P.r}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/><text class="axis" x="${P.l-6}" y="${(y+3).toFixed(1)}" text-anchor="end">${abbr(v)}</text>`; });
+  DAYS.forEach((d,i) => {
+    const h = loading ? 0 : (H-P.t-P.b)*vals[i]/max; const x = P.l + i*bw + bw*0.18; const y = H-P.b-h;
+    svg += `<rect class="bar${activeDay && activeDay!==d?' dim':''}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw*0.64).toFixed(1)}" height="${h.toFixed(1)}" rx="2" tabindex="0" role="button" aria-label="${d}: ${fmt(vals[i])} model calls. List sessions." data-day="${d}" data-v="${vals[i]}"/>`;
+    if (i%2===0) svg += `<text class="axis" x="${(P.l+i*bw+bw/2).toFixed(1)}" y="${H-6}" text-anchor="middle">${d.slice(5)}</text>`;
+  });
+  svg += '</svg>';
+  $('#chartDays').innerHTML = loading ? `<div style="height:150px" class="row" aria-busy="true"><span class="skel" style="width:100%;height:100px;align-self:end"></span></div>` : n ? svg : `<div class="state" style="padding:40px 0">No activity in scope.</div>`;
+  $$('#chartDays .bar').forEach(b => {
+    const act = () => { addChip('day', b.dataset.day); go('#/sessions'); };
+    b.addEventListener('click', act); b.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' '){ e.preventDefault(); act(); } });
+    b.addEventListener('mousemove', e => showTip(e, `${b.dataset.day} <b>${fmt(b.dataset.v)}</b> calls`)); b.addEventListener('mouseleave', hideTip);
+    b.addEventListener('focus', () => $('#hintDays').innerHTML = `<b>${b.dataset.day}</b> ${fmt(b.dataset.v)} model calls. Enter lists its sessions.`);
+  });
+  // tokens by model (horizontal)
+  $('#chartModels').innerHTML = loading ? `<div style="height:150px" aria-busy="true" class="stack"><span class="skel" style="display:block;height:18px"></span><span class="skel" style="display:block;height:18px;width:70%"></span><span class="skel" style="display:block;height:18px;width:45%"></span></div>` : n ? hbars(Object.entries(t.byModel).sort((a,b)=>b[1]-a[1]), 'model', v=>abbr(v)+' tokens', ['var(--s1)','var(--s5)','var(--s2)']) : `<div class="state" style="padding:40px 0">No tokens in scope.</div>`;
+  $$('#chartModels .hbar').forEach(b => {
+    const act = () => { $('#fModel').value = b.dataset.key; readScope(); };
+    b.addEventListener('click', act); b.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' '){ e.preventDefault(); act(); } });
+    b.addEventListener('mousemove', e => showTip(e, `${b.dataset.key} <b>${fmt(b.dataset.v)}</b> input tokens`)); b.addEventListener('mouseleave', hideTip);
+    b.addEventListener('focus', () => $('#hintModels').innerHTML = `<b>${b.dataset.key}</b> exactly ${fmt(b.dataset.v)} input tokens.`);
+  });
+  // tools
+  const activeTool = (state.chips.find(c=>c.k==='tool')||{}).v;
+  $('#chartTools').innerHTML = loading ? `<div style="height:150px" aria-busy="true" class="stack"><span class="skel" style="display:block;height:14px"></span><span class="skel" style="display:block;height:14px;width:80%"></span><span class="skel" style="display:block;height:14px;width:60%"></span><span class="skel" style="display:block;height:14px;width:30%"></span></div>` : n ? hbars(Object.entries(t.byTool).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]), 'tool', v=>fmt(v), ['var(--s2)'], activeTool, 18) : `<div class="state" style="padding:40px 0">No tool calls in scope.</div>`;
+  $$('#chartTools .hbar').forEach(b => {
+    const act = () => { addChip('tool', b.dataset.key); go('#/sessions'); };
+    b.addEventListener('click', act); b.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' '){ e.preventDefault(); act(); } });
+    b.addEventListener('mousemove', e => showTip(e, `${b.dataset.key} <b>${fmt(b.dataset.v)}</b> calls`)); b.addEventListener('mouseleave', hideTip);
+    b.addEventListener('focus', () => $('#hintTools').innerHTML = `<b>${b.dataset.key}</b> ${fmt(b.dataset.v)} tool calls. Enter lists sessions using it.`);
+  });
+}
+function hbars(entries, kind, label, colors, active, rowH=30){
+  const W=360, lw=118, max=Math.max(1,...entries.map(e=>e[1])); const H = Math.max(150, entries.length*rowH + 8);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${kind==='model'?'Input tokens by model':'Tool calls by tool'}">`;
+  entries.forEach(([k,v],i) => {
+    const y = 4 + i*rowH; const w = Math.max(2,(W-lw-58)*v/max); const c = colors[i%colors.length];
+    s += `<g class="hbar" tabindex="0" role="button" data-key="${esc(k)}" data-v="${v}" aria-label="${esc(k)}: ${fmt(v)}${kind==='model'?' input tokens. Scope to this model.':' tool calls. List sessions using it.'}" style="opacity:${active&&active!==k?.35:1}">
+      <text class="lbl" x="0" y="${y+rowH/2+4}">${esc(k)}</text>
+      <rect x="${lw}" y="${y+rowH/2-6}" width="${w.toFixed(1)}" height="12" rx="2" fill="${c}"/>
+      <text class="val" x="${lw+w+6}" y="${y+rowH/2+4}">${label(v)}</text></g>`;
+  });
+  return s+'</svg>';
+}
+
+function renderQuality(t, n){
+  const q = $('#qstrip');
+  if (state.demo==='loading'){ q.innerHTML = `<div class="line" aria-busy="true"><span class="lead">Quality</span><span class="q"><span class="skel" style="width:120px"></span></span><span class="q"><span class="skel" style="width:120px"></span></span></div>`; return; }
+  const items = [
+    { k:'rejects', n:0, unit:'rejects', dot:'', text:'Every source record in scope was accepted. Rejects live on the import report.', link:`#/imports/${IMPORT_ID}`, linkText:'Open import report' },
+    { k:'missing usage', n:t.missingOut, unit:'calls without output usage', dot:t.missingOut?'warn':'', text:`${fmt(t.missingOut)} gpt-5.5-codex calls carry no completion usage. They are excluded from Output tokens and reduce its coverage; they are never counted as 0.`, chip:true },
+    { k:'unknown timestamps', n:t.unknownTs, unit:'sessions', dot:t.unknownTs?'warn':'', text:`${fmt(t.unknownTs)} sessions have a single observation and no declared interval, so their observed span is a point. They still count as sessions.`, chip:true },
+    { k:'unlinked tools', n:t.unlinked, unit:'tool calls', dot:t.unlinked?'warn':'', text:`${fmt(t.unlinked)} tool calls reference no model call in the same session. They are counted in Tool calls and listed under their session.`, chip:true },
+  ];
+  if (!n) items.forEach(i => { i.n=0; i.dot='off'; });
+  q.innerHTML = `<div class="line"><span class="lead">Quality</span>${items.map(i=>`<button type="button" class="q" aria-expanded="${state.qOpen===i.k}" data-q="${i.k}"><i class="${i.dot}" aria-hidden="true"></i><b>${fmt(i.n)}</b><span class="muted">${i.k}</span></button>`).join('')}</div><div class="detail" id="qdetail" hidden></div>`;
+  const detail = $('#qdetail');
+  const show = key => {
+    const i = items.find(x=>x.k===key);
+    detail.hidden = false; detail.innerHTML = `<div><h3>${fmt(i.n)} ${i.unit}</h3><p class="muted">${i.text}</p></div><div class="row">${i.chip ? `<button type="button" class="btn sm" data-qchip="${i.k}" ${i.n?'':'disabled'}>List these sessions</button>` : `<a class="btn sm" href="${i.link}">${i.linkText}</a>`}</div>`;
+    $$('[data-qchip]', detail).forEach(b => b.addEventListener('click', () => { addChip('quality', b.dataset.qchip); go('#/sessions'); }));
+  };
+  $$('.q', q).forEach(b => b.addEventListener('click', () => { const k = b.dataset.q; state.qOpen = state.qOpen===k ? null : k; $$('.q', q).forEach(x => x.setAttribute('aria-expanded', x.dataset.q===state.qOpen)); if (state.qOpen) show(state.qOpen); else detail.hidden = true; }));
+  if (state.qOpen) show(state.qOpen);
+}
+
+/* =====================================================================
+   Sessions list and 5. Session detail
+   ===================================================================== */
+function sessionsTable(list, caption, foot){
+  if (state.demo==='loading') return `<table><caption>${caption}</caption><thead><tr><th>Session</th><th>Agent</th><th>Model</th><th>Observed start</th><th class="r">Span</th><th class="r">Model calls</th><th class="r">Tool calls</th><th class="r">Input tokens</th></tr></thead><tbody aria-busy="true">${skeletonRows(6,8)}</tbody></table>`;
+  if (!list.length) return `<table><caption>${caption}</caption></table>${stateBlock('empty')}`;
+  return `<table><caption>${caption}<span class="n">${fmt(list.length)}</span></caption><thead><tr><th scope="col">Session</th><th scope="col">Agent</th><th scope="col">Model</th><th scope="col">Observed start</th><th scope="col" class="r">Span</th><th scope="col" class="r">Model calls</th><th scope="col" class="r">Tool calls</th><th scope="col" class="r">Input tokens</th></tr></thead><tbody>
+    ${list.map(s => `<tr class="rowlink" data-sess="${s.id}"><td class="mono"><a href="#/sessions/${s.id}">${esc(s.external_id.slice(0,30))}…</a></td><td>${s.agent}</td><td>${s.model}</td><td class="num">${short(s.observed_start_at)}</td><td class="r">${span(s)}</td><td class="r">${fmt(s.model_call_count)}</td><td class="r">${fmt(s.tool_call_count)}${s.unlinked_tools?`<span class="cov" title="${s.unlinked_tools} unlinked">${s.unlinked_tools} unlinked</span>`:''}</td><td class="r">${fmt(s.input_tokens)}<span class="cov">${s.model_call_count} / ${s.model_call_count}</span></td></tr>`).join('')}
+  </tbody></table>${foot?`<div class="tfoot">${foot}</div>`:''}`;
+}
+function span(s){ const ms = Date.parse(s.observed_end_at)-Date.parse(s.observed_start_at); if (ms<1000) return '<span class="faint">point</span>'; const m = Math.floor(ms/60000), sec = Math.round((ms%60000)/1000); return m? `${m} min ${pad(sec)} s` : `${sec} s`; }
+function bindRows(){ $$('tr.rowlink').forEach(r => r.addEventListener('click', e => { if (e.target.closest('a,button')) return; go('#/sessions/'+r.dataset.sess); })); }
+function scopeSentence(){
+  const parts = [];
+  if (state.source) parts.push('source '+state.source); if (state.agent) parts.push('agent '+state.agent); if (state.model) parts.push('model '+state.model); if (state.period!=='all') parts.push('last '+state.period+' days');
+  state.chips.forEach(c => parts.push(c.k+' '+c.v));
+  return parts.length ? parts.join(', ') : 'all data';
+}
+function renderSessions(){
+  const list = scoped();
+  $('#sessSub').textContent = state.demo==='ready' ? `${fmt(list.length)} under ${scopeSentence()}` : '';
+  $('#sessTable').innerHTML = state.demo==='error' ? stateBlock('error', {title:'Could not load sessions'}) : sessionsTable(list, 'Sessions', list.length ? `Showing ${fmt(Math.min(list.length,50))} of ${fmt(list.length)}<span class="right row"><button class="btn sm" type="button" disabled>Previous</button><button class="btn sm" type="button" ${list.length>50?'':'disabled'}>Next</button></span>` : '');
+  bindRows();
+}
+
+function renderSession(){
+  const s = sessionById[state.param] || sessions[0];
+  $('#sessCrumb').textContent = s.external_id; $('#sessIdSub').innerHTML = `<span class="mono">${s.id}</span>`;
+  const calls = fakeCalls(s);
+  const declared = s.declared;
+  $('#sessBody').innerHTML = `
+  <div class="grid" style="grid-template-columns:1.2fr 1fr 1fr">
+    <section class="panel" aria-labelledby="idh"><header><h2 id="idh">Identity</h2></header><div class="body"><dl class="kv">
+      <dt>External id</dt><dd class="mono">${esc(s.external_id)}</dd><dt>Source</dt><dd>${s.source} <span class="faint">via ${IMPORT_ID.slice(0,12)}…</span></dd><dt>Agent</dt><dd>${s.agent}</dd><dt>Repository</dt><dd class="mono">${s.repo}</dd><dt>User</dt><dd class="mono">${s.user}</dd></dl></div></section>
+    <section class="panel" aria-labelledby="inth"><header><h2 id="inth">Interval</h2><span class="faint" style="font-size:var(--fs-1)">UTC</span></header><div class="body"><dl class="kv">
+      <dt>Observed</dt><dd class="num">${s.observed_start_at}<br>${s.observed_end_at}<br><span class="faint">${span(s)}, span of accepted observations, not active time</span></dd>
+      <dt>Declared</dt><dd class="num">${declared ? declared[0]+'<br>'+declared[1] : '<span class="muted">Unavailable</span><br><span class="faint">the source declares no session interval</span>'}</dd></dl></div></section>
+    <section class="panel" aria-labelledby="tokh"><header><h2 id="tokh">Tokens</h2></header><div class="body"><dl class="kv">
+      <dt>Input</dt><dd class="num">${fmt(s.input_tokens)} <span class="faint">${s.model_call_count} / ${s.model_call_count} calls</span></dd>
+      <dt>Output</dt><dd class="num">${fmt(s.output_tokens)} <span class="faint">${s.out_known} / ${s.model_call_count} calls</span></dd>
+      <dt>Cache read</dt><dd class="num">${s.model.startsWith('claude') ? fmt(Math.floor(s.input_tokens*0.1775))+' <span class="faint">tracelab-claude</span>' : '<span class="muted">Unavailable</span> <span class="faint">not defined for tracelab-codex</span>'}</dd>
+      <dt>Semantics</dt><dd>${s.model.startsWith('claude')?'tracelab-claude':'tracelab-codex'}</dd></dl></div></section>
+  </div>
+  ${s.diagnostics.length ? `<div class="notice warn"><i aria-hidden="true"></i><div><b>${s.diagnostics.length} diagnostic</b> · <code>${s.diagnostics[0].code}</code> on <code>${s.diagnostics[0].field}</code>: ${esc(s.diagnostics[0].message)}</div></div>` : ''}
+  <section class="panel" aria-label="Model calls"><div class="tscroll"><table><caption>Model-call observations<span class="n">${s.model_call_count}</span></caption><thead><tr><th scope="col">Id</th><th scope="col" class="r">Seq</th><th scope="col">Model</th><th scope="col">Started</th><th scope="col">Ended</th><th scope="col" class="r">Input</th><th scope="col" class="r">Output</th><th scope="col">Semantics</th><th scope="col"></th></tr></thead><tbody>
+    ${calls.map(c => `<tr><td class="mono">${c.id}</td><td class="r">${c.seq}</td><td>${s.model}</td><td class="num">${short(c.started)}</td><td class="num">${short(c.ended)}</td><td class="r">${fmt(c.in)}</td><td class="r">${c.out===null?'<span class="muted">Unavailable</span>':fmt(c.out)}</td><td>${c.sem}</td><td class="r"><button type="button" class="btn sm" data-src="${c.locator}" data-kind="model call ${c.id}">Source record</button></td></tr>`).join('')}
+  </tbody></table></div></section>
+  <section class="panel" aria-label="Tool calls"><div class="tscroll"><table><caption>Tool-call observations<span class="n">${s.tool_call_count}</span></caption><thead><tr><th scope="col">Id</th><th scope="col">Model call</th><th scope="col">Tool</th><th scope="col">Emitted</th><th scope="col" class="r">Wall latency</th><th scope="col">Error</th><th scope="col"></th></tr></thead><tbody>
+    ${fakeTools(s, calls).map(t => `<tr><td class="mono">${t.id}</td><td class="mono">${t.mc ? t.mc : '<span class="pill warn"><i aria-hidden="true"></i>unlinked</span>'}</td><td>${t.tool}</td><td class="num">${short(t.at)}</td><td class="r">${fmt(t.ms)} ms</td><td>${t.err===null?'<span class="muted">Unavailable</span>':t.err?'<span class="pill bad">yes</span>':'no'}</td><td class="r"><button type="button" class="btn sm" data-src="${t.locator}" data-kind="tool call ${t.id}">Source record</button></td></tr>`).join('')}
+  </tbody></table></div></section>`;
+  $$('#sessBody [data-src]').forEach(b => b.addEventListener('click', () => openSource(s, b.dataset.src, b.dataset.kind)));
+}
+function fakeCalls(s){
+  const r = rng(parseInt(s.id.slice(4,12),16)); const n = Math.min(s.model_call_count, 12); const out = [];
+  const t0 = Date.parse(s.observed_start_at), t1 = Date.parse(s.observed_end_at); const step = (t1-t0)/Math.max(1,n);
+  const inW = Array.from({length:n},()=>0.5+r()); const ins = apportion(s.input_tokens, inW); const outs = apportion(s.output_tokens, inW.map(w=>w*(0.6+r())));
+  for (let i=0;i<n;i++){ const a = t0+step*i, b = Math.min(t1, a+step*0.8); out.push({ id:'mc_'+hex(8)+'…', seq:i, started:iso(new Date(a)), ended:iso(new Date(b)), in:ins[i], out:(i>=s.out_known)?null:outs[i], sem:s.model.startsWith('claude')?'tracelab-claude':'tracelab-codex', locator:'line:'+(188728+i*3+Math.floor(r()*40)) }); }
+  if (s.id==='ses_c736618a4b1e4d0f9a2c'){ out[0].in = 16147; out[0].out = 334; out[1].in = 32040; out[1].out = 1609; out[0].locator='line:188728'; out[1].locator='line:188731'; }
+  return out;
+}
+function fakeTools(s, calls){
+  const r = rng(parseInt(s.id.slice(6,14),16)); const out = []; const n = Math.min(s.tool_call_count, 14); let k = 0;
+  for (const t of TOOLS){ for (let i=0;i<s.tools_by[t] && k<n;i++,k++){ const c = calls[k%calls.length]; const unl = k < s.unlinked_tools; out.push({ id:'tc_'+hex(8)+'…', mc: unl?null:c.id, tool:t, at: iso(new Date(Date.parse(c.started)+Math.floor(r()*20000))), ms: t==='Agent'?1508583:Math.floor(60+r()*9000), err: r()<0.06?true:(r()<0.05?null:false), locator: c.locator }); } }
+  return out.sort((a,b)=>a.at<b.at?-1:1);
+}
+function openSource(s, locator, kind){
+  const claude = s.model.startsWith('claude');
+  const payload = claude ? { provider:'claude', project:s.repo, session_id:s.external_id.slice(7), round_index:0, round_id:'rnd_'+s.id.slice(4,16), model:s.model, input_tokens_total:16147, prefix_tokens:12903, newly_append_tokens:3244, output_tokens:334, cache_read_tokens:12903, timing_events:[{type:'request_start', at:s.observed_start_at},{type:'first_token', at:iso(new Date(Date.parse(s.observed_start_at)+2311))},{type:'request_end', at:iso(new Date(Date.parse(s.observed_start_at)+9803))}], tools:[{name:'Read', started_at:iso(new Date(Date.parse(s.observed_start_at)+9900)), wall_latency_ms:143, is_error:false},{name:'Bash', started_at:iso(new Date(Date.parse(s.observed_start_at)+10400)), wall_latency_ms:2210, is_error:false}], user:s.user }
+    : { provider:'codex', project:s.repo, session_id:s.external_id.slice(6), round_index:0, round_id:'rnd_'+s.id.slice(4,16), model:s.model, input_tokens_total:9012, output_tokens:null, timing_events:[{type:'request_start', at:s.observed_start_at}], tools:[{name:'Bash', started_at:s.observed_start_at, wall_latency_ms:812}], user:s.user };
+  $('#dSourceSub').textContent = `for ${kind}`;
+  $('#dSourceBody').innerHTML = `<dl><dt>File</dt><dd>${FILE.name} <span class="faint">via ${IMPORT_ID}</span></dd><dt>SHA-256</dt><dd class="hash">${FILE.sha}</dd><dt>Locator</dt><dd class="mono">${locator}</dd><dt>Mapping</dt><dd>${MAPPING.name} revision ${MAPPING.revision} <span class="mono faint">${MAPPING.id}</span></dd></dl>
+    <p class="faint" style="font-size:var(--fs-1);margin-bottom:8px">Shown as stored, byte for byte. Numbers are not re-serialised by the browser.</p>${jsonHtml(payload)}
+    <div class="row" style="margin-top:12px"><a class="btn sm" href="#/imports/${IMPORT_ID}">Import report</a><button class="btn sm" type="button" onclick="navigator.clipboard&&navigator.clipboard.writeText('${locator}')">Copy locator</button></div>`;
+  openDrawer('dSource');
+}
+</script>
+
+<script>
+/* =====================================================================
+   3. Imports history and 2. Import report
+   ===================================================================== */
+const statusPill = st => ({ committed:'<span class="pill ok"><i aria-hidden="true"></i>committed</span>', duplicate:'<span class="pill"><i aria-hidden="true"></i>duplicate</span>', failed:'<span class="pill bad"><i aria-hidden="true"></i>failed</span>', running:'<span class="pill info"><i aria-hidden="true"></i>running</span>' })[st];
+const clock = t => t ? t.slice(0,16).replace('T',' ') : '—';
+function renderImports(){
+  if (state.demo==='loading'){ $('#importsTable').innerHTML = `<table><caption>Import attempts, newest first</caption><tbody aria-busy="true">${skeletonRows(4,7)}</tbody></table>`; return; }
+  if (state.demo==='error'){ $('#importsTable').innerHTML = stateBlock('error',{title:'Could not load the imports ledger'}); return; }
+  if (state.demo==='empty'){ $('#importsTable').innerHTML = stateBlock('empty',{title:'No imports yet', text:'Import a trace file to start the ledger.', actions:'<a class="btn primary" href="#/import">Import traces</a>'}); return; }
+  $('#importsTable').innerHTML = `<table><caption>Import attempts, newest first<span class="n">${imports.length}</span></caption><thead><tr><th scope="col">Import</th><th scope="col">Status</th><th scope="col">Source</th><th scope="col">File</th><th scope="col">Mapping</th><th scope="col" class="r">Records</th><th scope="col" class="r">Sessions</th><th scope="col" class="r">Model calls</th><th scope="col" class="r">Rejected</th><th scope="col">Started</th></tr></thead><tbody>
+    ${imports.map(i => `<tr class="rowlink" data-imp="${i.id}"><td class="mono"><a href="#/imports/${i.id}">${i.id}</a></td><td>${statusPill(i.status)}</td><td>${i.source}</td><td>${esc(i.files[0].filename)}</td><td>${i.mapping.name} <span class="faint">r${i.mapping.revision}</span></td><td class="r">${fmt(i.files[0].record_count)}</td><td class="r">${i.entities.session!==undefined?fmt(i.entities.session):'<span class="faint">—</span>'}</td><td class="r">${i.entities.model_call!==undefined?fmt(i.entities.model_call):'<span class="faint">—</span>'}</td><td class="r">${i.reject_count?`<span style="color:var(--bad)">${fmt(i.reject_count)}</span>`:'0'}</td><td class="num">${clock(i.started_at)}</td></tr>`).join('')}
+  </tbody></table>`;
+  $$('tr[data-imp]').forEach(r => r.addEventListener('click', e => { if (!e.target.closest('a')) go('#/imports/'+r.dataset.imp); }));
+}
+
+function renderReport(){
+  const imp = importById[state.param] || imports[3];
+  $('#repCrumb').textContent = imp.id; $('#repSub').innerHTML = statusPill(imp.status);
+  const rec = imp.records; const ent = imp.entities; const f = imp.files[0];
+  const lead = imp.status==='committed' ? `<div class="notice ok"><i aria-hidden="true"></i><div>Committed in ${Math.round((Date.parse(imp.finished_at)-Date.parse(imp.started_at))/1000)} s. ${fmt(rec.accepted)} of ${fmt(f.record_count)} records accepted, ${fmt(imp.reject_count)} rejected. <a href="#/overview">Open the overview</a> scoped to this import.</div></div>`
+    : imp.status==='duplicate' ? `<div class="notice"><i aria-hidden="true"></i><div>These bytes were already committed for source <b>${imp.source}</b> as <a href="#/imports/${IMPORT_ID}" class="mono">${IMPORT_ID}</a>. Nothing was inserted; every record is reported as duplicate.</div></div>`
+    : imp.status==='failed' ? `<div class="notice bad"><i aria-hidden="true"></i><div><b>Failed, nothing inserted.</b> <code>${esc(imp.error)}</code><br><span style="opacity:.8">Fix the mapping (most rejects are one field) and import again; the upload is kept.</span> <a href="#/assistant">Revise mapping</a></div></div>`
+    : `<div class="notice"><i aria-hidden="true"></i><div style="flex:1"><div class="row"><b>Running</b><span class="muted" id="runTxt" aria-live="polite">${fmt(Math.round(f.record_count*imp.progress))} of ${fmt(f.record_count)} records</span></div><div class="progress" style="margin-top:8px" role="progressbar" aria-valuemin="0" aria-valuemax="${f.record_count}" aria-valuenow="${Math.round(f.record_count*imp.progress)}"><i style="width:${imp.progress*100}%"></i></div></div></div>`;
+  const outcomes = ['accepted','partial','duplicate','rejected','ignored'].map(k => `<div><dt>${k}</dt><dd class="${rec[k]?'':'faint'}">${fmt(rec[k])}</dd></div>`).join('');
+  const entities = ['session','model_call','tool_call'].map(k => `<div><dt>${k.replace('_',' ')}s</dt><dd class="${ent[k]?'':'faint'}">${ent[k]!==undefined?fmt(ent[k]):'0'}</dd></div>`).join('');
+  const warnings = Object.entries(imp.warnings).map(([k,v]) => `<div><dt>${k}</dt><dd>${fmt(v)}</dd></div>`).join('') || '<div><dd class="faint" style="font-size:var(--fs-2)">none</dd></div>';
+  $('#repBody').innerHTML = `${lead}
+  <div class="grid" style="grid-template-columns:1.3fr 1fr 1fr">
+    <section class="panel" aria-labelledby="oh"><header><h2 id="oh">Source records</h2><span class="faint" style="font-size:var(--fs-1)">${fmt(f.record_count)} in file</span></header><div class="body"><dl class="counts">${outcomes}</dl></div></section>
+    <section class="panel" aria-labelledby="eh"><header><h2 id="eh">Entities emitted</h2></header><div class="body"><dl class="counts">${entities}</dl></div></section>
+    <section class="panel" aria-labelledby="wh"><header><h2 id="wh">Warnings</h2><button type="button" class="def iconbtn" id="warnDef" aria-expanded="false" aria-label="What warnings mean" style="border:1px solid var(--line-strong);border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:600">i</button></header><div class="body"><dl class="counts">${warnings}</dl></div></section>
+  </div>
+  <section class="panel" aria-label="Imported files"><div class="tscroll"><table><caption>Imported files</caption><thead><tr><th scope="col">File</th><th scope="col">SHA-256</th><th scope="col" class="r">Bytes</th><th scope="col">Format</th><th scope="col" class="r">Records</th><th scope="col">Mapping revision</th></tr></thead><tbody>
+    <tr><td>${esc(f.filename)}</td><td class="hash" style="white-space:normal;min-width:300px">${f.sha256}</td><td class="r">${fmt(f.size_bytes)}</td><td>${f.format}${f.filename.endsWith('.gz')?' <span class="faint">(gzip)</span>':''}</td><td class="r">${fmt(f.record_count)}</td><td>${imp.mapping.name} r${imp.mapping.revision} <span class="mono faint">${imp.mapping.id}</span></td></tr></tbody></table></div></section>
+  <section class="panel" aria-label="Rejected records" id="rejPanel"></section>`;
+  $('#warnDef').addEventListener('click', () => openPop($('#warnDef'), `<h4>Warnings</h4><p><b>absent</b>: an optional key was not present in the record. <b>null</b>: the key was present with an explicit null. Both become Unavailable, never 0. <b>invalid_value</b>: a value was present but failed its type or range check on an optional field.</p><div class="foot"><a href="#/definitions">Definitions</a></div>`));
+  renderRejects(imp);
+}
+function renderRejects(imp){
+  const p = $('#rejPanel');
+  if (!imp.reject_count){ p.innerHTML = `<div class="panelhead"><h2>Rejected records</h2><span class="faint">0</span></div><div class="body muted" style="font-size:var(--fs-2)">Nothing was rejected. Every record produced at least one entity.</div>`; return; }
+  const codes = imp.status==='running' ? {invalid_type:9} : REJECT_CODES;
+  const code = state.rejCode||'';
+  const rows = rejectsSample.filter(r => !code || r.code===code);
+  p.innerHTML = `<div class="panelhead"><h2>Rejected records</h2><span class="muted num">${fmt(imp.reject_count)}</span>
+    <label class="sel sm right" style="height:26px"><span class="k">Code</span><select id="rejCode" aria-label="Filter rejects by code"><option value="">All (${fmt(imp.reject_count)})</option>${Object.entries(codes).map(([k,v])=>`<option value="${k}" ${k===code?'selected':''}>${k} (${fmt(v)})</option>`).join('')}</select></label></div>
+    <div class="tscroll"><table><caption class="visually-hidden">Rejected records</caption><thead><tr><th scope="col">Locator</th><th scope="col">Rule</th><th scope="col">Path</th><th scope="col">Code</th><th scope="col">Message</th><th scope="col"></th></tr></thead><tbody>
+    ${rows.map((r,i) => `<tr><td class="mono">${r.locator}</td><td>${r.rule_id}</td><td class="mono">${r.path}</td><td><span class="pill bad">${r.code}</span></td><td style="white-space:normal">${esc(r.message)}</td><td class="r"><button type="button" class="btn sm" data-rej="${rejectsSample.indexOf(r)}">Raw payload</button></td></tr>`).join('')}
+    </tbody></table></div><div class="tfoot">Showing ${rows.length} of ${fmt(code?codes[code]:imp.reject_count)} <span class="right row"><button class="btn sm" type="button" disabled>Previous</button><button class="btn sm" type="button">Next</button></span></div>`;
+  $('#rejCode').addEventListener('change', e => { state.rejCode = e.target.value; renderRejects(imp); $('#rejCode').focus(); });
+  $$('[data-rej]', p).forEach(b => b.addEventListener('click', () => { const r = rejectsSample[Number(b.dataset.rej)];
+    $('#dRejectBody').innerHTML = `<dl><dt>Locator</dt><dd class="mono">${r.locator}</dd><dt>File</dt><dd>${esc(imp.files[0].filename)}</dd><dt>SHA-256</dt><dd class="hash">${imp.files[0].sha256}</dd><dt>Rule</dt><dd>${r.rule_id} <span class="faint">${imp.mapping.name} r${imp.mapping.revision}</span></dd><dt>Path</dt><dd class="mono">${r.path}</dd><dt>Reason</dt><dd><span class="pill bad">${r.code}</span> ${esc(r.message)}</dd></dl>${jsonHtml(r.payload, r.hl)}
+    <div class="row" style="margin-top:12px"><a class="btn sm" href="#/assistant">Fix in mapping assistant</a></div>`; openDrawer('dReject'); }));
+}
+
+/* =====================================================================
+   1. Import
+   ===================================================================== */
+const DEMO_FILES = {
+  known: { ...FILE, earlier:[{id:IMPORT_ID, at:'2026-09-07 09:12'},{id:'imp_9c0d4e7b21aa4f0c8e11', at:'2026-09-07 09:40', dup:true}] },
+  unknown: { name:'swe-chat-conversations.parquet', bytes:14_205_318, sha:'3fa9d1c47e0b5a2c8d6e9f1b0a7c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c', records:2000, format:'parquet', gzip:false, earlier:[] },
+};
+function renderImport(){
+  const f = state.importFile; const stp = state.importStep;
+  const steps = $('#importSteps');
+  const cls = (n) => n < stp ? 'step done' : n===stp ? 'step active' : 'step locked';
+  const mappingsFor = f ? (f.format==='jsonl' ? [MAPPING] : []) : [];
+  steps.innerHTML = `
+  <section class="${cls(1)}" aria-labelledby="st1"><header><span class="num" aria-hidden="true">1</span><h2 id="st1">File</h2>
+    ${f ? `<span class="sum ellip"><b>${esc(f.name)}</b> · ${f.format}${f.gzip?' (gzip)':''} · ${fmt(f.bytes)} bytes · <b>${fmt(f.records)}</b> records</span><button type="button" class="btn quiet sm right" id="changeFile">Change file</button>` : ''}</header>
+    <div class="body" ${f?'hidden':''}>
+      <label class="drop" for="fileInput"><input id="fileInput" type="file" accept=".jsonl,.gz,.parquet"><b>Drop a trace file</b> or click to choose. The file is hashed and stored immutably before anything is read.</label>
+      <div class="row" style="margin-top:12px"><span class="faint" style="font-size:var(--fs-1)">Demo files:</span><button type="button" class="btn sm" data-demo="known">tracelab-sample.jsonl.gz</button><button type="button" class="btn sm" data-demo="unknown">swe-chat-conversations.parquet</button></div>
+    </div>
+    ${f ? `<div class="body" style="border-top:1px solid var(--line)"><dl class="kv cols"><dt>SHA-256</dt><dd class="hash">${f.sha}</dd><dt>Sniffed as</dt><dd>${f.format}${f.gzip?', gzip':''}, ${fmt(f.records)} records</dd></dl>
+      ${f.earlier.length ? `<div class="notice warn" style="margin-top:12px"><i aria-hidden="true"></i><div><b>These exact bytes were imported before.</b> Importing them again for the same source inserts nothing and records a duplicate attempt. ${f.earlier.map(e=>`<a href="#/imports/${e.id}" class="mono">${e.id}</a> (${e.at}${e.dup?', duplicate':''})`).join(', ')}.</div></div>` : ''}
+      <details class="more" style="margin-top:12px"><summary>First decoded records</summary><div class="tscroll"><table><caption class="visually-hidden">First decoded records</caption><thead><tr><th scope="col">Locator</th><th scope="col">Record</th><th scope="col"></th></tr></thead><tbody>${[1,2,3].map(i=>`<tr><td class="mono">${f.format==='parquet'?'row':'line'}:${i}</td><td class="mono ellip" style="max-width:640px">${f.format==='parquet' ? esc(`{"conversation_id":"conv_${hex(6)}","turns":[{"role":"user","content":"…"},…],"model":"gpt-5.5-codex","usage":{"prompt_tokens":${9000+i*137},"completion_tokens":${200+i*13}},"created_at":${1780451235+i*61},"repo":"org/repo-${100+i}"}`) : esc(`{"provider":"claude","project":"project_8f998460","session_id":"781a3b4c-a1a5-9325-16d3-4029ecc3fe43","round_index":${i-1},"model":"claude-opus-4-6","input_tokens_total":${16147+i*811},"prefix_tokens":12903,…}`)}</td><td class="r"><button type="button" class="btn sm" data-rec="${i}">Open</button></td></tr>`).join('')}</tbody></table></div></details></div>` : ''}
+  </section>
+  <section class="${cls(2)}" aria-labelledby="st2"><header><span class="num" aria-hidden="true">2</span><h2 id="st2">Mapping</h2>
+    ${state.importMapping ? `<span class="sum"><b>${state.importMapping.name}</b> revision ${state.importMapping.revision} · source ${state.importMapping.source} · <span class="mono">${state.importMapping.id}</span></span>` : (f && !mappingsFor.length ? `<span class="sum">No saved mapping reads <b>${f.format}</b> yet.</span>` : '')}</header>
+    <div class="body" ${stp===2?'':'hidden'}>
+      ${mappingsFor.length ? `<div class="stack" style="max-width:640px">${mappingsFor.map(m=>`<label class="radio"><input type="radio" name="mapping" value="${m.id}" checked><div><b>${m.name}</b> revision ${m.revision} <span class="faint">· ${m.created_by} · source ${m.source}</span><div class="d">Root record → session (key session_id) and model call; $.tools[*] → tool call with the enclosing model call as parent. Tokens tagged tracelab-claude or tracelab-codex by provider.</div></div></label>`).join('')}
+        <label class="radio"><input type="radio" name="mapping" value="assistant"><div><b>Ask the assistant for a new mapping</b><div class="d">Profiles the file locally, sends a redacted field profile to the configured model, returns a proposal you can edit.</div></div></label>
+        <div class="row"><button type="button" class="btn primary" id="chooseMapping">Use this mapping</button><span class="faint" style="font-size:var(--fs-1)">Previewing runs the mapping on the first 200 records and writes nothing.</span></div></div>`
+      : `<div class="stack" style="max-width:640px"><p class="muted">Saved mappings read jsonl only. The assistant can propose one for this parquet file; you review every field before anything is saved.</p><div class="row"><a class="btn primary" href="#/assistant">Open the mapping assistant</a><button type="button" class="btn" disabled>Choose a saved mapping</button></div></div>`}
+    </div>
+  </section>
+  <section class="${cls(3)}" aria-labelledby="st3"><header><span class="num" aria-hidden="true">3</span><h2 id="st3">Preview</h2>${state.previewed ? `<span class="sum"><b>200</b> records sampled · 200 accepted · 0 rejected · 4 sessions, 200 model calls, 241 tool calls</span>`:''}</header>
+    <div class="body" ${stp===3?'':'hidden'}>${state.previewed ? previewBody() : `<div class="row"><button type="button" class="btn primary" id="runPreview">Preview 200 records</button><span class="faint" style="font-size:var(--fs-1)">Nothing is written. Counts are of the sample; the full import may add warnings or rejects.</span></div>`}</div>
+  </section>
+  <section class="${cls(4)}" aria-labelledby="st4"><header><span class="num" aria-hidden="true">4</span><h2 id="st4">Confirm and run</h2></header>
+    <div class="body" ${stp===4?'':'hidden'}>${f && state.importMapping ? `<div class="confirm"><div><div>Import <b>${fmt(f.records)} records</b> from <b>${esc(f.name)}</b> into source <b>${state.importMapping.source}</b> with <b>${state.importMapping.name} revision ${state.importMapping.revision}</b>.</div><dl class="kv" style="margin-top:8px"><dt>File SHA-256</dt><dd class="hash">${f.sha}</dd><dt>Mapping revision</dt><dd class="mono">${state.importMapping.id}</dd></dl>${f.earlier.length?`<p class="muted" style="margin-top:8px">Expected outcome: <b>duplicate</b>, nothing inserted, because these bytes are already committed for ${state.importMapping.source}.</p>`:''}</div>
+      <div>${state.running ? `<div style="min-width:220px"><div class="row"><span class="muted" id="runTxt" aria-live="polite">Reading records…</span></div><div class="progress" style="margin-top:8px" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="runBar"></i></div></div>` : `<button type="button" class="btn primary" id="runImport">Import ${fmt(f.records)} records</button>`}</div></div>` : ''}</div>
+  </section>`;
+  $$('[data-demo]', steps).forEach(b => b.addEventListener('click', () => { state.importFile = DEMO_FILES[b.dataset.demo]; state.importStep = 2; state.importMapping = null; state.previewed = false; render(); }));
+  $('#fileInput')?.addEventListener('change', () => { state.importFile = DEMO_FILES.known; state.importStep = 2; state.importMapping=null; state.previewed=false; render(); });
+  $('#changeFile')?.addEventListener('click', () => { state.importFile=null; state.importStep=1; state.importMapping=null; state.previewed=false; render(); });
+  $('#chooseMapping')?.addEventListener('click', () => { const v = $('input[name=mapping]:checked').value; if (v==='assistant') go('#/assistant'); else { state.importMapping = MAPPING; state.importStep = 3; render(); $('#runPreview')?.focus(); } });
+  $('#runPreview')?.addEventListener('click', () => { state.previewed = true; render(); $('#toConfirm')?.focus(); });
+  $('#toConfirm')?.addEventListener('click', () => { state.importStep = 4; render(); $('#runImport')?.focus(); });
+  $('#runImport')?.addEventListener('click', () => { state.running = true; render(); let p = 0; const bar = $('#runBar'), txt = $('#runTxt'); const iv = setInterval(() => { p += 9 + Math.random()*10; if (p>=100){ clearInterval(iv); state.running=false; state.importStep=1; state.importFile=null; state.importMapping=null; state.previewed=false; go('#/imports/'+(f.earlier.length?'imp_9c0d4e7b21aa4f0c8e11':IMPORT_ID)); return; } bar.style.width = p+'%'; bar.parentElement.setAttribute('aria-valuenow', Math.round(p)); txt.textContent = `${fmt(Math.round(f.records*p/100))} of ${fmt(f.records)} records`; }, 260); });
+  $$('[data-rec]', steps).forEach(b => b.addEventListener('click', () => { $('#dRecordSub').textContent = `${f.format==='parquet'?'row':'line'}:${b.dataset.rec} of ${esc(f.name)}`; $('#dRecordBody').innerHTML = `<dl><dt>SHA-256</dt><dd class="hash">${f.sha}</dd></dl>` + jsonHtml(f.format==='parquet' ? {conversation_id:'conv_'+hex(6), turns:[{role:'user', content:'Refactor the retry loop…', tool_calls:[]},{role:'assistant', content:'…', tool_calls:[{name:'bash', arguments:{cmd:'pytest -q'}}]}], model:'gpt-5.5-codex', usage:{prompt_tokens:9137, completion_tokens:213}, created_at:1780451296, repo:'org/repo-101'} : {provider:'claude', project:'project_8f998460', session_id:'781a3b4c-a1a5-9325-16d3-4029ecc3fe43', round_index:0, round_id:'rnd_c736618a', model:'claude-opus-4-6', input_tokens_total:16147, prefix_tokens:12903, newly_append_tokens:3244, output_tokens:334, timing_events:[{type:'request_start', at:'2026-06-04T02:51:06.901Z'}]}); openDrawer('dRecord'); }));
+}
+function previewBody(){
+  return `<div class="stack"><div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+    <div><h3 class="muted" style="font-size:var(--fs-1);margin-bottom:6px">Source records</h3><dl class="counts"><div><dt>sampled</dt><dd>200</dd></div><div><dt>accepted</dt><dd>200</dd></div><div><dt>rejected</dt><dd class="faint">0</dd></div></dl></div>
+    <div><h3 class="muted" style="font-size:var(--fs-1);margin-bottom:6px">Entities</h3><dl class="counts"><div><dt>sessions</dt><dd>4</dd></div><div><dt>model calls</dt><dd>200</dd></div><div><dt>tool calls</dt><dd>241</dd></div></dl></div>
+    <div><h3 class="muted" style="font-size:var(--fs-1);margin-bottom:6px">Warnings</h3><dl class="counts"><div><dt>absent</dt><dd>612</dd></div><div><dt>null</dt><dd>468</dd></div></dl></div></div>
+    <p class="muted" style="font-size:var(--fs-1)">Warnings are optional fields that were absent or null; they become Unavailable, never 0. No rejects in this sample.</p>
+    <details class="more"><summary>Emissions sample</summary><div class="tscroll"><table><caption class="visually-hidden">Emissions sample</caption><thead><tr><th scope="col">Entity</th><th scope="col">Path</th><th scope="col">Locator</th><th scope="col">Fields</th></tr></thead><tbody>
+      <tr><td>session</td><td class="mono">$</td><td class="mono">line:1</td><td class="mono ellip" style="max-width:560px">external_id=781a3b4c-a1a5-9325-16d3-4029ecc3fe43, agent=claude-code, repo=project_8f998460</td></tr>
+      <tr><td>model_call</td><td class="mono">$</td><td class="mono">line:1</td><td class="mono ellip" style="max-width:560px">model=claude-opus-4-6, input_tokens=16147, output_tokens=334, token_semantics=tracelab-claude</td></tr>
+      <tr><td>tool_call</td><td class="mono">$.tools[0]</td><td class="mono">line:1</td><td class="mono ellip" style="max-width:560px">tool_name=Read, wall_latency_ms=143, is_error=false</td></tr>
+      <tr><td>tool_call</td><td class="mono">$.tools[1]</td><td class="mono">line:1</td><td class="mono ellip" style="max-width:560px">tool_name=Bash, wall_latency_ms=2210, is_error=false</td></tr></tbody></table></div></details>
+    <div class="row"><button type="button" class="btn primary" id="toConfirm">Continue to confirm</button></div></div>`;
+}
+
+/* =====================================================================
+   6. Mapping assistant
+   ===================================================================== */
+const PROFILE = [
+  ['conversation_id','string',0,'conv_7f21c9 · 2,000 distinct'],['turns','array<struct>',0,'2 to 41 items'],['turns[].role','string',0,'user · assistant · tool'],['turns[].content','string',0.4,'up to 118 KB'],['turns[].tool_calls','array<struct>',61.2,'0 to 7 items'],['model','string',0,'gpt-5.5-codex · 3 distinct'],['usage.prompt_tokens','int64 | string',0,'12,431 as string in 388 rows'],['usage.completion_tokens','int64',2.0,'0 to 9,114'],['created_at','int64',0,'1780451235 (epoch seconds?)'],['repo','string',0.3,'org/repo-441 · 96 distinct'],
+];
+const proposal = [
+  { rule:'session', target:'session.external_id', src:'$.conversation_id', tf:'trim', why:'Only unique string per row; 2,000 distinct in 2,000 rows.', amb:null },
+  { rule:'session', target:'session.agent', src:'"codex"', tf:'literal', why:'No harness field. All rows carry gpt-5.5-codex; a literal is honest and visible.', amb:'Ambiguity: SWE-chat may mix harnesses. Confirm or map from a field.' },
+  { rule:'session', target:'session.repo', src:'$.repo', tf:'trim · nullable', why:'Present in 99.7 % of rows; missing becomes Unavailable.', amb:null },
+  { rule:'model_call', target:'model_call.model', src:'$.model', tf:'trim', why:'Three distinct values, all model names.', amb:null },
+  { rule:'model_call', target:'model_call.input_tokens', src:'$.usage.prompt_tokens', tf:'strict int', why:'Integer in 80.6 % of rows; 388 rows carry a formatted string ("12,431").', amb:'Ambiguity: strict int rejects the 388 string rows. Add a digits-only transform or reject them?' , err:null },
+  { rule:'model_call', target:'model_call.output_tokens', src:'$.usage.completion_tokens', tf:'strict int · nullable', why:'Absent in 2 % of rows; kept nullable so coverage shows it.', amb:null },
+  { rule:'model_call', target:'model_call.started_at', src:'$.created_at', tf:'timestamp from epoch seconds', why:'Values around 1.78e9 fit seconds in 2026; three rows look like milliseconds.', amb:'Ambiguity: unit inferred from magnitude, not declared.' },
+  { rule:'model_call', target:'model_call.token_semantics', src:'"swe-chat-openai"', tf:'literal', why:'usage.* follows the OpenAI chat-completions shape; cache tokens are not reported.', amb:null },
+  { rule:'tool_call', target:'tool_call.tool_name', src:'$.turns[*].tool_calls[*].name', tf:'trim', why:'Bounded iteration over turns (max 41) then tool_calls (max 7).', amb:null },
+  { rule:'tool_call', target:'tool_call.emitted_at', src:'—', tf:'', why:'No timestamp per tool call in this export.', amb:'Unsupported: tool timing is Unavailable for this source. Wall latency cannot be computed.' },
+];
+let chatLog = [
+  { who:'Assistant', html:`Profiled 2,000 rows locally. Sent the field profile and 12 masked sample values per field, not the conversation text. Proposal: 10 field mappings across 3 rules, 3 ambiguities, 1 unsupported path.<ul><li><b>usage.prompt_tokens</b> is a string in 388 rows.</li><li><b>created_at</b> looks like epoch seconds; 3 rows look like milliseconds.</li><li>No per-tool timestamps, so tool latency will be Unavailable.</li></ul>` },
+  { who:'You', me:true, html:`Are the string prompt_tokens values thousands-separated integers? If so, parse them.` },
+  { who:'Assistant', html:`All 388 match <code>^\\d{1,3}(,\\d{3})+$</code> in the sample. I propose <code>strip_thousands → strict int</code>; the engine would still reject anything that does not parse. Applied to the table; row is marked changed until you validate.` },
+];
+function renderAssistant(){
+  const main = $('#asstMain');
+  main.innerHTML = `
+  <section class="panel" aria-labelledby="ph"><header><h2 id="ph">Field profile</h2><span class="faint" style="font-size:var(--fs-1)">computed locally on the 2,000-row excerpt</span><button type="button" class="btn quiet sm right" id="openRedaction2">What leaves this machine</button></header>
+    <div class="body profile">${PROFILE.map(([n,t,nul,s]) => `<div class="f"><b>${esc(n)}</b><span>${t}</span><span class="right" style="float:right">${nul?nul+'% null':'complete'}</span><div class="bar" aria-hidden="true"><i style="width:${100-nul}%"></i></div><span class="ellip" style="display:block;margin-top:4px" title="${esc(s)}">${esc(s)}</span></div>`).join('')}</div></section>
+  <section class="panel" aria-label="Proposed mapping"><div class="tscroll"><table class="maptable"><caption>Proposed mapping <span class="n">swe-chat-draft, unsaved</span><span class="right row" style="float:right;gap:6px"><span class="pill warn"><i aria-hidden="true"></i>3 ambiguities</span><span class="pill bad"><i aria-hidden="true"></i>1 invalid</span></span></caption>
+    <thead><tr><th scope="col">Rule</th><th scope="col">Target</th><th scope="col">Source path</th><th scope="col">Transforms</th><th scope="col">Why</th></tr></thead><tbody>
+    ${proposal.map((p,i) => `<tr><td class="mono">${p.rule}</td><td class="mono">${p.target}</td><td class="mono" style="min-width:220px"><input aria-label="Source path for ${p.target}" value="${esc(i===4 && state.asstFixed ? p.src : i===2 ? '$.repository' : p.src)}" data-i="${i}">${i===2 ? `<div class="err" role="alert">Unknown path. Did you mean <button type="button" class="link" data-fix="2" style="font-size:inherit">$.repo</button>?</div>` : ''}</td><td class="mono" style="font-size:var(--fs-1)">${i===4 && state.asstFixed ? 'strip_thousands · strict int <span class="pill info">changed</span>' : esc(p.tf)}</td><td style="min-width:260px"><div class="field"><span class="expl">${esc(p.why)}</span>${p.amb ? `<span class="amb">${esc(p.amb)}</span>`:''}</div></td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="tfoot"><span>Validation: syntax ok · semantic <b style="color:var(--bad)">1 error</b> · execution not run</span><span class="right row"><button type="button" class="btn sm" id="validate">Validate</button><button type="button" class="btn sm" disabled title="Fix validation errors first">Preview 200 rows</button><button type="button" class="btn sm" disabled>Save as revision 1</button><button type="button" class="btn sm primary" disabled>Import</button></span></div></section>`;
+  $('#openRedaction2').addEventListener('click', openRedaction);
+  $$('[data-fix]', main).forEach(b => b.addEventListener('click', () => { const inp = $('input[data-i="2"]'); inp.value = '$.repo'; b.closest('.err').innerHTML = '<span style="color:var(--ok)">Resolved. Validate to continue.</span>'; }));
+  $('#validate').addEventListener('click', () => { const ok = $('input[data-i="2"]').value==='$.repo'; const foot = $('.maptable').closest('.panel').querySelector('.tfoot'); foot.querySelector('span').innerHTML = ok ? 'Validation: syntax ok · semantic ok · execution not run' : 'Validation: syntax ok · semantic <b style="color:var(--bad)">1 error</b> · execution not run'; if (ok){ foot.querySelectorAll('button').forEach(b=>{ b.disabled=false; b.removeAttribute('title'); }); foot.querySelector('.primary').disabled = true; foot.querySelector('.primary').title='Preview first'; $('.pill.bad', main)?.remove(); } });
+  const chat = $('#asstChat');
+  chat.innerHTML = `<div class="panelhead"><h2>Conversation</h2><span class="faint" style="font-size:var(--fs-1)">qwen3-coder, local</span></div><div class="log" id="chatLog" aria-live="polite">${chatLog.map(m=>`<div class="msg${m.me?' me':''}"><div class="who">${m.who}</div><div class="b">${m.html}</div></div>`).join('')}</div>
+    <form id="chatForm"><label class="visually-hidden" for="chatIn">Message to the assistant</label><textarea id="chatIn" placeholder="Ask about a field, or tell it what to change. It edits the proposal; it never writes to the database."></textarea><button class="btn primary" type="submit">Send</button></form>`;
+  $('#chatForm').addEventListener('submit', e => { e.preventDefault(); const v = $('#chatIn').value.trim(); if (!v) return; chatLog.push({who:'You', me:true, html:esc(v)}); chatLog.push({who:'Assistant', html:`Applied. <code>usage.prompt_tokens</code> now uses <code>strip_thousands → strict int</code>. Run Validate to check the change; nothing is saved until you choose Save as revision.`}); state.asstFixed = true; renderAssistant(); $('#chatLog').scrollTop = 1e6; $('#chatIn').focus(); });
+  $('#chatLog').scrollTop = 1e6;
+}
+function openRedaction(){
+  $('#dRedactionBody').innerHTML = `<p class="muted" style="margin-bottom:12px">Sent to <b>openai_compatible · qwen3-coder</b> at <span class="mono">http://localhost:1234</span> on 2026-09-07 11:38 UTC. Keys stay in the backend.</p>
+    <h3 style="margin-bottom:6px">Sent</h3><ul style="margin:0 0 16px;padding-left:18px;font-size:var(--fs-2)"><li>Field names, types, null rates and cardinalities (the profile above)</li><li>12 sample values per scalar field, strings truncated to 40 characters, emails, paths and secrets masked</li><li>The current mapping draft and your messages</li></ul>
+    <h3 style="margin-bottom:6px">Not sent</h3><ul style="margin:0 0 16px;padding-left:18px;font-size:var(--fs-2)"><li><code>turns[].content</code> and any field over 200 characters</li><li>Whole records or the file itself</li><li>Anything from the database</li></ul>
+    <details class="more"><summary>Exact payload (3.1 KB)</summary>${jsonHtml({fields:[{name:'conversation_id', type:'string', null_rate:0, distinct:2000, samples:['conv_7f21c9','conv_80aa1e','…']},{name:'usage.prompt_tokens', type:'int64|string', samples:[12431,'12,431',9880,'…']},{name:'turns[].content', type:'string', samples:'[redacted: long text]'}], mapping_draft:'…', message:'…'})}</details>`;
+  openDrawer('dRedaction');
+}
+
+/* =====================================================================
+   Mappings and 7. Definitions
+   ===================================================================== */
+function renderMappings(){
+  const rows = [ ['tracelab-v1',1,'tracelab','jsonl','bundled','2026-09-07 08:55','map_82934058a2f6af1cbfc6','approved'], ['swe-chat-draft',2,'swe-chat','jsonl','assistant + you','2026-09-07 11:39','map_5d1c9e7a0b2f4c3d8e6f','approved'], ['swe-chat-draft',1,'swe-chat','jsonl','assistant + you','2026-09-07 11:02','map_1a4f9c2e7d0b4a6c8e3f','superseded'], ['swe-chat-parquet',0,'swe-chat','parquet','assistant','unsaved','—','draft'] ];
+  $('#mappingsTable').innerHTML = `<table><caption>Mapping revisions</caption><thead><tr><th scope="col">Mapping</th><th scope="col" class="r">Revision</th><th scope="col">Source</th><th scope="col">Reads</th><th scope="col">Created by</th><th scope="col">Created</th><th scope="col">Id</th><th scope="col">State</th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td>${r[0]}</td><td class="r">${r[1]||'—'}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td><td class="num">${r[5]}</td><td class="mono">${r[6]}</td><td><span class="pill ${r[7]==='approved'?'ok':r[7]==='draft'?'warn':''}">${r[7]}</span></td></tr>`).join('')}</tbody></table>`;
+}
+function renderDefinitions(){
+  $('#defsTable').innerHTML = `<table><caption>Metric definitions<span class="n">${DEFINITIONS.length}</span></caption><thead><tr><th scope="col">Metric</th><th scope="col">Unit</th><th scope="col">Definition</th><th scope="col">Semantics</th><th scope="col">Comparability</th></tr></thead><tbody>
+    ${DEFINITIONS.map(d => `<tr><td style="vertical-align:top;padding-top:10px;font-weight:500">${d.metric}</td><td style="vertical-align:top;padding-top:10px">${d.unit}</td><td style="white-space:normal;max-width:420px;padding:10px 12px;vertical-align:top">${esc(d.def)}</td><td style="vertical-align:top;padding-top:8px">${d.sem.map(s=>`<span class="pill">${s}</span>`).join(' ')}</td><td style="white-space:normal;max-width:360px;padding:10px 12px;vertical-align:top" class="muted">${esc(d.comp)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+/* =====================================================================
+   Demo state, theme, init
+   ===================================================================== */
+function setDemo(v){ state.demo = v; $$('.demo button').forEach(b => b.setAttribute('aria-pressed', b.dataset.state===v)); render(); }
+$$('.demo button').forEach(b => b.addEventListener('click', () => setDemo(b.dataset.state)));
+$('#themeBtn').addEventListener('click', () => { const dark = document.documentElement.dataset.theme!=='dark'; document.documentElement.dataset.theme = dark?'dark':'light'; $('#themeBtn').setAttribute('aria-pressed', dark); $('#themeBtn').textContent = dark?'Light':'Dark'; });
+parseHash(); render();
+</script>
+</body>
+</html>

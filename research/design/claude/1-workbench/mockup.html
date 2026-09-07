@@ -1,0 +1,1557 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentScope · Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ---------- tokens: light (design of record) ---------- */
+:root {
+  --canvas: #F3F4F6;
+  --surface: #FFFFFF;
+  --surface-2: #F7F8FA;
+  --surface-3: #EEF0F3;
+  --line: #E2E5EA;
+  --line-strong: #C6CCD5;
+  --ink: #15181D;
+  --ink-2: #4B5563;
+  --ink-3: #6B7280;
+  --ink-inverse: #FFFFFF;
+  --accent: #0E6B7F;
+  --accent-ink: #0A5364;
+  --accent-soft: #E3F1F4;
+  --accent-line: #9FCBD6;
+  --select: #ECF5F7;
+  --ok: #1B7A45;   --ok-soft: #E4F3EA;
+  --warn: #8A5A00; --warn-soft: #FBF1DC;
+  --danger: #B42318; --danger-soft: #FCE9E7;
+  --series-1: #0E6B7F;
+  --series-2: #6FB3C4;
+  --series-3: #8C6A2F;
+  --series-muted: #B9C0CA;
+  --focus: #0E6B7F;
+
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* type scale (px / line) */
+  --t-micro: 11px; --lh-micro: 16px;
+  --t-small: 12px; --lh-small: 18px;
+  --t-body: 13px;  --lh-body: 20px;
+  --t-emph: 14px;  --lh-emph: 20px;
+  --t-h2: 16px;    --lh-h2: 22px;
+  --t-h1: 20px;    --lh-h1: 26px;
+  --t-num: 26px;   --lh-num: 32px;
+
+  /* spacing scale */
+  --s-1: 2px; --s-2: 4px; --s-3: 6px; --s-4: 8px; --s-5: 12px; --s-6: 16px;
+  --s-7: 20px; --s-8: 24px; --s-9: 32px; --s-10: 48px;
+
+  --r-control: 3px;
+  --r-panel: 6px;
+  --rail-w: 208px;
+  --inspector-w: 328px;
+  --topbar-h: 44px;
+}
+/* dark derivation: same token names, values flipped. Draft, see README. */
+:root[data-theme="dark"] {
+  --canvas: #0F1216; --surface: #161A20; --surface-2: #1B2028; --surface-3: #222833;
+  --line: #2A313B; --line-strong: #3C4552;
+  --ink: #E6E9EE; --ink-2: #A9B2BE; --ink-3: #8A94A2; --ink-inverse: #0F1216;
+  --accent: #5FB6CB; --accent-ink: #8ACBDA; --accent-soft: #163038; --accent-line: #2B5B67; --select: #182A31;
+  --ok: #57B47C; --ok-soft: #14301F; --warn: #D9A54A; --warn-soft: #33270E; --danger: #F08A80; --danger-soft: #3A1714;
+  --series-1: #5FB6CB; --series-2: #9AD1DD; --series-3: #C9A25C; --series-muted: #4B5563; --focus: #8ACBDA;
+}
+
+/* ---------- base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; font-family: var(--font-ui); font-size: var(--t-body); line-height: var(--lh-body);
+  color: var(--ink); background: var(--canvas);
+  font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+h1, h2, h3, h4 { margin: 0; font-weight: 600; }
+h1 { font-size: var(--t-h1); line-height: var(--lh-h1); letter-spacing: -0.01em; }
+h2 { font-size: var(--t-h2); line-height: var(--lh-h2); }
+h3 { font-size: var(--t-emph); line-height: var(--lh-emph); }
+p { margin: 0; }
+a { color: var(--accent); text-decoration: none; text-underline-offset: 0.15em; }
+a:hover { text-decoration: underline; }
+code, .mono { font-family: var(--font-mono); font-size: 12px; }
+pre { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+kbd {
+  font-family: var(--font-ui); font-size: var(--t-micro); line-height: 14px; color: var(--ink-2);
+  padding: 0 4px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--r-control);
+  background: var(--surface); min-width: 18px; display: inline-block; text-align: center;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-control); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: var(--s-5); top: -60px; z-index: 50; padding: var(--s-3) var(--s-5); background: var(--surface); border: 1px solid var(--line-strong); }
+.skip:focus { top: var(--s-2); }
+.hash, .id { font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
+.muted { color: var(--ink-3); }
+.dim { color: var(--ink-2); }
+.small { font-size: var(--t-small); line-height: var(--lh-small); }
+.micro { font-size: var(--t-micro); line-height: var(--lh-micro); }
+.num { font-variant-numeric: tabular-nums; text-align: right; }
+.nowrap { white-space: nowrap; }
+[hidden] { display: none !important; }
+
+/* ---------- app frame ---------- */
+.app {
+  display: grid; height: 100vh;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--inspector-w);
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
+  grid-template-areas: "rail top top" "rail work inspector";
+}
+.app[data-inspector="closed"] { grid-template-columns: var(--rail-w) minmax(0, 1fr) 0; }
+.app[data-inspector="closed"] .inspector { display: none; }
+
+/* rail */
+.rail {
+  grid-area: rail; display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--line);
+  padding: var(--s-4) var(--s-4) var(--s-5); gap: var(--s-2); min-height: 0;
+}
+.brand { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-3) var(--s-4); height: 36px; }
+.brand-mark { width: 16px; height: 16px; border-radius: 3px; background: var(--accent); position: relative; flex: none; }
+.brand-mark::after { content: ""; position: absolute; inset: 4px 4px 4px 8px; border-radius: 1px; background: var(--ink-inverse); }
+.brand-name { font-weight: 600; font-size: var(--t-emph); }
+.brand-env { margin-left: auto; color: var(--ink-3); font-size: var(--t-micro); }
+.rail-group { margin-top: var(--s-5); }
+.rail-group-label { font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--ink-3); padding: 0 var(--s-4); margin-bottom: var(--s-1); }
+.rail a {
+  display: flex; align-items: center; gap: var(--s-4); height: 28px; padding: 0 var(--s-4); border-radius: var(--r-control);
+  color: var(--ink-2); font-weight: 500; text-decoration: none;
+}
+.rail a:hover { background: var(--surface-2); color: var(--ink); }
+.rail a[aria-current="page"] { background: var(--accent-soft); color: var(--accent-ink); }
+.rail a kbd { margin-left: auto; opacity: 0; }
+.rail a:hover kbd, .rail:focus-within a:focus kbd { opacity: 1; }
+.rail svg { width: 15px; height: 15px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.rail-foot { margin-top: auto; padding: var(--s-4); color: var(--ink-3); font-size: var(--t-micro); line-height: var(--lh-micro); }
+.rail-foot .id { font-size: 11px; display: block; }
+
+/* topbar */
+.topbar {
+  grid-area: top; display: flex; align-items: center; gap: var(--s-4); padding: 0 var(--s-6); background: var(--surface); border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.crumbs { display: flex; align-items: center; gap: var(--s-3); min-width: 0; color: var(--ink-2); }
+.crumbs a { color: var(--ink-2); }
+.crumbs .sep { color: var(--line-strong); }
+.crumbs .cur { color: var(--ink); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-actions { margin-left: auto; display: flex; align-items: center; gap: var(--s-3); }
+.search-btn {
+  display: flex; align-items: center; gap: var(--s-4); height: 28px; padding: 0 var(--s-4) 0 var(--s-5); min-width: 220px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-control); color: var(--ink-3); cursor: text; text-align: left;
+}
+.search-btn:hover { border-color: var(--line-strong); }
+.search-btn span:first-child { flex: 1; }
+
+/* buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: var(--s-3); height: 28px; padding: 0 var(--s-5);
+  border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); color: var(--ink); font-weight: 500; cursor: pointer; white-space: nowrap;
+}
+.btn:hover { background: var(--surface-2); }
+.btn:disabled { color: var(--ink-3); cursor: default; background: var(--surface-2); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--ink-inverse); }
+.btn-primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+.btn-primary:disabled { background: var(--line); border-color: var(--line); color: var(--ink-3); }
+.btn-quiet { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn-quiet:hover { background: var(--surface-3); color: var(--ink); }
+.btn-sm { height: 24px; padding: 0 var(--s-4); font-size: var(--t-small); }
+.btn-icon { width: 28px; padding: 0; justify-content: center; }
+.btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.btn-link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-weight: 500; }
+.btn-link:hover { text-decoration: underline; }
+.btn-link.mono { font-size: 11.5px; font-weight: 400; }
+.actions { display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
+
+/* inputs */
+.field { display: flex; flex-direction: column; gap: var(--s-2); }
+.field > label, .label { font-size: var(--t-small); line-height: var(--lh-small); color: var(--ink-2); font-weight: 500; }
+.input, .select {
+  height: 28px; padding: 0 var(--s-4); border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); min-width: 0;
+}
+.input:hover, .select:hover { border-color: var(--ink-3); }
+.input[aria-invalid="true"] { border-color: var(--danger); }
+.select { padding-right: 24px; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236B7280' stroke-width='1.5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
+.input-sm, .select-sm { height: 24px; font-size: var(--t-small); }
+.hint { font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--ink-3); }
+.error-text { font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--danger); }
+
+/* work area */
+.work { grid-area: work; overflow: auto; min-width: 0; scroll-padding-top: var(--s-6); container-type: inline-size; }
+.screen { display: block; padding: var(--s-7) var(--s-8) var(--s-10); max-width: 1320px; }
+.screen-head { display: flex; align-items: flex-start; gap: var(--s-6); margin-bottom: var(--s-7); }
+.screen-head .lede { color: var(--ink-2); margin-top: var(--s-1); max-width: 68ch; }
+.screen-head .actions { margin-left: auto; flex: none; }
+.stack { display: flex; flex-direction: column; gap: var(--s-7); }
+.row { display: flex; align-items: center; gap: var(--s-5); flex-wrap: wrap; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
+.panel-head { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-4) var(--s-5); border-bottom: 1px solid var(--line); min-height: 38px; }
+.panel-head h2, .panel-head h3 { font-size: var(--t-body); line-height: var(--lh-body); font-weight: 600; }
+.panel-head .actions { margin-left: auto; }
+.panel-body { padding: var(--s-5); }
+.panel-foot { padding: var(--s-4) var(--s-5); border-top: 1px solid var(--line); display: flex; align-items: center; gap: var(--s-4); background: var(--surface-2); border-radius: 0 0 var(--r-panel) var(--r-panel); }
+
+/* status pill and dots */
+.pill { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 10px; font-size: var(--t-small); font-weight: 500; line-height: 1; border: 1px solid transparent; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill-ok { color: var(--ok); background: var(--ok-soft); }
+.pill-warn { color: var(--warn); background: var(--warn-soft); }
+.pill-danger { color: var(--danger); background: var(--danger-soft); }
+.pill-neutral { color: var(--ink-2); background: var(--surface-3); }
+.pill-info { color: var(--accent-ink); background: var(--accent-soft); }
+.pill-running::before { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
+@media (prefers-reduced-motion: reduce) { .pill-running::before { animation: none; } * { transition: none !important; } }
+.tag { display: inline-block; padding: 0 5px; border-radius: var(--r-control); background: var(--surface-3); color: var(--ink-2); font-size: var(--t-micro); line-height: 16px; font-weight: 500; }
+.tag-mono { font-family: var(--font-mono); font-weight: 400; }
+
+/* key value grids */
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s-2) var(--s-6); margin: 0; }
+.kv dt { color: var(--ink-3); font-size: var(--t-small); line-height: var(--lh-body); }
+.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.kv-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--s-4) var(--s-8); }
+
+/* count strips: a ruled row, not cards */
+.strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); overflow: hidden; }
+.strip > * { padding: var(--s-4) var(--s-5); border-left: 1px solid var(--line); min-width: 0; }
+.strip > *:first-child { border-left: 0; }
+.strip .label, .strip .val, .strip .sub { display: block; }
+.strip .val { font-size: var(--t-emph); font-weight: 600; line-height: var(--lh-h2); overflow-wrap: anywhere; }
+.strip .val.zero { color: var(--ink-3); font-weight: 500; }
+.strip .val.bad { color: var(--danger); }
+.strip .val.warn { color: var(--warn); }
+.strip .sub { font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--ink-3); }
+
+/* KPI row */
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface); }
+.kpi { padding: var(--s-5) var(--s-6); border-left: 1px solid var(--line); min-width: 0; cursor: pointer; }
+.kpi:first-child { border-left: 0; }
+.kpi:hover { background: var(--surface-2); }
+.kpi.on { background: var(--select); box-shadow: inset 0 -2px 0 var(--accent); }
+.kpi h2 { font-size: var(--t-small); line-height: var(--lh-small); font-weight: 500; }
+.kpi-btn { display: flex; align-items: center; gap: var(--s-3); background: none; border: 0; padding: 0; color: var(--ink-2); font-weight: 500; cursor: pointer; font-size: inherit; line-height: inherit; }
+.kpi-btn kbd { opacity: 0; }
+.kpi:hover .kpi-btn kbd, .kpi-btn:focus-visible kbd { opacity: 1; }
+.kpi .val { font-size: var(--t-num); line-height: var(--lh-num); font-weight: 600; letter-spacing: -0.02em; margin-top: var(--s-2); overflow-wrap: anywhere; }
+.kpi .val.unavail { color: var(--ink-3); font-weight: 500; font-size: var(--t-h1); }
+.kpi .cov { display: flex; align-items: center; gap: var(--s-4); margin-top: var(--s-3); font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--ink-3); }
+.gauge { flex: 0 0 48px; height: 2px; background: var(--line); border-radius: 1px; overflow: hidden; }
+.gauge i { display: block; height: 100%; background: var(--accent); }
+.gauge.partial i { background: var(--warn); }
+.gauge.none i { background: transparent; }
+
+/* charts */
+.charts { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: var(--s-5); }
+.chart { min-width: 0; }
+.chart .panel-body { padding: var(--s-4) var(--s-5) var(--s-5); }
+.chart svg { display: block; width: 100%; height: auto; font-family: var(--font-ui); font-size: 11px; overflow: visible; }
+.chart .axis { stroke: var(--line-strong); }
+.chart .grid { stroke: var(--line); }
+.chart text { fill: var(--ink-3); }
+.chart .bar { fill: var(--series-1); cursor: pointer; }
+.chart .bar:hover, .chart .bar:focus-visible { fill: var(--accent-ink); }
+.chart .bar.selected { fill: var(--accent-ink); stroke: var(--ink); stroke-width: 1; }
+.chart .bar.dimmed { fill: var(--series-muted); }
+.chart .bar-2 { fill: var(--series-2); }
+.chart .bar-3 { fill: var(--series-3); }
+.chart .bar-2:hover, .chart .bar-3:hover { opacity: .8; }
+.chart g[tabindex]:focus-visible { outline: none; }
+.chart g[tabindex]:focus-visible rect { stroke: var(--focus); stroke-width: 2; }
+.legend { display: flex; gap: var(--s-5); flex-wrap: wrap; font-size: var(--t-micro); color: var(--ink-2); margin-top: var(--s-3); }
+.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
+.tooltip { position: fixed; z-index: 40; pointer-events: none; background: var(--ink); color: var(--ink-inverse); padding: var(--s-3) var(--s-4); border-radius: var(--r-control); font-size: var(--t-small); line-height: var(--lh-small); max-width: 260px; }
+.tooltip b { font-weight: 600; }
+.tooltip .muted { color: #B8BFC9; }
+
+/* quality strip */
+.quality { display: flex; align-items: center; gap: var(--s-6); padding: var(--s-3) var(--s-5); border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--surface-2); font-size: var(--t-small); color: var(--ink-2); flex-wrap: wrap; }
+.quality .q { display: flex; align-items: center; gap: var(--s-3); }
+.quality .q b { font-weight: 600; color: var(--ink); }
+.quality .q b.zero { color: var(--ink-3); font-weight: 500; }
+.quality .q b.bad { color: var(--danger); }
+.quality .q b.warn { color: var(--warn); }
+.quality .q a { color: inherit; text-decoration: underline; text-decoration-color: var(--line-strong); }
+.quality .q a:hover { text-decoration-color: currentColor; }
+
+/* filters */
+.filters { display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
+.filters .select { height: 26px; font-size: var(--t-small); }
+.filters .sep { width: 1px; height: 18px; background: var(--line-strong); }
+.chip { display: inline-flex; align-items: center; gap: var(--s-3); height: 24px; padding: 0 var(--s-4); border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: var(--t-small); font-weight: 500; cursor: pointer; }
+.chip:hover { background: var(--surface-2); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-ink); }
+.chip .x { color: var(--ink-3); font-size: 14px; line-height: 1; }
+
+/* tables */
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: var(--t-small); line-height: var(--lh-small); }
+caption { text-align: left; caption-side: top; padding: var(--s-4) var(--s-5); font-weight: 600; color: var(--ink); font-size: var(--t-body); line-height: var(--lh-body); border-bottom: 1px solid var(--line); }
+caption .cap-meta { font-weight: 400; color: var(--ink-3); margin-left: var(--s-4); font-size: var(--t-small); }
+caption.sr-only { padding: 0; border: 0; }
+th, td { padding: var(--s-3) var(--s-4); text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+th { font-weight: 500; color: var(--ink-3); font-size: var(--t-micro); line-height: var(--lh-micro); background: var(--surface-2); position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+th.num, td.num { text-align: right; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--surface-2); }
+tbody tr[tabindex] { cursor: pointer; }
+tbody tr[aria-selected="true"] td { background: var(--select); box-shadow: inset 2px 0 0 var(--accent); }
+tbody tr[tabindex]:focus-visible { outline: none; }
+tbody tr[tabindex]:focus-visible td { box-shadow: inset 2px 0 0 var(--focus); background: var(--select); }
+td .id, td.id { font-size: 11.5px; white-space: nowrap; }
+td { white-space: nowrap; }
+td.wrap { white-space: normal; }
+.tbl-foot { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-3) var(--s-5); border-top: 1px solid var(--line); font-size: var(--t-small); color: var(--ink-3); }
+.tbl-foot .actions { margin-left: auto; }
+
+/* inspector */
+.inspector { grid-area: inspector; background: var(--surface); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.insp-head { display: flex; align-items: center; gap: var(--s-4); padding: 0 var(--s-5); height: 38px; border-bottom: 1px solid var(--line); flex: none; }
+.insp-head h2 { font-size: var(--t-small); line-height: var(--lh-small); color: var(--ink-2); font-weight: 500; }
+.insp-head .kind { font-size: var(--t-micro); color: var(--ink-3); }
+.insp-head .btn { margin-left: auto; }
+.insp-body { overflow: auto; padding: var(--s-5); display: flex; flex-direction: column; gap: var(--s-6); }
+.insp-title { font-weight: 600; font-size: var(--t-emph); line-height: var(--lh-emph); overflow-wrap: anywhere; }
+.insp-sec h3 { font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--ink-3); font-weight: 500; margin-bottom: var(--s-3); }
+.insp-sec p { color: var(--ink-2); }
+.insp-sec .kv { gap: var(--s-1) var(--s-5); }
+.insp-sec .kv dt, .insp-sec .kv dd { font-size: var(--t-small); line-height: var(--lh-small); }
+.insp-sec pre { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-control); padding: var(--s-4); max-height: 320px; overflow: auto; }
+.insp-empty { color: var(--ink-3); padding: var(--s-6) 0; }
+.insp-empty kbd { margin: 0 2px; }
+.insp-links { display: flex; flex-direction: column; gap: var(--s-2); }
+.insp-links a, .insp-links button { text-align: left; }
+.bignum { font-size: var(--t-h1); font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+
+/* notices */
+.notice { display: flex; gap: var(--s-4); padding: var(--s-4) var(--s-5); border: 1px solid var(--line); border-left: 3px solid var(--ink-3); border-radius: var(--r-control); background: var(--surface); }
+.notice-warn { border-left-color: var(--warn); background: var(--warn-soft); }
+.notice-danger { border-left-color: var(--danger); background: var(--danger-soft); }
+.notice-info { border-left-color: var(--accent); background: var(--accent-soft); }
+.notice-ok { border-left-color: var(--ok); background: var(--ok-soft); }
+.notice .body { flex: 1; min-width: 0; }
+.notice .body p + p { margin-top: var(--s-2); }
+.notice .actions { flex: none; }
+
+/* drop zone */
+.drop { border: 1px dashed var(--line-strong); border-radius: var(--r-panel); background: var(--surface); padding: var(--s-9) var(--s-6); display: flex; flex-direction: column; align-items: center; gap: var(--s-4); text-align: center; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop p { color: var(--ink-2); }
+.drop .formats { color: var(--ink-3); font-size: var(--t-small); }
+
+/* steps inside the import screen: flat, not a wizard */
+.file-line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--s-5); align-items: center; padding: var(--s-4) var(--s-5); }
+.file-ico { width: 32px; height: 32px; border-radius: var(--r-control); background: var(--surface-3); display: grid; place-items: center; color: var(--ink-2); }
+.file-ico svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.file-meta { display: flex; gap: var(--s-5); flex-wrap: wrap; font-size: var(--t-small); color: var(--ink-2); line-height: var(--lh-small); }
+.file-meta b { color: var(--ink); font-weight: 500; }
+.confirm { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-6); align-items: center; }
+.confirm .kv { grid-template-columns: max-content minmax(0, 1fr); }
+.progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+
+/* tabs */
+.tabs { display: flex; gap: var(--s-1); padding: 0 var(--s-4); border-bottom: 1px solid var(--line); }
+.tabs button { background: none; border: 0; padding: var(--s-4) var(--s-4); color: var(--ink-2); font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: var(--t-small); }
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.tabs .count { color: var(--ink-3); margin-left: 4px; font-weight: 400; }
+
+/* dialogs */
+dialog { border: 0; padding: 0; color: inherit; background: var(--surface); }
+dialog::backdrop { background: rgba(21, 24, 29, .38); }
+.drawer { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(720px, 92vw); height: 100dvh; max-height: 100dvh; border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+.drawer:not([open]) { display: none; }
+.drawer-head { display: flex; align-items: center; gap: var(--s-4); padding: 0 var(--s-6); height: var(--topbar-h); border-bottom: 1px solid var(--line); flex: none; }
+.drawer-head h2 { font-size: var(--t-emph); }
+.drawer-head .btn { margin-left: auto; }
+.drawer-body { overflow: auto; padding: var(--s-6); display: flex; flex-direction: column; gap: var(--s-6); }
+.drawer-body pre { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-control); padding: var(--s-5); }
+.drawer-body .kv dt { line-height: var(--lh-small); }
+.raw-toolbar { display: flex; align-items: center; gap: var(--s-4); }
+
+/* modal (palette, shortcuts) */
+.modal { position: fixed; inset: 0; margin: auto; width: min(640px, 92vw); max-height: min(70vh, 560px); border: 1px solid var(--line-strong); border-radius: var(--r-panel); overflow: hidden; }
+.modal[open] { display: flex; flex-direction: column; }
+.modal.top { inset: 12vh auto auto 50%; transform: translateX(-50%); }
+.palette-input { display: flex; align-items: center; gap: var(--s-4); padding: 0 var(--s-6); height: 44px; border-bottom: 1px solid var(--line); }
+.palette-input input { flex: 1; border: 0; outline: 0; background: none; font-size: var(--t-emph); height: 100%; }
+.palette-input svg { width: 15px; height: 15px; stroke: var(--ink-3); fill: none; stroke-width: 1.7; }
+.palette-list { list-style: none; margin: 0; padding: var(--s-2); overflow: auto; flex: 1; }
+.palette-group { font-size: var(--t-micro); line-height: var(--lh-micro); color: var(--ink-3); padding: var(--s-4) var(--s-5) var(--s-1); }
+.palette-item { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-3) var(--s-5); border-radius: var(--r-control); cursor: pointer; }
+.palette-item .ico { width: 16px; color: var(--ink-3); display: grid; place-items: center; }
+.palette-item .ico svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+.palette-item .meta { margin-left: auto; color: var(--ink-3); font-size: var(--t-micro); display: flex; gap: 3px; }
+.palette-item[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-ink); }
+.palette-item[aria-selected="true"] .ico, .palette-item[aria-selected="true"] .meta { color: var(--accent-ink); }
+.palette-item .id { color: var(--ink-3); }
+.palette-empty { padding: var(--s-7) var(--s-6); color: var(--ink-3); text-align: center; }
+.palette-foot { display: flex; gap: var(--s-6); padding: var(--s-3) var(--s-6); border-top: 1px solid var(--line); font-size: var(--t-micro); color: var(--ink-3); background: var(--surface-2); }
+.palette-foot span { display: flex; gap: 4px; align-items: center; }
+.shortcuts { padding: var(--s-6); overflow: auto; }
+.shortcuts h2 { margin-bottom: var(--s-5); }
+.sc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6) var(--s-8); }
+.sc-grid h3 { font-size: var(--t-micro); color: var(--ink-3); font-weight: 500; margin-bottom: var(--s-3); }
+.sc-grid dl { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-2) var(--s-5); }
+.sc-grid dt { color: var(--ink-2); }
+.sc-grid dd { margin: 0; text-align: right; display: flex; gap: 3px; justify-content: flex-end; }
+
+/* popovers (native) */
+[popover] { border: 1px solid var(--line-strong); border-radius: var(--r-panel); padding: var(--s-5); background: var(--surface); color: var(--ink); max-width: 420px; margin: 0; }
+[popover]::backdrop { background: transparent; }
+.pop-anchor { position: relative; display: inline-block; }
+.pop-anchor [popover] { position: absolute; inset: auto auto auto 0; top: calc(100% + 4px); }
+.pop-title { font-weight: 600; margin-bottom: var(--s-3); }
+.pop-close { position: absolute; right: var(--s-3); top: var(--s-3); }
+.pop-list { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: var(--t-small); line-height: var(--lh-small); }
+.pop-list li + li { margin-top: 3px; }
+
+/* demo state menu */
+.demo { position: relative; }
+.demo summary { list-style: none; cursor: pointer; }
+.demo summary::-webkit-details-marker { display: none; }
+.demo-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 220px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-panel); padding: var(--s-2); }
+.demo-menu .palette-group { padding-top: var(--s-3); }
+.demo-menu label { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-3) var(--s-4); border-radius: var(--r-control); cursor: pointer; font-size: var(--t-small); }
+.demo-menu label:hover { background: var(--surface-2); }
+
+/* skeletons */
+.sk { background: linear-gradient(90deg, var(--surface-3) 25%, var(--surface-2) 50%, var(--surface-3) 75%); background-size: 200% 100%; animation: sk 1.4s linear infinite; border-radius: var(--r-control); height: 12px; }
+@keyframes sk { to { background-position: -200% 0 } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+.sk-line { margin: var(--s-3) 0; }
+.sk-num { height: 26px; width: 60%; }
+.empty { padding: var(--s-9) var(--s-6); text-align: center; color: var(--ink-2); display: flex; flex-direction: column; align-items: center; gap: var(--s-4); }
+.empty h3 { color: var(--ink); }
+.empty p { max-width: 48ch; }
+
+/* mapping assistant */
+.assist { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: var(--s-5); align-items: start; }
+.profile-list { list-style: none; margin: 0; padding: 0; }
+.profile-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--s-4); padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--line); cursor: pointer; }
+.profile-list li:last-child { border-bottom: 0; }
+.profile-list li:hover { background: var(--surface-2); }
+.profile-list li[aria-selected="true"] { background: var(--select); box-shadow: inset 2px 0 0 var(--accent); }
+.profile-list .path { font-family: var(--font-mono); font-size: 11.5px; overflow-wrap: anywhere; }
+.profile-list .type { color: var(--ink-3); font-size: var(--t-micro); font-family: var(--font-mono); text-align: right; }
+.profile-list .stat { grid-column: 1 / -1; color: var(--ink-3); font-size: var(--t-micro); line-height: var(--lh-micro); }
+.profile-list .redacted { color: var(--warn); }
+.map-tbl td { vertical-align: middle; }
+.map-tbl .input { width: 100%; font-family: var(--font-mono); font-size: 11.5px; height: 24px; }
+.map-tbl .select { height: 24px; font-size: var(--t-small); }
+.map-tbl tr[aria-selected="true"] td { background: var(--select); box-shadow: inset 2px 0 0 var(--accent); }
+.map-tbl .status { width: 18px; height: 18px; display: inline-grid; place-items: center; border-radius: 50%; font-size: 11px; font-weight: 600; }
+.status-ok { color: var(--ok); }
+.status-amb { color: var(--warn); background: var(--warn-soft); }
+.status-err { color: var(--danger); background: var(--danger-soft); }
+.chat { display: flex; flex-direction: column; gap: var(--s-4); }
+.msg { padding: var(--s-4) var(--s-5); border-radius: var(--r-panel); font-size: var(--t-small); line-height: var(--lh-small); }
+.msg-user { background: var(--surface-3); align-self: flex-end; max-width: 92%; }
+.msg-assist { background: var(--surface-2); border: 1px solid var(--line); }
+.msg .who { font-size: var(--t-micro); color: var(--ink-3); margin-bottom: 2px; }
+.msg ul { margin: var(--s-2) 0 0; padding-left: 16px; }
+.chat-input { display: flex; gap: var(--s-3); }
+.chat-input textarea { flex: 1; min-height: 56px; resize: vertical; padding: var(--s-3) var(--s-4); border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: var(--t-small); line-height: var(--lh-small); }
+.conf { display: inline-block; width: 46px; height: 4px; background: var(--line); border-radius: 2px; vertical-align: middle; overflow: hidden; }
+.conf i { display: block; height: 100%; background: var(--accent); }
+
+/* definitions */
+.def-tbl td { vertical-align: top; }
+.def-tbl .tag + .tag { margin-left: 3px; }
+
+/* the work area adapts to its own width, so opening the inspector reflows like a narrower window */
+@container (max-width: 860px) {
+  .charts { grid-template-columns: 1fr 1fr; }
+  .charts .chart:first-child { grid-column: 1 / -1; }
+  .assist { grid-template-columns: 1fr; }
+  .kpi .val { font-size: 22px; line-height: 28px; }
+  .assist > .panel:first-child { order: 1; }
+  .assist > .panel:first-child .profile-list { max-height: 300px; overflow: auto; }
+  .strip { grid-auto-flow: row; grid-template-columns: 1fr 1fr 1fr; }
+  .strip > * { border-top: 1px solid var(--line); }
+  .strip > :nth-child(-n+3) { border-top: 0; }
+  .strip > :nth-child(3n+1) { border-left: 0; }
+}
+@container (max-width: 720px) {
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .kpi:nth-child(3) { border-left: 0; }
+  .kpi:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .charts { grid-template-columns: 1fr; }
+}
+/* narrow layouts */
+@media (max-width: 1180px) {
+  :root { --rail-w: 52px; --inspector-w: 300px; }
+  .brand-name, .brand-env, .rail-group-label, .rail a span, .rail a kbd, .rail-foot { display: none; }
+  .rail a { justify-content: center; padding: 0; }
+  .brand { justify-content: center; padding: 0; }
+}
+@media (max-width: 1000px) {
+  .app, .app[data-inspector="closed"] { grid-template-columns: var(--rail-w) minmax(0, 1fr) 0; }
+  .app[data-inspector="open"] .inspector { position: fixed; right: 0; top: var(--topbar-h); bottom: 0; width: min(360px, 90vw); z-index: 20; box-shadow: -1px 0 0 var(--line); display: flex; }
+  .screen { padding: var(--s-6) var(--s-6) var(--s-10); }
+  .search-btn { min-width: 0; }
+  .search-btn span:first-child { display: none; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#work">Skip to work area</a>
+<div class="app" id="app" data-inspector="closed">
+
+<nav class="rail" aria-label="Workspace">
+  <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">AgentScope</span><span class="brand-env">local</span></div>
+  <div class="rail-group">
+    <div class="rail-group-label">Import</div>
+    <a href="#/import" data-route="import"><svg viewBox="0 0 16 16"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 12.5h11"/></svg><span>Import file</span><kbd>g i</kbd></a>
+    <a href="#/imports" data-route="imports"><svg viewBox="0 0 16 16"><path d="M2.5 3.5h11M2.5 8h11M2.5 12.5h7"/></svg><span>Imports</span><kbd>g h</kbd></a>
+    <a href="#/assistant" data-route="assistant"><svg viewBox="0 0 16 16"><path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"/></svg><span>Mapping assistant</span><kbd>g m</kbd></a>
+  </div>
+  <div class="rail-group">
+    <div class="rail-group-label">Analyse</div>
+    <a href="#/dashboard" data-route="dashboard"><svg viewBox="0 0 16 16"><path d="M2.5 13.5v-6M6.5 13.5v-10M10.5 13.5v-4M14.5 13.5v-8"/></svg><span>Dashboard</span><kbd>g d</kbd></a>
+    <a href="#/sessions" data-route="sessions"><svg viewBox="0 0 16 16"><path d="M3 4.5h10M3 8h6M3 11.5h8"/><circle cx="12.5" cy="11.5" r="1.5"/></svg><span>Sessions</span><kbd>g s</kbd></a>
+    <a href="#/definitions" data-route="definitions"><svg viewBox="0 0 16 16"><path d="M3 2.5h7l3 3v8H3z"/><path d="M10 2.5v3h3M5.5 9h5M5.5 11.5h3"/></svg><span>Definitions</span><kbd>g f</kbd></a>
+  </div>
+  <div class="rail-foot">Workspace<span class="id">agentscope.sqlite · 3 sources</span></div>
+</nav>
+
+<header class="topbar">
+  <nav class="crumbs" aria-label="Breadcrumb" id="crumbs"></nav>
+  <div class="top-actions">
+    <button class="search-btn" id="open-palette" type="button" aria-label="Open command palette"><span>Search or run a command</span><kbd>⌘K</kbd></button>
+    <details class="demo" id="demo">
+      <summary class="btn btn-sm btn-quiet" aria-label="Demo states" id="demo-summary">States</summary>
+      <div class="demo-menu">
+        <div class="palette-group">Screen state (demo only)</div>
+        <label><input type="radio" name="state" value="normal" checked> Data loaded</label>
+        <label><input type="radio" name="state" value="loading"> Loading</label>
+        <label><input type="radio" name="state" value="empty"> Empty</label>
+        <label><input type="radio" name="state" value="error"> Request failed</label>
+        <div class="palette-group">Theme</div>
+        <label><input type="checkbox" id="theme-dark"> Dark tokens (draft)</label>
+      </div>
+    </details>
+    <button class="btn btn-sm btn-quiet" type="button" id="toggle-inspector" aria-pressed="false" aria-controls="inspector">Inspector <kbd>i</kbd></button>
+    <button class="btn btn-sm btn-quiet btn-icon" type="button" id="open-shortcuts" aria-label="Keyboard shortcuts"><kbd>?</kbd></button>
+  </div>
+</header>
+
+<main class="work" id="work" tabindex="-1">
+<div id="live" class="sr-only" aria-live="polite"></div>
+
+<!-- ============ 1. IMPORT ============ -->
+<section class="screen" id="screen-import" aria-labelledby="h-import" hidden>
+  <div class="screen-head"><div><h1 id="h-import">Import a trace file</h1><p class="lede">Drop a file, confirm the mapping, check the preview, run. Nothing is written until you confirm.</p></div></div>
+
+  <div class="s-loading" hidden><div class="panel"><div class="panel-body"><div class="sk sk-line" style="width:40%"></div><div class="sk sk-line" style="width:70%"></div><div class="sk sk-line" style="width:55%"></div></div></div></div>
+  <div class="s-error" hidden><div class="notice notice-danger" role="alert"><div class="body"><p><b>Upload failed: file is larger than 25 MiB.</b></p><p class="dim">Files over 25 MiB or 100,000 records are refused so an import stays one transaction. Split the file or extract an excerpt.</p></div><div class="actions"><button class="btn btn-sm" type="button" data-state-reset>Choose another file</button></div></div></div>
+  <div class="s-empty" hidden><div class="notice notice-info"><div class="body"><p><b>No mapping accepts parquet yet.</b></p><p class="dim">The file was stored and profiled. Ask the assistant to propose a mapping from its field profile; you review and save it before anything is imported.</p></div><div class="actions"><a class="btn btn-sm btn-primary" href="#/assistant">Open mapping assistant</a></div></div></div>
+
+  <div class="s-normal stack">
+    <div id="import-drop" class="drop" tabindex="0" role="button" aria-describedby="drop-help">
+      <p><b>Drop a trace file here</b> or <button class="btn-link" type="button" id="use-sample">use the bundled sample</button></p>
+      <p class="formats" id="drop-help">.jsonl, .jsonl.gz, .parquet · up to 25 MiB · bytes are stored immutably and hashed before anything else happens</p>
+    </div>
+
+    <div id="import-file" hidden>
+      <section class="panel" aria-labelledby="h-file">
+        <h2 id="h-file" class="sr-only">Uploaded file</h2>
+        <div class="file-line">
+          <div class="file-ico" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg></div>
+          <div>
+            <div><b>tracelab-sample.jsonl.gz</b> <span class="muted">681,057 bytes</span></div>
+            <div class="file-meta"><span>Sniffed <b>jsonl</b>, gzip</span><span><b>4,770</b> records</span><span>SHA-256 <button class="btn-link mono" type="button" data-inspect="file">d044a766…fb9897</button></span></div>
+          </div>
+          <div class="actions"><button class="btn btn-sm btn-quiet" type="button" id="remove-file">Remove</button></div>
+        </div>
+        <div class="panel-foot" id="dup-notice" role="status">
+          <span class="pill pill-warn">Seen before</span>
+          <span class="dim">These exact bytes were imported as <a href="#/imports/imp_3e21f89dbaef419a8f60" class="id">imp_3e21f89dbaef419a8f60</a> on 2026-09-07 09:12 UTC. Importing again for the same source adds no observations.</span>
+        </div>
+      </section>
+    </div>
+
+    <div id="import-mapping" hidden>
+      <div class="row" style="align-items:flex-end">
+        <div class="field"><label for="mapping">Mapping</label>
+          <select class="select" id="mapping" style="min-width:320px">
+            <option value="">Choose a mapping for jsonl</option>
+            <option value="map_82934058a2f6af1cbfc6" selected>tracelab-v1 · revision 1 · source tracelab</option>
+            <option value="map_3a0c7d1e9f8b2c4d5e6f">tracelab-v1 · revision 2 (draft, unvalidated)</option>
+          </select>
+        </div>
+        <button class="btn btn-quiet" type="button" data-inspect="mapping">Show mapping</button>
+        <button class="btn btn-primary" type="button" id="run-preview">Preview 200 records</button>
+        <span class="hint">Preview runs the mapping in memory. It never writes.</span>
+      </div>
+    </div>
+
+    <div id="import-preview" hidden class="stack">
+      <div id="preview-progress" hidden><div class="progress"><i style="width:0%"></i></div><p class="hint" style="margin-top:6px" id="preview-progress-text">Reading records…</p></div>
+      <div id="preview-result" hidden class="stack">
+        <div class="strip" aria-label="Preview outcome">
+          <div><span class="label">Records sampled</span><span class="val">200</span><span class="sub">of 4,770</span></div>
+          <div><span class="label">Accepted</span><span class="val">200</span><span class="sub">100%</span></div>
+          <div><span class="label">Rejected</span><span class="val zero">0</span></div>
+          <div><span class="label">Sessions</span><span class="val">7</span><span class="sub">from 200 records</span></div>
+          <div><span class="label">Model calls</span><span class="val">200</span></div>
+          <div><span class="label">Tool calls</span><span class="val">243</span></div>
+          <div><span class="label">Warnings</span><span class="val warn">1,081</span><span class="sub">null 468 · absent 613</span></div>
+        </div>
+        <section class="panel" aria-labelledby="h-preview-detail">
+          <h2 id="h-preview-detail" class="sr-only">Preview detail</h2>
+          <div class="tabs" role="tablist" aria-label="Preview detail">
+            <button role="tab" aria-selected="true" aria-controls="tab-emissions" id="tabbtn-emissions" type="button">Emissions sample<span class="count">12</span></button>
+            <button role="tab" aria-selected="false" aria-controls="tab-rejects" id="tabbtn-rejects" type="button" tabindex="-1">Rejects<span class="count">0</span></button>
+            <button role="tab" aria-selected="false" aria-controls="tab-warnings" id="tabbtn-warnings" type="button" tabindex="-1">Warnings<span class="count">2 codes</span></button>
+          </div>
+          <div id="tab-emissions" role="tabpanel" aria-labelledby="tabbtn-emissions" class="tbl-wrap">
+            <table>
+              <caption class="sr-only">Emissions from the first records</caption>
+              <thead><tr><th scope="col">Entity</th><th scope="col">Rule</th><th scope="col">Locator</th><th scope="col">Fields emitted</th></tr></thead>
+              <tbody id="emissions-body"></tbody>
+            </table>
+          </div>
+          <div id="tab-rejects" role="tabpanel" aria-labelledby="tabbtn-rejects" hidden>
+            <div class="empty"><h3>No rejects in the first 200 records</h3><p>The full import can still reject records past the sample; the report will list every one with its rule, path and raw payload.</p></div>
+          </div>
+          <div id="tab-warnings" role="tabpanel" aria-labelledby="tabbtn-warnings" hidden class="tbl-wrap">
+            <table>
+              <caption class="sr-only">Warning codes in the sample</caption>
+              <thead><tr><th scope="col">Code</th><th scope="col" class="num">Count</th><th scope="col">Meaning</th><th scope="col">Most common field</th></tr></thead>
+              <tbody>
+                <tr><td><code>absent</code></td><td class="num">613</td><td class="wrap">Key missing from the record; target stays null, never zero.</td><td><code>$.tools[*].exit_code</code></td></tr>
+                <tr><td><code>null</code></td><td class="num">468</td><td class="wrap">Key present with an explicit null; kept as null with the null-policy <code>warn</code>.</td><td><code>$.cache_read_tokens</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel" aria-labelledby="h-confirm">
+          <div class="panel-head"><h2 id="h-confirm">Confirm and run</h2></div>
+          <div class="panel-body confirm">
+            <dl class="kv">
+              <dt>Records</dt><dd>All <b>4,770</b> from <b>tracelab-sample.jsonl.gz</b> into source <b>tracelab</b></dd>
+              <dt>File SHA-256</dt><dd class="hash">d044a766e12c7eceae2eb1ed71e42d95cf0aec2f10c8d61a06cecc0381fb9897</dd>
+              <dt>Mapping</dt><dd>tracelab-v1 revision 1 <span class="id muted">map_82934058a2f6af1cbfc6</span></dd>
+              <dt>Transaction</dt><dd class="dim">One transaction. On any failure nothing is inserted and the report says why.</dd>
+            </dl>
+            <div><button class="btn btn-primary" type="button" id="run-import">Import 4,770 records</button></div>
+          </div>
+        </section>
+      </div>
+    </div>
+    <div id="import-running" hidden class="panel">
+      <div class="panel-head"><span class="pill pill-info pill-running">Running</span><h2 id="import-running-title">Importing tracelab-sample.jsonl.gz</h2></div>
+      <div class="panel-body stack" style="gap:8px"><div class="progress"><i id="import-bar" style="width:0%"></i></div><p class="hint" id="import-progress-text" aria-live="polite">Applying tracelab-v1 revision 1 …</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. IMPORT REPORT ============ -->
+<section class="screen" id="screen-report" aria-labelledby="h-report" hidden>
+  <div class="screen-head"><div><h1 id="h-report">Import <span class="id" id="report-id">imp_3e21f89dbaef419a8f60</span></h1><p class="lede" id="report-lede"></p></div>
+    <div class="actions"><a class="btn btn-sm" id="report-dash-link" href="#/dashboard?import=imp_3e21f89dbaef419a8f60">Open in dashboard</a><button class="btn btn-sm btn-quiet" type="button" data-inspect="report">Inspect</button></div></div>
+
+  <div class="s-loading stack" hidden><div class="panel"><div class="panel-head"><span class="pill pill-info pill-running">Running</span><h2>Importing swe-chat-conversations.parquet</h2></div><div class="panel-body stack" style="gap:8px"><div class="progress"><i style="width:62%"></i></div><p class="hint" aria-live="polite">1,240 of 2,000 records applied · 9 rejected so far · the report fills in when the transaction commits</p></div></div></div>
+  <div class="s-error" hidden><div class="notice notice-danger" role="alert"><div class="body"><p><b>Could not load this import (HTTP 404, code <code>not_found</code>).</b></p><p class="dim">No import has id <code>imp_3e21f89dbaef419a8f60</code> in this workspace. It may belong to another database file.</p></div><div class="actions"><a class="btn btn-sm" href="#/imports">Back to imports</a></div></div></div>
+  <div class="s-empty" hidden><div class="empty"><h3>Nothing was imported</h3><p>This attempt failed before its transaction committed. No observations, sessions or files were written.</p></div></div>
+
+  <div class="s-normal stack" id="report-body"></div>
+</section>
+
+<!-- ============ 3. IMPORTS HISTORY ============ -->
+<section class="screen" id="screen-imports" aria-labelledby="h-imports" hidden>
+  <div class="screen-head"><div><h1 id="h-imports">Imports</h1><p class="lede">Every attempt, including the ones that inserted nothing. Newest first.</p></div>
+    <div class="actions"><a class="btn btn-sm btn-primary" href="#/import">Import file</a></div></div>
+
+  <div class="s-loading" hidden><div class="panel"><div class="panel-body"><div class="sk sk-line" style="width:90%"></div><div class="sk sk-line" style="width:85%"></div><div class="sk sk-line" style="width:88%"></div><div class="sk sk-line" style="width:70%"></div></div></div></div>
+  <div class="s-error" hidden><div class="notice notice-danger" role="alert"><div class="body"><p><b>The list could not be loaded (network error).</b></p><p class="dim">The server at 127.0.0.1:8000 did not answer. Check that the backend is running, then retry.</p></div><div class="actions"><button class="btn btn-sm" type="button" data-state-reset>Retry</button></div></div></div>
+  <div class="s-empty" hidden><div class="panel"><div class="empty"><h3>No imports yet</h3><p>Import a trace file to create the first entry. Attempts that insert nothing are still listed here, so the ledger is complete.</p><a class="btn btn-primary" href="#/import">Import file</a></div></div></div>
+
+  <div class="s-normal">
+    <section class="panel">
+      <div class="tbl-wrap">
+        <table id="imports-table">
+          <caption>Import attempts<span class="cap-meta">5 · use <kbd>j</kbd> <kbd>k</kbd> to move, <kbd>Enter</kbd> to open</span></caption>
+          <thead><tr><th scope="col">Import</th><th scope="col">Status</th><th scope="col">Source</th><th scope="col">File</th><th scope="col">Mapping</th><th scope="col" class="num">Records</th><th scope="col" class="num">Rejected</th><th scope="col" class="num">Sessions</th><th scope="col" class="num">Model calls</th><th scope="col" class="num">Tool calls</th><th scope="col">Started (UTC)</th></tr></thead>
+          <tbody id="imports-body"></tbody>
+        </table>
+      </div>
+      <div class="tbl-foot"><span>5 attempts · 3 committed · 1 duplicate · 1 failed</span></div>
+    </section>
+  </div>
+</section>
+
+<!-- ============ 4. DASHBOARD ============ -->
+<section class="screen" id="screen-dashboard" aria-labelledby="h-dashboard" hidden>
+  <div class="screen-head"><div><h1 id="h-dashboard">Dashboard</h1></div>
+    <div class="filters" role="group" aria-label="Scope" id="dash-filters">
+      <select class="select" id="f-source" aria-label="Source"><option value="">All sources</option><option value="tracelab" selected>tracelab</option><option value="swe-chat">swe-chat</option></select>
+      <select class="select" id="f-agent" aria-label="Agent"><option value="">All agents</option><option value="claude-code">claude-code</option><option value="codex">codex</option></select>
+      <select class="select" id="f-model" aria-label="Model"><option value="">All models</option><option value="claude-opus-4-6">claude-opus-4-6</option><option value="claude-opus-4-7">claude-opus-4-7</option><option value="gpt-5.5-codex">gpt-5.5-codex</option></select>
+      <select class="select" id="f-period" aria-label="Period"><option value="all" selected>All time</option><option value="14d">2026-06-01 to 06-14</option><option value="7d">Last 7 days of data</option></select>
+      <span class="sep" aria-hidden="true"></span>
+      <span id="chart-filter-chip" hidden><button class="chip" type="button" aria-pressed="true" id="chart-filter-clear"><span id="chart-filter-label"></span><span class="x" aria-hidden="true">×</span></button></span>
+      <button class="btn btn-sm btn-quiet" type="button" id="f-clear" hidden>Clear</button>
+    </div>
+  </div>
+
+  <div class="s-loading stack" hidden><div class="kpis">
+    <div class="kpi"><h2>Sessions</h2><div class="sk sk-num" style="margin-top:8px"></div><div class="sk sk-line" style="width:40%"></div></div>
+    <div class="kpi"><h2>Model calls</h2><div class="sk sk-num" style="margin-top:8px"></div><div class="sk sk-line" style="width:40%"></div></div>
+    <div class="kpi"><h2>Input tokens</h2><div class="sk sk-num" style="margin-top:8px"></div><div class="sk sk-line" style="width:40%"></div></div>
+    <div class="kpi"><h2>Output tokens</h2><div class="sk sk-num" style="margin-top:8px"></div><div class="sk sk-line" style="width:40%"></div></div></div>
+    <p class="hint" role="status" style="margin-top:12px">Computing metrics for 80 sessions…</p></div>
+  <div class="s-error" hidden><div class="notice notice-danger" role="alert"><div class="body"><p><b>Metrics request failed (HTTP 400, code <code>invalid_input</code>).</b></p><p class="dim"><code>agent</code>: value "codex " has trailing whitespace. Filters are exact matches; nothing is trimmed silently.</p></div><div class="actions"><button class="btn btn-sm" type="button" data-state-reset>Fix filter</button></div></div></div>
+  <div class="s-empty stack" hidden>
+    <div class="kpis">
+      <div class="kpi"><h2>Sessions</h2><div class="val">0</div><div class="cov">in scope</div></div>
+      <div class="kpi"><h2>Model calls</h2><div class="val">0</div><div class="cov">recorded observations</div></div>
+      <div class="kpi"><h2>Input tokens</h2><div class="val unavail">Unavailable</div><div class="cov">coverage 0 / 0 calls</div></div>
+      <div class="kpi"><h2>Output tokens</h2><div class="val unavail">Unavailable</div><div class="cov">coverage 0 / 0 calls</div></div>
+    </div>
+    <div class="panel" style="margin-top:12px"><div class="empty"><h3>No sessions match agent codex with model claude-opus-4-7</h3><p>In source tracelab, codex sessions only ran gpt-5.5-codex. Counts over nothing are 0; sums over nothing are Unavailable, never 0.</p><div class="actions"><button class="btn" type="button" data-state-reset>Clear model filter</button><a class="btn btn-quiet" href="#/imports">Imports</a></div></div></div>
+  </div>
+
+  <div class="s-normal stack">
+    <div class="kpis" id="kpis" role="group" aria-label="Key figures"></div>
+    <div class="quality" id="quality" aria-label="Data quality in scope"></div>
+    <div class="charts">
+      <section class="panel chart" aria-labelledby="h-c1"><div class="panel-head"><h2 id="h-c1">Model calls by day</h2><span class="muted small" id="c1-sub"></span></div><div class="panel-body" id="chart-days"></div></section>
+      <section class="panel chart" aria-labelledby="h-c2"><div class="panel-head"><h2 id="h-c2">Input tokens by model</h2></div><div class="panel-body" id="chart-models"></div></section>
+      <section class="panel chart" aria-labelledby="h-c3"><div class="panel-head"><h2 id="h-c3">Tool calls by tool</h2></div><div class="panel-body" id="chart-tools"></div></section>
+    </div>
+    <section class="panel">
+      <div class="tbl-wrap">
+        <table id="sessions-table">
+          <caption>Sessions<span class="cap-meta" id="sessions-cap"></span></caption>
+          <thead><tr><th scope="col">Session</th><th scope="col">Agent</th><th scope="col">Model</th><th scope="col">Observed start (UTC)</th><th scope="col" class="num">Span</th><th scope="col" class="num">Model calls</th><th scope="col" class="num">Tool calls</th><th scope="col" class="num">Input tokens</th><th scope="col" class="num">Coverage</th></tr></thead>
+          <tbody id="sessions-body"></tbody>
+        </table>
+      </div>
+      <div class="tbl-foot"><span id="sessions-foot"></span><div class="actions"><button class="btn btn-sm" type="button" disabled>Previous</button><button class="btn btn-sm" type="button" id="sessions-next">Next 50</button></div></div>
+    </section>
+  </div>
+</section>
+
+<!-- ============ 5. SESSION DETAIL ============ -->
+<section class="screen" id="screen-session" aria-labelledby="h-session" hidden>
+  <div class="screen-head"><div><h1 id="h-session">Session <span class="id">claude:781a3b4c-a1a5-9325-16d3-4029ecc3fe43</span></h1><p class="lede">Observed timestamps describe the span present in imported data, not active time.</p></div>
+    <div class="actions"><a class="btn btn-sm" href="#/imports/imp_3e21f89dbaef419a8f60">Import report</a><button class="btn btn-sm btn-quiet" type="button" data-inspect="session">Inspect</button></div></div>
+
+  <div class="s-loading" hidden><div class="panel"><div class="panel-body"><div class="sk sk-line" style="width:50%"></div><div class="sk sk-line" style="width:80%"></div><div class="sk sk-line" style="width:65%"></div></div></div></div>
+  <div class="s-error" hidden><div class="notice notice-danger" role="alert"><div class="body"><p><b>Session not found (HTTP 404).</b></p><p class="dim">No session has id <code>ses_c736618a</code>. The id may come from another workspace or have been copied incompletely.</p></div><div class="actions"><a class="btn btn-sm" href="#/dashboard">Back to sessions</a></div></div></div>
+  <div class="s-empty" hidden><div class="panel"><div class="empty"><h3>This session has no observations</h3><p>A session row exists because a record named it, but every model call and tool call from that record was rejected. The rejects explain why.</p><a class="btn" href="#/imports/imp_7c04d1e2b5a94f3c8d11">Open rejects</a></div></div></div>
+
+  <div class="s-normal stack">
+    <div class="strip" aria-label="Session summary">
+      <div><span class="label">Source</span><span class="val">tracelab</span><span class="sub"><span class="id">imp_3e21f89dbaef419a8f60</span></span></div>
+      <div><span class="label">Agent</span><span class="val">claude-code</span><span class="sub">via provider claude</span></div>
+      <div><span class="label">Repository</span><span class="val id">project_8f998460</span><span class="sub">user <span class="id">user_b87fa13e</span></span></div>
+      <div><span class="label">Observed interval</span><span class="val">53.797 s</span><span class="sub">02:51:06.901 to 02:52:00.698, 2026-06-04</span></div>
+      <div><span class="label">Declared interval</span><span class="val zero">Unavailable</span><span class="sub">source has no declared start or end</span></div>
+      <div><span class="label">Input tokens</span><span class="val">48,187</span><span class="sub">coverage 2 / 2 calls · tracelab-claude</span></div>
+    </div>
+
+    <div class="notice notice-warn" role="note" id="session-diag">
+      <div class="body"><p><b>1 diagnostic.</b> <code>conflicting_value</code> on <code>agent</code>: record <span class="id">line:188731</span> says <code>claude-code</code>, record <span class="id">line:188728</span> says <code>claude</code>. The reducer kept the first accepted value and recorded both.</p></div>
+      <div class="actions"><button class="btn btn-sm" type="button" data-inspect="diag">Show both records</button></div>
+    </div>
+
+    <section class="panel">
+      <div class="tbl-wrap">
+        <table id="mc-table">
+          <caption>Model-call observations<span class="cap-meta">2 · the locator under each id opens its source record; <kbd>o</kbd> does the same for the selected row</span></caption>
+          <thead><tr><th scope="col">Call</th><th scope="col">Model</th><th scope="col">Started (UTC)</th><th scope="col" class="num">Duration</th><th scope="col" class="num">Input tokens</th><th scope="col" class="num">Output tokens</th><th scope="col" class="num">Cache read</th></tr></thead>
+          <tbody id="mc-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="tbl-wrap">
+        <table id="tc-table">
+          <caption>Tool-call observations<span class="cap-meta">3</span></caption>
+          <thead><tr><th scope="col">Call</th><th scope="col">Tool</th><th scope="col">Model call</th><th scope="col">Emitted (UTC)</th><th scope="col" class="num">Wall latency</th><th scope="col">Error</th></tr></thead>
+          <tbody id="tc-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</section>
+
+<!-- ============ 6. MAPPING ASSISTANT ============ -->
+<section class="screen" id="screen-assistant" aria-labelledby="h-assistant" hidden>
+  <div class="screen-head"><div><h1 id="h-assistant">Map <span class="id">swe-chat-conversations.parquet</span></h1><p class="lede">The assistant proposes; you edit, validate and save. It never writes to the database.</p></div>
+    <div class="actions">
+      <span class="pop-anchor">
+        <button class="btn btn-sm" type="button" popovertarget="pop-redaction" aria-describedby="redaction-summary">What left this machine</button>
+        <div id="pop-redaction" popover>
+          <button class="btn btn-sm btn-quiet btn-icon pop-close" type="button" popovertarget="pop-redaction" popovertargetaction="hide" aria-label="Close">×</button>
+          <div class="pop-title">Sent to openrouter · anthropic/claude-opus-4-7</div>
+          <ul class="pop-list">
+            <li>Column names, Arrow types, null and distinct counts for 11 columns.</li>
+            <li>Up to 12 example values per scalar column, strings cut at 64 characters. Emails, absolute paths and secrets-looking tokens masked before leaving.</li>
+            <li><code>turns[].content</code> excluded entirely (free text, up to 128 KB). Only its type and length distribution were sent.</li>
+            <li>Your messages in the conversation below, verbatim.</li>
+            <li>Nothing else: no rows, no file, no earlier imports.</li>
+          </ul>
+          <p class="hint" style="margin-top:8px">Request 3 of this analysis · 4,212 tokens out, 2,930 in · full payload in <code>analysis_runs/ar_51d9…</code></p>
+        </div>
+      </span>
+      <button class="btn btn-sm" type="button" id="validate-btn">Validate</button>
+      <button class="btn btn-sm" type="button" id="preview-map-btn">Preview</button>
+      <button class="btn btn-sm btn-primary" type="button" id="save-rev-btn">Save as revision 1</button>
+    </div>
+  </div>
+  <p id="redaction-summary" class="sr-only">Summary of data sent to the model provider.</p>
+
+  <div class="s-loading" hidden><div class="panel"><div class="panel-head"><span class="pill pill-info pill-running">Proposing</span><h2>Asking anthropic/claude-opus-4-7 for a mapping</h2></div><div class="panel-body"><p class="dim" aria-live="polite">Profile sent (11 columns, 2,000-row excerpt, content redacted). Waiting for a structured proposal; one repair attempt is allowed if it fails validation.</p><div class="sk sk-line" style="width:70%;margin-top:12px"></div><div class="sk sk-line" style="width:55%"></div></div></div></div>
+  <div class="s-error" hidden><div class="notice notice-danger" role="alert"><div class="body"><p><b>The provider returned no usable proposal (code <code>provider_malformed</code>).</b></p><p class="dim">Two attempts produced JSON that failed the DSL schema at <code>rules[1].collection</code>. The raw responses are kept in <code>analysis_runs/ar_51d9…</code>. You can retry, switch provider in <code>.env</code>, or write the mapping by hand in the table.</p></div><div class="actions"><button class="btn btn-sm" type="button" data-state-reset>Retry</button></div></div></div>
+  <div class="s-empty" hidden><div class="panel"><div class="empty"><h3>No proposal yet</h3><p>The profile is ready. Ask the assistant for a first mapping, or start from the empty table and fill the required identity fields.</p><div class="actions"><button class="btn btn-primary" type="button" data-state-reset>Propose a mapping</button><button class="btn btn-quiet" type="button" data-state-reset>Start empty</button></div></div></div></div>
+
+  <div class="s-normal assist">
+    <section class="panel" aria-labelledby="h-profile">
+      <div class="panel-head"><h2 id="h-profile">Field profile</h2><span class="muted small">2,000-row excerpt of 1.3 GB</span></div>
+      <ul class="profile-list" id="profile-list" aria-label="Columns in the file"></ul>
+    </section>
+    <section class="panel" aria-labelledby="h-mapping-table">
+      <div class="panel-head"><h2 id="h-mapping-table">Proposed mapping</h2><span class="pill pill-neutral">draft, not saved</span><div class="actions"><span class="small muted" id="map-status">11 fields · 3 ambiguities · 0 errors</span></div></div>
+      <div class="tbl-wrap">
+        <table class="map-tbl" id="map-table">
+          <caption class="sr-only">Mapping rules and fields, editable</caption>
+          <thead><tr><th scope="col" style="width:26px"><span class="sr-only">Status</span></th><th scope="col">Target</th><th scope="col">Source path</th><th scope="col">Transform</th><th scope="col">Null policy</th><th scope="col">Confidence</th></tr></thead>
+          <tbody id="map-body"></tbody>
+        </table>
+      </div>
+      <div class="panel-foot"><span class="small dim" id="map-foot">Select a field to read the assistant's explanation in the inspector. Edit a path to revalidate it against the profile.</span></div>
+    </section>
+  </div>
+</section>
+
+<!-- ============ 7. DEFINITIONS ============ -->
+<section class="screen" id="screen-definitions" aria-labelledby="h-definitions" hidden>
+  <div class="screen-head"><div><h1 id="h-definitions">Definitions</h1><p class="lede">Every number in the workspace resolves to one of these. Definitions are versioned with the metric layer, not with a mapping.</p></div></div>
+  <div class="s-loading" hidden><div class="panel"><div class="panel-body"><div class="sk sk-line" style="width:90%"></div><div class="sk sk-line" style="width:85%"></div></div></div></div>
+  <div class="s-error" hidden><div class="notice notice-danger" role="alert"><div class="body"><p><b>Definitions could not be loaded.</b></p></div><div class="actions"><button class="btn btn-sm" type="button" data-state-reset>Retry</button></div></div></div>
+  <div class="s-empty" hidden><div class="panel"><div class="empty"><h3>No definitions registered</h3><p>The metric layer registers its definitions at start-up. An empty list means the backend build is missing the metric module.</p></div></div></div>
+  <div class="s-normal">
+    <section class="panel"><div class="tbl-wrap"><table class="def-tbl" id="def-table">
+      <caption>Metrics<span class="cap-meta">8</span></caption>
+      <thead><tr><th scope="col">Metric</th><th scope="col">Definition</th><th scope="col">Unit</th><th scope="col">Semantics</th><th scope="col">Comparable when</th></tr></thead>
+      <tbody id="def-body"></tbody>
+    </table></div></section>
+  </div>
+</section>
+
+</main>
+
+<aside class="inspector" id="inspector" aria-labelledby="insp-h">
+  <div class="insp-head"><h2 id="insp-h">Inspector</h2><span class="kind" id="insp-kind"></span><button class="btn btn-sm btn-quiet btn-icon" type="button" id="close-inspector" aria-label="Close inspector">×</button></div>
+  <div class="insp-body" id="insp-body"></div>
+</aside>
+
+</div>
+
+<!-- ============ dialogs ============ -->
+<dialog id="palette" class="modal top" aria-label="Command palette">
+  <div class="palette-input"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><input type="text" id="palette-q" placeholder="Go to, filter, open a session or import by id…" autocomplete="off" aria-controls="palette-list" aria-expanded="true" role="combobox" aria-autocomplete="list"></div>
+  <ul class="palette-list" id="palette-list" role="listbox"></ul>
+  <div class="palette-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span><span style="margin-left:auto">Type <kbd>&gt;</kbd> for actions, <kbd>imp_</kbd> or <kbd>ses_</kbd> for ids</span></div>
+</dialog>
+
+<dialog id="shortcuts" class="modal" aria-labelledby="h-shortcuts">
+  <div class="shortcuts">
+    <h2 id="h-shortcuts">Keyboard</h2>
+    <div class="sc-grid">
+      <div><h3>Go to</h3><dl><dt>Import file</dt><dd><kbd>g</kbd><kbd>i</kbd></dd><dt>Imports</dt><dd><kbd>g</kbd><kbd>h</kbd></dd><dt>Dashboard</dt><dd><kbd>g</kbd><kbd>d</kbd></dd><dt>Sessions</dt><dd><kbd>g</kbd><kbd>s</kbd></dd><dt>Mapping assistant</dt><dd><kbd>g</kbd><kbd>m</kbd></dd><dt>Definitions</dt><dd><kbd>g</kbd><kbd>f</kbd></dd></dl></div>
+      <div><h3>Workspace</h3><dl><dt>Command palette</dt><dd><kbd>⌘</kbd><kbd>K</kbd></dd><dt>Toggle inspector</dt><dd><kbd>i</kbd></dd><dt>Focus filters</dt><dd><kbd>/</kbd></dd><dt>This list</dt><dd><kbd>?</kbd></dd><dt>Close anything</dt><dd><kbd>Esc</kbd></dd></dl></div>
+      <div><h3>Tables</h3><dl><dt>Next / previous row</dt><dd><kbd>j</kbd><kbd>k</kbd></dd><dt>Open row</dt><dd><kbd>Enter</kbd></dd><dt>Source record of row</dt><dd><kbd>o</kbd></dd></dl></div>
+      <div><h3>Dashboard</h3><dl><dt>Select KPI 1 to 4</dt><dd><kbd>1</kbd>…<kbd>4</kbd></dd><dt>Clear chart filter</dt><dd><kbd>Esc</kbd></dd></dl></div>
+    </div>
+    <div class="actions" style="margin-top:20px"><button class="btn" type="button" id="close-shortcuts">Close</button></div>
+  </div>
+</dialog>
+
+<dialog id="source-drawer" class="drawer" aria-labelledby="h-source">
+  <div class="drawer-head"><h2 id="h-source">Source record</h2><span class="muted small" id="source-sub"></span><button class="btn btn-sm btn-quiet" type="button" id="close-source">Close <kbd>Esc</kbd></button></div>
+  <div class="drawer-body">
+    <dl class="kv"><dt>File</dt><dd><span id="source-file">tracelab-sample.jsonl.gz</span> · <span class="hash" id="source-sha"></span></dd><dt>Locator</dt><dd class="id" id="source-locator"></dd><dt>Contributed to</dt><dd id="source-contrib"></dd></dl>
+    <div class="raw-toolbar"><span class="small dim">Bytes as stored. Numbers are shown from <code>payload_text</code>, never re-serialised, so nothing above 2⁵³ is rounded.</span><button class="btn btn-sm" type="button" id="copy-raw" style="margin-left:auto">Copy JSON</button></div>
+    <pre id="source-json" tabindex="0" aria-label="Raw JSON record"></pre>
+  </div>
+</dialog>
+
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+<script>
+(function () {
+'use strict';
+/* ---------------- utilities ---------------- */
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const fmt = n => (n === null || n === undefined) ? 'Unavailable' : Number(n).toLocaleString('en-US');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const abbr = n => n >= 1e9 ? (n/1e9).toFixed(1).replace(/\.0$/,'')+'B' : n >= 1e6 ? (n/1e6).toFixed(1).replace(/\.0$/,'')+'M' : n >= 1e3 ? (n/1e3).toFixed(1).replace(/\.0$/,'')+'k' : String(n);
+const short = id => id.length > 14 ? id.slice(0, 12) + '…' : id;
+const shortSha = s => s.slice(0, 8) + '…' + s.slice(-6);
+const ms = (a, b) => (new Date(b) - new Date(a));
+const dur = m => m == null ? 'Unavailable' : m < 1000 ? m + ' ms' : m < 60000 ? (m/1000).toFixed(3) + ' s' : m < 3600000 ? Math.floor(m/60000) + ' min ' + Math.round((m%60000)/1000) + ' s' : (m/3600000).toFixed(2) + ' h';
+const announce = t => { const l = $('#live'); l.textContent = ''; setTimeout(() => { l.textContent = t; }, 30); };
+function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+const hex = (r, n) => { let o = ''; for (let i = 0; i < n; i++) o += Math.floor(r() * 16).toString(16); return o; };
+function apportion(total, weights) { const sum = weights.reduce((a, b) => a + b, 0) || 1; const raw = weights.map(w => total * w / sum); const base = raw.map(Math.floor); let rem = total - base.reduce((a, b) => a + b, 0); const order = raw.map((v, i) => [v - base[i], i]).sort((a, b) => b[0] - a[0]); for (let k = 0; k < rem; k++) base[order[k % order.length][1]]++; return base; }
+
+/* ---------------- data ---------------- */
+const SHA = 'd044a766e12c7eceae2eb1ed71e42d95cf0aec2f10c8d61a06cecc0381fb9897';
+const SHA2 = '3f9c1b7de20a4c6e8f11b5d2a9c0e7f4d6b8a1c3e5f7091b2d4c6e8a0f1b3d5c';
+const SHA3 = 'a81e5c02f7d94b3e6c1a0d8f2b4e6c9a3d5f7b1e0c2a4d6f8b0e2c4a6d8f0b1e';
+const IMPORTS = [
+  { id: 'imp_b19e44c0d7a2f8e6b3c1', status: 'duplicate', source: 'tracelab', file: 'tracelab-sample.jsonl.gz', sha: SHA, size: 681057, format: 'jsonl', mapping: { name: 'tracelab-v1', rev: 1, id: 'map_82934058a2f6af1cbfc6' }, started: '2026-09-07T09:31:44Z', finished: '2026-09-07T09:31:45Z', records: { accepted: 0, partial: 0, duplicate: 4770, rejected: 0, ignored: 0 }, total: 4770, entities: {}, warnings: {}, rejects: [], of: 'imp_3e21f89dbaef419a8f60' },
+  { id: 'imp_3e21f89dbaef419a8f60', status: 'committed', source: 'tracelab', file: 'tracelab-sample.jsonl.gz', sha: SHA, size: 681057, format: 'jsonl', mapping: { name: 'tracelab-v1', rev: 1, id: 'map_82934058a2f6af1cbfc6' }, started: '2026-09-07T09:12:03Z', finished: '2026-09-07T09:12:41Z', records: { accepted: 4770, partial: 0, duplicate: 0, rejected: 0, ignored: 0 }, total: 4770, entities: { session: 80, model_call: 4770, tool_call: 5723 }, warnings: { null: 11168, absent: 14633 }, rejects: [] },
+  { id: 'imp_7c04d1e2b5a94f3c8d11', status: 'committed', source: 'swe-chat', file: 'swe-chat-excerpt.jsonl', sha: SHA2, size: 19348211, format: 'jsonl', mapping: { name: 'swe-chat-jsonl-v1', rev: 1, id: 'map_5a1c9e0b7d3f2a8c4e6b' }, started: '2026-09-06T17:40:12Z', finished: '2026-09-06T17:41:58Z', records: { accepted: 1958, partial: 26, duplicate: 0, rejected: 14, ignored: 2 }, total: 2000, entities: { session: 1958, model_call: 6412, tool_call: 9807 }, warnings: { absent: 1203, null: 388, invalid_value: 26 }, rejects: null },
+  { id: 'imp_0d4fa2c917be4d3a9e55', status: 'failed', source: 'swe-chat', file: 'swe-chat-conversations.parquet', sha: SHA3, size: 24117248, format: 'parquet', mapping: { name: 'swe-chat-jsonl-v1', rev: 1, id: 'map_5a1c9e0b7d3f2a8c4e6b' }, started: '2026-09-05T14:02:19Z', finished: '2026-09-05T14:02:20Z', records: { accepted: 0, partial: 0, duplicate: 0, rejected: 0, ignored: 0 }, total: 2000, entities: {}, warnings: {}, rejects: [], error: "ReaderError: mapping 'swe-chat-jsonl-v1' expects input_format jsonl, file is parquet" },
+  { id: 'imp_a52c7e19f0b34d6c8e21', status: 'committed', source: 'tracelab', file: 'tracelab-smoke.jsonl', sha: '91c0e4b7a2d5f8c1e3b6a9d0f2c5e8b1a4d7f0c3e6b9a2d5f8c1e4b7a0d3f6c9', size: 40211, format: 'jsonl', mapping: { name: 'tracelab-v1', rev: 1, id: 'map_82934058a2f6af1cbfc6' }, started: '2026-09-05T11:20:07Z', finished: '2026-09-05T11:20:08Z', records: { accepted: 120, partial: 0, duplicate: 0, rejected: 0, ignored: 0 }, total: 120, entities: { session: 3, model_call: 120, tool_call: 141 }, warnings: { absent: 380 }, rejects: [] },
+];
+/* rejects for the swe-chat excerpt import */
+(function () {
+  const r = rng(7);
+  const codes = ['invalid_type', 'invalid_type', 'invalid_type', 'invalid_type', 'invalid_type', 'invalid_type', 'invalid_type', 'invalid_type', 'invalid_type', 'missing_required', 'missing_required', 'missing_required', 'invalid_timestamp', 'invalid_timestamp'];
+  const lines = [1042, 1188, 233, 1571, 1990, 77, 1304, 640, 1733, 412, 958, 1866, 1120, 315];
+  const out = codes.map((code, i) => {
+    const line = lines[i];
+    if (code === 'invalid_type') { const v = i === 0 ? '12,431' : (12431 + Math.floor(r() * 90000)).toLocaleString('en-US'); return { locator: 'line:' + line, rule: 'model_call', path: '$.usage.input_tokens', code, field: 'input_tokens', message: "expected integer, got string '" + v + "'", payload: `{\n  "conversation_id": "conv_${hex(r, 12)}",\n  "model": "gpt-5.5-codex",\n  "usage": {"input_tokens": "${v}", "output_tokens": ${Math.floor(r() * 4000)}},\n  "created_at": ${1748736000 + Math.floor(r() * 1200000)},\n  "repo": "repo_${hex(r, 6)}",\n  "turns": [ … ${2 + Math.floor(r() * 30)} items … ]\n}` }; }
+    if (code === 'missing_required') return { locator: 'line:' + line, rule: 'session', path: '$.conversation_id', code, field: 'conversation_id', message: 'required identity field is absent; no session can be created', payload: `{\n  "model": "gpt-5.5-codex",\n  "usage": {"input_tokens": ${Math.floor(r() * 30000)}, "output_tokens": ${Math.floor(r() * 4000)}},\n  "created_at": ${1748736000 + Math.floor(r() * 1200000)},\n  "repo": "repo_${hex(r, 6)}",\n  "turns": [ … ]\n}` };
+    return { locator: 'line:' + line, rule: 'model_call', path: '$.created_at', code, field: 'started_at', message: "expected epoch seconds, got '2026-06-03T10:11:12+02:00' (timestamp_format: epoch_s)", payload: `{\n  "conversation_id": "conv_${hex(r, 12)}",\n  "model": "claude-opus-4-7",\n  "usage": {"input_tokens": ${Math.floor(r() * 30000)}, "output_tokens": ${Math.floor(r() * 4000)}},\n  "created_at": "2026-06-03T10:11:12+02:00",\n  "repo": "repo_${hex(r, 6)}",\n  "turns": [ … ]\n}` };
+  });
+  IMPORTS[2].rejects = out;
+})();
+
+/* aggregated cells: source / agent / model */
+const CELLS = [
+  { source: 'tracelab', agent: 'claude-code', model: 'claude-opus-4-6', sessions: 41, calls: 2412, input: 318204115, output: 640118, tools: 3101, cache: 141902311, sem: 'tracelab-claude', unknownUsage: 0, unknownTs: 22, unlinked: 148 },
+  { source: 'tracelab', agent: 'claude-code', model: 'claude-opus-4-7', sessions: 11, calls: 446, input: 61880412, output: 121904, tools: 588, cache: 27311008, sem: 'tracelab-claude', unknownUsage: 0, unknownTs: 3, unlinked: 21 },
+  { source: 'tracelab', agent: 'codex', model: 'gpt-5.5-codex', sessions: 28, calls: 1912, input: 173363350, output: 442309, tools: 2034, cache: null, sem: 'tracelab-codex', unknownUsage: 0, unknownTs: 12, unlinked: 45 },
+  { source: 'swe-chat', agent: null, model: 'gpt-5.5-codex', sessions: 1712, calls: 5604, input: 79402118, output: 2771530, tools: 8592, cache: null, sem: 'swe-chat-openai', unknownUsage: 14, unknownTs: 0, unlinked: 8592 },
+  { source: 'swe-chat', agent: null, model: 'claude-opus-4-7', sessions: 246, calls: 808, input: 12716288, output: 432587, tools: 1215, cache: null, sem: 'swe-chat-anthropic', unknownUsage: 0, unknownTs: 0, unlinked: 1215 },
+];
+const DAYS = Array.from({ length: 14 }, (_, i) => '2026-06-' + String(i + 1).padStart(2, '0'));
+const DAY_W = { tracelab: [178, 296, 241, 417, 358, 120, 61, 476, 540, 418, 356, 297, 596, 416], 'swe-chat': [402, 388, 512, 470, 611, 233, 190, 540, 602, 588, 455, 401, 620, 400] };
+const TOOLS = { tracelab: [['Bash', 2104], ['Read', 1588], ['Edit', 1021], ['Grep', 512], ['Glob', 301], ['Agent', 141], ['WebFetch', 56]], 'swe-chat': [['bash', 4120], ['read_file', 2811], ['edit_file', 1902], ['search', 974]] };
+const REJECTS_BY_SOURCE = { tracelab: 0, 'swe-chat': 14 };
+
+/* sessions (generated, deterministic; first is the brief's example) */
+const SESSIONS = [];
+(function () {
+  const r = rng(42);
+  function push(cell, i, external, fixed) {
+    const dayIdx = fixed ? 3 : weightedDay(r, DAY_W[cell.source]);
+    const calls = fixed ? 2 : 3 + Math.floor(r() * 140);
+    const toolsN = fixed ? 3 : Math.floor(calls * (0.6 + r() * 1.2));
+    const input = fixed ? 48187 : calls * Math.floor(15000 + r() * 130000);
+    const start = fixed ? '2026-06-04T02:51:06.901Z' : DAYS[dayIdx] + 'T' + String(Math.floor(r() * 24)).padStart(2, '0') + ':' + String(Math.floor(r() * 60)).padStart(2, '0') + ':' + String(Math.floor(r() * 60)).padStart(2, '0') + '.' + String(Math.floor(r() * 1000)).padStart(3, '0') + 'Z';
+    const span = fixed ? 53797 : Math.floor(calls * (4000 + r() * 90000));
+    const toolset = fixed ? ['Read', 'Bash', 'Edit'] : TOOLS[cell.source].filter(() => r() < 0.55).map(t => t[0]);
+    SESSIONS.push({ id: fixed ? 'ses_c736618a' : 'ses_' + hex(r, 8), external, source: cell.source, agent: cell.agent, model: cell.model, sem: cell.sem, start, span, calls, tools: toolsN, toolset, input, output: fixed ? 631 : Math.floor(input * (0.0015 + r() * 0.004)), known: fixed ? 2 : calls, repo: fixed ? 'project_8f998460' : 'project_' + hex(r, 8), user: fixed ? 'user_b87fa13e' : 'user_' + hex(r, 8) });
+  }
+  function weightedDay(r, w) { const s = w.reduce((a, b) => a + b, 0); let x = r() * s; for (let i = 0; i < w.length; i++) { x -= w[i]; if (x < 0) return i; } return w.length - 1; }
+  push(CELLS[0], 0, 'claude:781a3b4c-a1a5-9325-16d3-4029ecc3fe43', true);
+  CELLS.slice(0, 3).forEach(cell => { const n = cell === CELLS[0] ? cell.sessions - 1 : cell.sessions; for (let i = 0; i < n; i++) push(cell, i, (cell.agent === 'codex' ? 'codex:' : 'claude:') + hex(r, 8) + '-' + hex(r, 4) + '-' + hex(r, 4) + '-' + hex(r, 4) + '-' + hex(r, 12)); });
+  /* swe-chat: only 60 generated rows stand for 1,958 */
+  CELLS.slice(3).forEach(cell => { for (let i = 0; i < (cell === CELLS[3] ? 44 : 16); i++) { push(cell, i, 'conv_' + hex(r, 16)); const s = SESSIONS[SESSIONS.length - 1]; if (cell === CELLS[3] && i < 14) s.known = s.calls - 1; } });
+})();
+const SESSION_BY_ID = Object.fromEntries(SESSIONS.map(s => [s.id, s]));
+
+const EXAMPLE_MC = [
+  { id: 'mc_ce3dc337a9f14b2e8d70', seq: 0, model: 'claude-opus-4-6', started: '2026-06-04T02:51:06.901Z', ended: '2026-06-04T02:51:31.240Z', input: 31904, output: 212, cache: 27118, sem: 'tracelab-claude', locator: 'line:188728' },
+  { id: 'mc_4f0b91d2e6c84a7fb315', seq: 1, model: 'claude-opus-4-6', started: '2026-06-04T02:51:33.017Z', ended: '2026-06-04T02:52:00.698Z', input: 16283, output: 419, cache: 14907, sem: 'tracelab-claude', locator: 'line:188731' },
+];
+const EXAMPLE_TC = [
+  { id: 'tc_1a94c2b1f7e04d3c9a58', tool: 'Read', mc: 'mc_ce3dc337a9f14b2e8d70', at: '2026-06-04T02:51:12.410Z', latency: 184, error: false, locator: 'line:188728' },
+  { id: 'tc_8e3d07c4b1a24f6e9d02', tool: 'Bash', mc: 'mc_ce3dc337a9f14b2e8d70', at: '2026-06-04T02:51:19.883Z', latency: 6217, error: false, locator: 'line:188728' },
+  { id: 'tc_5b2f6a9e0c3d41e7b8a1', tool: 'Edit', mc: 'mc_4f0b91d2e6c84a7fb315', at: '2026-06-04T02:51:48.902Z', latency: null, error: null, locator: 'line:188731' },
+];
+function rawJson(mc, tcs, s) {
+  const tools = tcs.filter(t => t.mc === mc.id).map(t => `    {"name": "${t.tool}", "tool_use_id": "toolu_${t.id.slice(3, 15)}", "emitted_at": "${t.at}", "wall_latency_ms": ${t.latency === null ? 'null' : t.latency}, "is_error": ${t.error === null ? 'null' : t.error}}`).join(',\n');
+  return `{
+  "provider": "claude",
+  "project": "${s.repo}",
+  "user": "${s.user}",
+  "session_id": "${s.external.replace(/^[a-z]+:/, '')}",
+  "round_index": ${mc.seq},
+  "round_id": "rnd_${mc.id.slice(3, 19)}",
+  "model": "${mc.model}",
+  "input_tokens_total": ${mc.input},
+  "prefix_tokens": ${mc.cache},
+  "newly_append_tokens": ${mc.input - mc.cache},
+  "output_tokens": ${mc.output},
+  "cache_read_tokens": ${mc.cache},
+  "cache_creation_tokens": null,
+  "timing_events": [
+    {"kind": "request_start", "at": "${mc.started}"},
+    {"kind": "first_token", "at": "${new Date(new Date(mc.started).getTime() + 1834).toISOString()}"},
+    {"kind": "response_end", "at": "${mc.ended}"}
+  ],
+  "tools": [
+${tools || '  '}
+  ],
+  "harness": "${s.agent}",
+  "trace_key": "9007199254740993"
+}`;
+}
+function sessionDetail(s) {
+  if (s.id === 'ses_c736618a') return { mcs: EXAMPLE_MC, tcs: EXAMPLE_TC };
+  const r = rng(parseInt(s.id.slice(4, 12), 16));
+  const mcs = [], tcs = [];
+  const parts = apportion(s.input, Array.from({ length: s.calls }, () => 0.5 + r()));
+  let t = new Date(s.start).getTime();
+  for (let i = 0; i < s.calls; i++) { const d = Math.floor(2000 + r() * 40000); const id = 'mc_' + hex(r, 20); const unknown = i >= s.known; mcs.push({ id, seq: i, model: s.model, started: new Date(t).toISOString(), ended: new Date(t + d).toISOString(), input: unknown ? null : parts[i], output: unknown ? null : Math.floor(parts[i] * 0.004), cache: s.sem === 'tracelab-claude' ? Math.floor(parts[i] * 0.8) : null, sem: s.sem, locator: 'line:' + (1000 + Math.floor(r() * 190000)) }); t += d + Math.floor(r() * 5000); }
+  for (let i = 0; i < s.tools; i++) { const mc = mcs[Math.floor(r() * mcs.length)]; const tool = s.toolset.length ? s.toolset[Math.floor(r() * s.toolset.length)] : TOOLS[s.source][0][0]; tcs.push({ id: 'tc_' + hex(r, 20), tool, mc: mc.id, at: new Date(new Date(mc.started).getTime() + Math.floor(r() * 3000)).toISOString(), latency: r() < 0.1 ? null : Math.floor(r() * 9000), error: r() < 0.06, locator: mc.locator }); }
+  tcs.sort((a, b) => a.at < b.at ? -1 : 1);
+  return { mcs, tcs };
+}
+
+const DEFINITIONS = [
+  ['sessions', 'Distinct sessions in scope. A session is created by the reducer from the identity key the mapping declares; it is never inferred from timing.', 'count', ['identity:declared'], 'Always. A session is a session in every source.'],
+  ['model_calls', 'Recorded model-call observations in scope. One per source record that emitted a model_call; overlapping exports are not reconciled in v0.1.', 'count', ['observation'], 'Within a source. Across sources only when both export one record per call.'],
+  ['tool_calls', 'Recorded tool-call observations in scope, linked or not to a model call.', 'count', ['observation'], 'Within a source.'],
+  ['input_tokens', 'Sum of input_tokens over calls with a known value. Reported with coverage known / total calls. Unavailable when coverage is 0.', 'tokens', ['sum', 'coverage', 'semantics:token'], 'Only across calls with the same token semantics tag; a mixed scope shows the by-semantics split.'],
+  ['output_tokens', 'Sum of output_tokens over calls with a known value, reasoning tokens excluded unless the semantics tag includes them.', 'tokens', ['sum', 'coverage', 'semantics:token'], 'Same as input_tokens.'],
+  ['cache_read_tokens', 'Sum of cache_read_tokens where the source reports it. Known for tracelab-claude semantics only in this workspace.', 'tokens', ['sum', 'coverage', 'semantics:token'], 'Only within one semantics tag.'],
+  ['observed_span', 'observed_end_at minus observed_start_at from accepted child timestamps. Describes the span present in imported data, not active time.', 'milliseconds', ['derived', 'span'], 'Never as activity. Comparable as an export span within a source.'],
+  ['wall_latency', 'result_at minus emitted_at for a tool call, as declared by the source. internal_latency_ms is kept separately and never summed with it.', 'milliseconds', ['declared', 'latency'], 'Within a source and a tool runtime.'],
+];
+
+/* assistant */
+const PROFILE = [
+  { path: 'conversation_id', type: 'utf8', stat: '2,000 non-null · 2,000 distinct', samples: ['conv_01HZX4Q8M2', 'conv_01HZX4R1P9', 'conv_01HZX4T7K3'] },
+  { path: 'turns', type: 'list<struct>', stat: '2,000 non-null · length 2 to 41, median 9', samples: [] },
+  { path: 'turns[].role', type: 'utf8', stat: 'user 48% · assistant 47% · tool 5%', samples: ['user', 'assistant', 'tool'] },
+  { path: 'turns[].content', type: 'utf8', stat: 'up to 128 KB · redacted, not sent', redacted: true, samples: [] },
+  { path: 'turns[].tool_calls', type: 'list<struct>', stat: 'present on 31% of assistant turns', samples: [] },
+  { path: 'turns[].tool_calls[].name', type: 'utf8', stat: 'bash 42% · read_file 29% · edit_file 19% · search 10%', samples: ['bash', 'read_file', 'edit_file', 'search'] },
+  { path: 'turns[].tool_calls[].arguments', type: 'utf8', stat: 'JSON text · redacted, not sent', redacted: true, samples: [] },
+  { path: 'model', type: 'utf8', stat: '2 distinct · gpt-5.5-codex 1,712 · claude-opus-4-7 288', samples: ['gpt-5.5-codex', 'claude-opus-4-7'] },
+  { path: 'usage.prompt_tokens', type: 'int64', stat: '1,994 non-null · 6 null · min 412 · max 198,377', samples: ['12431', '48190', '198377'] },
+  { path: 'usage.completion_tokens', type: 'int64', stat: '1,994 non-null · 6 null · min 3 · max 8,192', samples: ['212', '1904', '8192'] },
+  { path: 'created_at', type: 'int64', stat: '2,000 non-null · min 1748736000 · max 1749945599', samples: ['1748736000', '1749081601', '1749945599'] },
+  { path: 'repo', type: 'utf8', stat: '412 distinct', samples: ['repo_4f1a9c', 'repo_b02e77', 'repo_9dc310'] },
+];
+const PROFILE_PATHS = new Set(PROFILE.map(p => '$.' + p.path));
+const MAPPING = [
+  { rule: 'session', target: 'session.identity_key', path: '$.conversation_id', transform: 'trim', type: 'string', policy: 'required', conf: 0.98, status: 'ok', why: 'conversation_id is unique across all 2,000 rows and non-null, so it can be the session identity key scoped by the swe-chat namespace. No other column is both unique and non-null.', ambiguity: null },
+  { rule: 'session', target: 'session.repo', path: '$.repo', transform: '', type: 'string', policy: 'nullable', conf: 0.95, status: 'ok', why: 'Names look like opaque repository ids (repo_xxxx), same shape as TraceLab project ids. Kept as text, not resolved.', ambiguity: null },
+  { rule: 'session', target: 'session.agent', path: '(literal) null', transform: 'const null', type: 'string', policy: 'nullable', conf: 0.7, status: 'amb', why: 'The file has no column naming the agent or harness. The model column names the LLM, not the tool that drove it.', ambiguity: 'Leave agent unavailable (proposed) or set a literal like "swe-chat" for every session. A literal would make agent look observed when it is declared by you.' },
+  { rule: 'model_call', target: 'model_call (one per record)', path: '$', transform: '', type: 'collection', policy: 'required', conf: 0.6, status: 'amb', why: 'usage is reported once per conversation, not per assistant turn, so one model_call per record is the only emission whose tokens are exactly what the source says.', ambiguity: 'Emitting one model_call per assistant turn (median 9 per row) would multiply calls by about 9 while usage would have to be split or repeated. Proposed: one per record; turn count recorded as a diagnostic.' },
+  { rule: 'model_call', target: 'model_call.model', path: '$.model', transform: '', type: 'string', policy: 'required', conf: 0.99, status: 'ok', why: 'Two distinct values, both known model names.', ambiguity: null },
+  { rule: 'model_call', target: 'model_call.input_tokens', path: '$.usage.prompt_tokens', transform: 'int (strict)', type: 'integer', policy: 'warn', conf: 0.92, status: 'ok', why: 'prompt_tokens is the OpenAI-style name for input tokens. Six rows are null; policy warn keeps the call and lowers coverage instead of rejecting it.', ambiguity: null },
+  { rule: 'model_call', target: 'model_call.token_semantics', path: '(literal) by model', transform: 'enum map on $.model', type: 'string', policy: 'required', conf: 0.85, status: 'ok', why: 'gpt-5.5-codex rows get swe-chat-openai, claude-opus-4-7 rows get swe-chat-anthropic. Whether prompt_tokens includes cached prefix tokens is not stated by the source, so these tags are kept distinct from tracelab-* and never summed with them.', ambiguity: null },
+  { rule: 'model_call', target: 'model_call.output_tokens', path: '$.usage.completion_tokens', transform: 'int (strict)', type: 'integer', policy: 'warn', conf: 0.92, status: 'ok', why: 'completion_tokens is the OpenAI-style name for output tokens. Same six nulls as prompt_tokens.', ambiguity: null },
+  { rule: 'model_call', target: 'model_call.started_at', path: '$.created_at', transform: 'timestamp (epoch_s)', type: 'timestamp', policy: 'required', conf: 0.8, status: 'amb', why: 'All values fall between 1748736000 and 1749945599, which read as seconds in June 2026. As milliseconds they would be in 1990, so seconds is the only plausible unit.', ambiguity: 'created_at is one timestamp per conversation. Using it as started_at makes ended_at unavailable and the observed span 0. Proposed: started_at only; span shown as Unavailable.' },
+  { rule: 'tool_call', target: 'tool_call (per turns[*].tool_calls[*])', path: '$.turns[*].tool_calls[*]', transform: '', type: 'collection', policy: 'required', conf: 0.9, status: 'ok', why: 'Bounded array iteration, parent is the enclosing model_call of the record. 31% of assistant turns carry tool calls.', ambiguity: null },
+  { rule: 'tool_call', target: 'tool_call.tool_name', path: '$.turns[*].tool_calls[*].name', transform: 'trim', type: 'string', policy: 'required', conf: 0.97, status: 'ok', why: 'Four distinct names. Not mapped onto TraceLab names (Bash vs bash): tool names stay as the source spells them.', ambiguity: null },
+];
+const CHAT = [
+  { who: 'You', text: 'Propose a mapping for this file. Session per conversation, tokens from usage.' },
+  { who: 'Assistant', text: 'Proposed 11 fields across 3 rules. Three things I could not settle from the profile alone:', list: ['agent: no column names the harness (row 3).', 'one model_call per record or per assistant turn (row 4). I chose per record so tokens stay exact.', 'created_at unit and role (row 9): seconds is the only plausible unit; it can only be a start.'] },
+];
+
+/* ---------------- state ---------------- */
+const state = { route: null, params: {}, filters: { source: 'tracelab', agent: '', model: '', period: 'all' }, chartFilter: null, kpi: null, inspector: { kind: 'page' }, demo: 'normal', mappingSel: 0, chat: CHAT.slice(), mapping: MAPPING.map(m => Object.assign({}, m)), sessionsPage: 0 };
+
+/* ---------------- routing ---------------- */
+const ROUTES = { import: 'screen-import', imports: 'screen-imports', report: 'screen-report', dashboard: 'screen-dashboard', sessions: 'screen-dashboard', session: 'screen-session', assistant: 'screen-assistant', definitions: 'screen-definitions' };
+function parseHash() {
+  const h = (location.hash || '#/dashboard').replace(/^#/, '');
+  const [path, qs] = h.split('?');
+  const parts = path.split('/').filter(Boolean);
+  const params = {}; if (qs) qs.split('&').forEach(kv => { const [k, v] = kv.split('='); params[decodeURIComponent(k)] = decodeURIComponent(v || ''); });
+  if (parts[0] === 'imports' && parts[1]) return { route: 'report', id: parts[1], params };
+  if (parts[0] === 'sessions' && parts[1]) return { route: 'session', id: parts[1], params };
+  return { route: ROUTES[parts[0]] ? parts[0] : 'dashboard', id: null, params };
+}
+function navigate(hash) { if (location.hash === hash) render(); else location.hash = hash; }
+function render() {
+  const r = parseHash(); state.route = r.route; state.id = r.id; state.params = r.params;
+  if (r.params.import) { state.filters.source = IMPORTS.find(i => i.id === r.params.import)?.source || state.filters.source; }
+  $$('.screen').forEach(s => { s.hidden = s.id !== ROUTES[r.route]; });
+  $$('.rail a').forEach(a => { const on = a.dataset.route === r.route; if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  const screen = $('#' + ROUTES[r.route]);
+  const renderers = { import: renderImport, imports: renderImports, report: renderReport, dashboard: renderDashboard, sessions: renderSessionsRoute, session: renderSession, assistant: renderAssistant, definitions: renderDefinitions };
+  renderers[r.route]();
+  applyDemo(screen);
+  if (r.route !== 'sessions') $('#work').scrollTop = 0;
+  document.title = 'AgentScope · ' + screen.querySelector('h1').textContent.trim();
+}
+function crumbs(parts) { $('#crumbs').innerHTML = parts.map((p, i) => (i ? '<span class="sep" aria-hidden="true">/</span>' : '') + (p.href && i < parts.length - 1 ? `<a href="${p.href}">${esc(p.label)}</a>` : `<span class="cur">${esc(p.label)}</span>`)).join(''); }
+
+/* ---------------- demo states ---------------- */
+function applyDemo(screen) {
+  const s = state.demo;
+  ['normal', 'loading', 'empty', 'error'].forEach(k => { const el = screen.querySelector('.s-' + k); if (el) el.hidden = k !== s; });
+  demoLabel();
+}
+$$('#demo input[name=state]').forEach(i => i.addEventListener('change', () => { state.demo = i.value; applyDemo($('#' + ROUTES[state.route])); $('#demo').open = false; announce('Demo state: ' + i.value); }));
+document.addEventListener('click', e => { const b = e.target.closest('[data-state-reset]'); if (b) { state.demo = 'normal'; $('#demo input[value=normal]').checked = true; applyDemo($('#' + ROUTES[state.route])); } });
+document.addEventListener('click', e => { const d = $('#demo'); if (d.open && !d.contains(e.target)) d.open = false; });
+$('#theme-dark').addEventListener('change', e => { document.documentElement.dataset.theme = e.target.checked ? 'dark' : ''; });
+
+/* ---------------- inspector ---------------- */
+const app = $('#app');
+function setInspector(open) { const was = app.dataset.inspector; app.dataset.inspector = open ? 'open' : 'closed'; $('#toggle-inspector').setAttribute('aria-pressed', String(open)); if (was !== app.dataset.inspector && (state.route === 'dashboard' || state.route === 'sessions')) renderCharts(aggregate()); }
+$('#toggle-inspector').addEventListener('click', () => setInspector(app.dataset.inspector !== 'open'));
+$('#close-inspector').addEventListener('click', () => { setInspector(false); $('#toggle-inspector').focus(); });
+function inspect(kind, data) {
+  state.inspector = { kind, data };
+  const body = $('#insp-body'); const K = $('#insp-kind');
+  const sec = (h, inner) => `<section class="insp-sec"><h3>${esc(h)}</h3>${inner}</section>`;
+  const kv = rows => `<dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>`;
+  let html = '', kindLabel = '';
+  switch (kind) {
+    case 'page': {
+      kindLabel = 'nothing selected';
+      const tips = { import: 'Drop a file to see its hash and whether these bytes were seen before.', imports: 'Select an attempt with <kbd>j</kbd> <kbd>k</kbd> to see its files, mapping revision and error, if any.', report: 'Select a reject or a file. Definitions of the outcome counts are one click away on each label.', dashboard: 'Select a figure, a bar or a session. Definition, coverage and provenance appear here; nothing is repeated on the canvas.', sessions: 'Select a session with <kbd>j</kbd> <kbd>k</kbd>; <kbd>Enter</kbd> opens it.', session: 'Select a model call or tool call. <kbd>o</kbd> opens its source record.', assistant: 'Select a field to read why the assistant proposed it and what it was unsure about.', definitions: 'Select a metric to see which sources in this workspace can report it.' };
+      html = `<p class="insp-empty">${tips[state.route] || ''}</p>`;
+      break; }
+    case 'file': {
+      kindLabel = 'file';
+      html = `<div class="insp-title">tracelab-sample.jsonl.gz</div>` + sec('Identity', kv([['SHA-256', `<span class="hash">${SHA}</span>`], ['Size', '681,057 bytes'], ['Format', 'jsonl, gzip (sniffed from the first 4 KB, not the extension)'], ['Records', '4,770 lines, 0 undecodable']])) + sec('Earlier imports of these bytes', `<div class="insp-links"><a href="#/imports/imp_3e21f89dbaef419a8f60"><span class="id">imp_3e21f89dbaef419a8f60</span> · committed · 2026-09-07 09:12</a><a href="#/imports/imp_b19e44c0d7a2f8e6b3c1"><span class="id">imp_b19e44c0d7a2f8e6b3c1</span> · duplicate · 2026-09-07 09:31</a></div>`) + sec('First record', `<pre>${esc(rawJson(EXAMPLE_MC[0], EXAMPLE_TC, SESSIONS[0]).slice(0, 420))}\n  …</pre>`);
+      break; }
+    case 'mapping': {
+      kindLabel = 'mapping';
+      html = `<div class="insp-title">tracelab-v1 · revision 1</div>` + sec('Identity', kv([['Id', '<span class="id">map_82934058a2f6af1cbfc6</span>'], ['Source', 'tracelab'], ['Input', 'jsonl'], ['Created by', 'bundled'], ['DSL', 'v1 · target schema v1'], ['Hash', '<span class="hash">7b1e0c…a4d7</span>']])) + sec('Rules', `<dl class="kv"><dt>session</dt><dd>root → identity <code>$.session_id</code>, harness from <code>$.provider</code> (enum map)</dd><dt>model_call</dt><dd>root → tokens, timestamps from <code>timing_events[]</code></dd><dt>tool_call</dt><dd><code>$.tools[*]</code> → parent = enclosing model_call</dd></dl>`) + sec('Validation', '<p>0 issues. Validated against DSL v1 on 2026-09-07 09:11.</p>');
+      break; }
+    case 'report': {
+      const imp = data; kindLabel = 'import';
+      html = `<div class="insp-title id">${esc(imp.id)}</div>` + sec('Provenance', kv([['Bytes', `<span class="hash">${imp.sha}</span>`], ['Mapping', `${esc(imp.mapping.name)} rev ${imp.mapping.rev}<br><span class="id muted">${esc(imp.mapping.id)}</span>`], ['Transaction', imp.status === 'committed' ? 'committed ' + esc(imp.finished.replace('T', ' ').replace('Z', ' UTC')) : imp.status === 'duplicate' ? 'no transaction opened' : 'rolled back']])) + sec('Outcome definitions', kv([['accepted', 'every rule emitted with no reject'], ['partial', 'at least one entity emitted, at least one rejected'], ['duplicate', 'same bytes, locator and emission path already committed for this source'], ['rejected', 'nothing emitted; each reject explains why'], ['ignored', 'record matched no rule predicate']]));
+      break; }
+    case 'importrow': {
+      const imp = data; kindLabel = 'import attempt';
+      html = `<div class="insp-title id">${esc(imp.id)}</div><p><span class="pill ${pillClass(imp.status)}">${imp.status}</span></p>` + sec('Files', kv([[imp.file, `${fmt(imp.size)} bytes · ${imp.format}<br><span class="hash">${imp.sha}</span>`]])) + sec('Mapping revision', `<p>${esc(imp.mapping.name)} revision ${imp.mapping.rev} <span class="id muted">${esc(imp.mapping.id)}</span></p>`) + (imp.error ? sec('Error', `<pre>${esc(imp.error)}</pre>`) : '') + (imp.of ? sec('Duplicate of', `<a href="#/imports/${imp.of}" class="id">${imp.of}</a>`) : '') + sec('', `<div class="insp-links"><a href="#/imports/${imp.id}">Open report</a></div>`);
+      break; }
+    case 'reject': {
+      const rj = data; kindLabel = 'reject';
+      html = `<div class="insp-title"><code>${esc(rj.code)}</code> at <span class="id">${esc(rj.locator)}</span></div>` + sec('Why', `<p>${esc(rj.message)}</p>`) + sec('Where', kv([['Rule', `<code>${esc(rj.rule)}</code>`], ['Path', `<code>${esc(rj.path)}</code>`], ['Target field', rj.field ? `<code>${esc(rj.field)}</code>` : 'not about one field']])) + sec('Raw payload', `<pre>${esc(rj.payload)}</pre>`) + sec('Fix', '<p class="dim">Change the null policy of this field to <code>warn</code> or add a transform <code>int (lenient: strip thousands separators)</code> in a new mapping revision, then re-import: the same bytes with a different revision insert only what the earlier revision rejected.</p>');
+      break; }
+    case 'kpi': {
+      const k = data; kindLabel = 'metric';
+      html = `<div class="insp-title">${esc(k.label)}</div><div class="bignum">${k.value === null ? 'Unavailable' : fmt(k.value)}</div>` + sec('Definition', `<p>${esc(k.def)}</p><p class="small muted" style="margin-top:4px">Unit: ${esc(k.unit)}</p>`) + (k.cov ? sec('Coverage', `<p>${fmt(k.cov.known)} / ${fmt(k.cov.total)} calls have a known value${k.cov.known < k.cov.total ? ` · ${fmt(k.cov.total - k.cov.known)} unknown` : ''}</p>` + (k.bySem ? `<dl class="kv" style="margin-top:8px">${k.bySem.map(([s, v]) => `<dt><code>${esc(s)}</code></dt><dd>${v === null ? 'Unavailable' : fmt(v)}</dd>`).join('')}</dl><p class="small muted" style="margin-top:6px">Semantics differ; the total above is a sum of unlike things and is labelled as such on export.</p>` : '')) : '') + sec('Scope', `<p>${scopeLabel()}</p>`) + sec('', `<div class="insp-links"><a href="#/definitions">Comparability rules</a><button class="btn-link" type="button" data-act="scroll-sessions">Sessions contributing (${fmt(aggregate().sessions)})</button></div>`);
+      break; }
+    case 'bar': {
+      const b = data; kindLabel = 'chart value';
+      html = `<div class="insp-title">${esc(b.label)}</div><div class="bignum">${fmt(b.value)}</div><p class="small muted">${esc(b.unit)}</p>` + sec('How it is computed', `<p>${esc(b.def)}</p>`) + sec('Scope', `<p>${scopeLabel()}</p>`) + sec('', `<div class="insp-links"><button class="btn-link" type="button" data-act="scroll-sessions">Matching sessions are listed below the charts</button></div>`);
+      break; }
+    case 'sessionrow': {
+      const s = data; kindLabel = 'session';
+      html = `<div class="insp-title id">${esc(s.external)}</div>` + sec('Identity', kv([['Session id', `<span class="id">${esc(s.id)}</span>`], ['Source', esc(s.source)], ['Agent', s.agent ? esc(s.agent) : '<span class="muted">Unavailable</span>'], ['Repository', `<span class="id">${esc(s.repo)}</span>`], ['User', `<span class="id">${esc(s.user)}</span>`]])) + sec('Measures', kv([['Input tokens', `${fmt(s.input)} <span class="muted">· ${fmt(s.known)} / ${fmt(s.calls)} calls</span>`], ['Output tokens', fmt(s.output)], ['Observed span', dur(s.span)], ['Tools used', s.toolset.length ? s.toolset.map(t => `<span class="tag">${esc(t)}</span>`).join(' ') : '<span class="muted">none</span>']])) + sec('', `<div class="insp-links"><a href="#/sessions/${s.id}">Open session <kbd>Enter</kbd></a></div>`);
+      break; }
+    case 'session': {
+      const s = data; kindLabel = 'session';
+      html = `<div class="insp-title id">${esc(s.external)}</div>` + sec('Provenance', kv([['Session id', `<span class="id">${esc(s.id)}</span>`], ['Import', `<a href="#/imports/imp_3e21f89dbaef419a8f60" class="id">imp_3e21f89dbaef419a8f60</a>`], ['File', `<span class="hash">${shortSha(SHA)}</span>`], ['Mapping', 'tracelab-v1 rev 1']])) + sec('Interval', kv([['Observed', `${esc(s.start)}<br>to ${esc(new Date(new Date(s.start).getTime() + s.span).toISOString())}`], ['Declared', '<span class="muted">Unavailable</span> (source has no declared start or end)'], ['Span', dur(s.span) + ' <span class="muted">· data span, not active time</span>']])) + sec('Coverage', kv([['Input tokens', `${fmt(s.known)} / ${fmt(s.calls)} calls`], ['Cache read', s.sem === 'tracelab-claude' ? `${fmt(s.known)} / ${fmt(s.calls)} calls` : 'Unavailable for ' + esc(s.sem)]]));
+      break; }
+    case 'call': {
+      const c = data; kindLabel = c.kind === 'mc' ? 'model call' : 'tool call';
+      html = `<div class="insp-title id">${esc(c.id)}</div>` + sec('Provenance', kv([['File', `<span class="hash">${SHA}</span>`], ['Locator', `<span class="id">${esc(c.locator)}</span>`], ['Mapping', 'tracelab-v1 rev 1'], ['Emission path', `<code>${c.kind === 'mc' ? 'model_call' : 'tool_call[' + (c.index || 0) + ']'}</code>`]])) + (c.kind === 'mc' ? sec('Values as stored', kv([['input_tokens', fmt(c.input)], ['output_tokens', fmt(c.output)], ['cache_read_tokens', fmt(c.cache)], ['token_semantics', `<code>${esc(c.sem)}</code>`], ['started_at', esc(c.started)], ['ended_at', esc(c.ended)]])) : sec('Values as stored', kv([['tool_name', esc(c.tool)], ['model_call', `<span class="id">${esc(c.mc)}</span>`], ['emitted_at', esc(c.at)], ['wall_latency_ms', fmt(c.latency)], ['is_error', c.error === null ? 'Unavailable' : String(c.error)]]))) + sec('', `<div class="insp-links"><button class="btn-link" type="button" data-act="open-source">Open source record <kbd>o</kbd></button></div>`);
+      break; }
+    case 'diag': {
+      kindLabel = 'diagnostic';
+      html = `<div class="insp-title"><code>conflicting_value</code> on <code>agent</code></div>` + sec('What happened', '<p>Two records of this session declare different agents. The reducer keeps the first accepted value and records the conflict. Nothing was inferred or merged.</p>') + sec('Records', kv([['line:188728', '<code>"harness": "claude"</code>'], ['line:188731', '<code>"harness": "claude-code"</code>']])) + sec('', `<div class="insp-links"><button class="btn-link" type="button" data-act="open-source-0">Open line:188728</button><button class="btn-link" type="button" data-act="open-source-1">Open line:188731</button></div>`);
+      break; }
+    case 'mapfield': {
+      const m = data; kindLabel = 'mapping field';
+      html = `<div class="insp-title">${esc(m.target)}</div><p class="small muted">rule <code>${esc(m.rule)}</code> · confidence ${Math.round(m.conf * 100)}%</p>` + sec('Why the assistant proposed this', `<p>${esc(m.why)}</p>`) + (m.ambiguity ? sec('Ambiguity', `<div class="notice notice-warn"><div class="body small">${esc(m.ambiguity)}</div></div>`) : '') + (m.error ? sec('Validation', `<div class="notice notice-danger"><div class="body small">${esc(m.error)}</div></div>`) : '') + sec('Sample values from the profile', (() => { const p = PROFILE.find(p => '$.' + p.path === m.path); return p ? (p.samples.length ? `<p>${p.samples.map(s => `<code>${esc(s)}</code>`).join(' ')}</p>` : `<p class="muted">${p.redacted ? 'Redacted; never left this machine.' : 'Structural column, no scalar samples.'}</p>`) : '<p class="muted">Not a profile column.</p>'; })()) + sec('Conversation', renderChat());
+      break; }
+    case 'definition': {
+      const d = data; kindLabel = 'definition';
+      html = `<div class="insp-title"><code>${esc(d[0])}</code></div>` + sec('Definition', `<p>${esc(d[1])}</p>`) + sec('Reported by', kv([['tracelab', d[0] === 'cache_read_tokens' ? 'tracelab-claude only' : 'yes'], ['swe-chat', d[0] === 'observed_span' || d[0] === 'wall_latency' || d[0] === 'cache_read_tokens' ? '<span class="muted">Unavailable</span> (source has one timestamp per conversation)' : 'yes']]));
+      break; }
+    case 'preview': {
+      kindLabel = 'preview';
+      html = `<div class="insp-title">Preview of 200 rows with the draft mapping</div>` + sec('Outcome', kv([['accepted', '193'], ['partial', '3'], ['rejected', '4'], ['ignored', '0']])) + sec('Emitted', kv([['session', '193'], ['model_call', '193'], ['tool_call', '611']])) + sec('Rejects', `<p><code>invalid_type</code> ×3 at <code>$.usage.prompt_tokens</code> (string with thousands separator) · <code>missing_required</code> ×1 at <code>$.conversation_id</code></p>`) + sec('', '<p class="dim">Nothing was written. Save the revision to import with it.</p>');
+      break; }
+  }
+  K.textContent = kindLabel; body.innerHTML = html;
+  if (app.dataset.inspector !== 'open' && kind !== 'page') setInspector(true);
+}
+$('#insp-body').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'scroll-sessions') { $('#sessions-table').scrollIntoView({ block: 'start' }); const first = $('#sessions-body tr'); if (first) first.focus(); }
+  if (act === 'open-source') { const c = state.inspector.data; openSource(c); }
+  if (act === 'open-source-0') openSource(Object.assign({ kind: 'mc' }, EXAMPLE_MC[0]));
+  if (act === 'open-source-1') openSource(Object.assign({ kind: 'mc' }, EXAMPLE_MC[1]));
+});
+$('#insp-body').addEventListener('submit', e => { if (e.target.id === 'chat-form') { e.preventDefault(); sendChat(); } });
+$('#insp-body').addEventListener('keydown', e => { if (e.target.id === 'chat-text' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+document.addEventListener('click', e => { const b = e.target.closest('button[data-inspect]'); if (!b) return; const k = b.dataset.inspect; if (k === 'report') inspect('report', IMPORTS.find(i => i.id === state.id) || IMPORTS[1]); else if (k === 'session') inspect('session', SESSION_BY_ID[state.id] || SESSIONS[0]); else inspect(k); });
+function pillClass(s) { return { committed: 'pill-ok', duplicate: 'pill-warn', failed: 'pill-danger', running: 'pill-info pill-running' }[s] || 'pill-neutral'; }
+
+/* ---------------- source drawer ---------------- */
+const drawer = $('#source-drawer'); let drawerOpener = null;
+function openSource(c) {
+  const s = SESSION_BY_ID[state.id] || SESSIONS[0];
+  const det = sessionDetail(s);
+  const mc = c.kind === 'mc' ? c : det.mcs.find(m => m.id === c.mc) || det.mcs[0];
+  $('#source-sha').textContent = SHA; $('#source-locator').textContent = c.locator; $('#source-sub').textContent = c.locator;
+  $('#source-contrib').innerHTML = det.mcs.filter(m => m.locator === mc.locator).map(m => `<span class="id">${esc(m.id)}</span>`).concat(det.tcs.filter(t => t.locator === mc.locator).map(t => `<span class="id">${esc(t.id)}</span>`)).join(', ') + ' <span class="muted">via tracelab-v1 rev 1</span>';
+  $('#source-json').textContent = rawJson(mc, det.tcs, s);
+  drawerOpener = document.activeElement; drawer.showModal(); $('#close-source').focus();
+}
+$('#close-source').addEventListener('click', () => drawer.close());
+drawer.addEventListener('close', () => { if (drawerOpener && drawerOpener.focus) drawerOpener.focus(); });
+drawer.addEventListener('click', e => { if (e.target === drawer) drawer.close(); });
+$('#copy-raw').addEventListener('click', () => { const t = $('#source-json').textContent; if (navigator.clipboard) navigator.clipboard.writeText(t).catch(() => {}); $('#copy-raw').textContent = 'Copied'; setTimeout(() => { $('#copy-raw').textContent = 'Copy JSON'; }, 1500); });
+
+/* ---------------- tables: j/k selection ---------------- */
+function rowsOf(table) { return $$('tbody tr[tabindex]', table); }
+function selectRow(tr) { const table = tr.closest('table'); rowsOf(table).forEach(r => r.setAttribute('aria-selected', String(r === tr))); tr.focus({ preventScroll: false }); if (tr.dataset.inspect) { const [kind, idx] = tr.dataset.inspect.split(':'); inspectRow(kind, idx); } }
+function inspectRow(kind, idx) {
+  if (kind === 'importrow') inspect('importrow', IMPORTS[+idx]);
+  if (kind === 'sessionrow') inspect('sessionrow', SESSION_BY_ID[idx]);
+  if (kind === 'reject') inspect('reject', (IMPORTS.find(i => i.id === state.id) || IMPORTS[2]).rejects[+idx]);
+  if (kind === 'mc' || kind === 'tc') { const s = SESSION_BY_ID[state.id] || SESSIONS[0]; const det = sessionDetail(s); const c = kind === 'mc' ? det.mcs[+idx] : det.tcs[+idx]; inspect('call', Object.assign({ kind, index: +idx }, c)); }
+  if (kind === 'mapfield') { state.mappingSel = +idx; inspect('mapfield', state.mapping[+idx]); }
+  if (kind === 'definition') inspect('definition', DEFINITIONS[+idx]);
+}
+document.addEventListener('click', e => { const tr = e.target.closest('tbody tr[tabindex]'); if (tr && !e.target.closest('a, button, input, select')) selectRow(tr); });
+document.addEventListener('dblclick', e => { const tr = e.target.closest('tbody tr[tabindex]'); if (tr && tr.dataset.open) navigate(tr.dataset.open); });
+
+/* ---------------- 1. import ---------------- */
+let importStep = 0;
+function renderImport() {
+  crumbs([{ label: 'Import' }]);
+  const file = $('#import-file'), map = $('#import-mapping'), prev = $('#import-preview'), run = $('#import-running'), drop = $('#import-drop');
+  drop.hidden = importStep >= 1; file.hidden = importStep < 1; map.hidden = importStep < 1; prev.hidden = importStep < 2; run.hidden = importStep !== 3;
+  $('#preview-result').hidden = importStep < 2;
+  if (importStep === 0) inspect('page'); else if (state.inspector.kind === 'page') inspect('file');
+  if (!$('#emissions-body').children.length) {
+    const r = rng(3);
+    const rows = [];
+    for (let i = 0; i < 12; i++) { const line = i * 3 + 1; const kind = i % 3 === 2 ? 'tool_call' : i % 3 === 1 ? 'model_call' : 'session'; rows.push(`<tr><td><span class="tag">${kind}</span></td><td><code>${kind === 'tool_call' ? '$.tools[' + (i % 2) + ']' : '$'}</code></td><td class="id">line:${line}</td><td class="wrap"><code>${kind === 'session' ? `identity_key "${hex(r, 8)}-…", agent "claude-code", repo "project_${hex(r, 8)}"` : kind === 'model_call' ? `model "claude-opus-4-6", input_tokens ${fmt(12000 + Math.floor(r() * 90000))}, output_tokens ${fmt(Math.floor(r() * 900))}, started_at "2026-06-0${1 + Math.floor(r() * 9)}T…"` : `tool_name "${['Bash', 'Read', 'Edit', 'Grep'][Math.floor(r() * 4)]}", wall_latency_ms ${fmt(Math.floor(r() * 8000))}, is_error false`}</code></td></tr>`); }
+    $('#emissions-body').innerHTML = rows.join('');
+  }
+}
+$('#use-sample').addEventListener('click', () => { importStep = 1; renderImport(); inspect('file'); announce('File stored and hashed. 4,770 records. These bytes were imported before.'); $('#mapping').focus(); });
+['dragenter', 'dragover'].forEach(ev => $('#import-drop').addEventListener(ev, e => { e.preventDefault(); e.currentTarget.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => $('#import-drop').addEventListener(ev, e => { e.preventDefault(); e.currentTarget.classList.remove('over'); if (ev === 'drop') $('#use-sample').click(); }));
+$('#import-drop').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#use-sample').click(); } });
+$('#remove-file').addEventListener('click', () => { importStep = 0; renderImport(); $('#import-drop').focus(); });
+$('#run-preview').addEventListener('click', () => {
+  importStep = 2; $('#import-preview').hidden = false; $('#preview-result').hidden = true; const p = $('#preview-progress'); p.hidden = false; const bar = $('i', p);
+  let pct = 0; const t = setInterval(() => { pct += 25; bar.style.width = pct + '%'; $('#preview-progress-text').textContent = pct < 100 ? `Applying tracelab-v1 revision 1 to record ${pct * 2} of 200…` : 'Done'; if (pct >= 100) { clearInterval(t); p.hidden = true; $('#preview-result').hidden = false; announce('Preview ready: 200 sampled, 200 accepted, 0 rejected, 1,081 warnings.'); $('#tabbtn-emissions').focus(); } }, 140);
+});
+$$('#screen-import [role=tab]').forEach((tab, i, tabs) => {
+  tab.addEventListener('click', () => activateTab(tab));
+  tab.addEventListener('keydown', e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); const n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]; activateTab(n); n.focus(); } });
+});
+function activateTab(tab) { const tabs = $$('[role=tab]', tab.parentElement); tabs.forEach(t => { const on = t === tab; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; $('#' + t.getAttribute('aria-controls')).hidden = !on; }); }
+$('#run-import').addEventListener('click', () => {
+  importStep = 3; renderImport(); const bar = $('#import-bar'); let n = 0;
+  const t = setInterval(() => { n = Math.min(4770, n + 530); bar.style.width = (n / 47.7) + '%'; $('#import-progress-text').textContent = `${fmt(n)} of 4,770 records applied · 0 rejected so far`; if (n >= 4770) { clearInterval(t); $('#import-progress-text').textContent = 'Committed. Opening the report…'; announce('Import committed: 80 sessions, 4,770 model calls, 5,723 tool calls.'); setTimeout(() => { importStep = 0; navigate('#/imports/imp_3e21f89dbaef419a8f60'); }, 500); } }, 180);
+});
+
+/* ---------------- 2. report ---------------- */
+function renderReport() {
+  const imp = IMPORTS.find(i => i.id === state.id) || IMPORTS[1];
+  crumbs([{ label: 'Imports', href: '#/imports' }, { label: imp.id }]);
+  $('#report-id').textContent = imp.id;
+  $('#report-dash-link').href = '#/dashboard?import=' + imp.id; $('#report-dash-link').hidden = imp.status !== 'committed';
+  const lede = { committed: `${esc(imp.file)} into source ${esc(imp.source)} with ${esc(imp.mapping.name)} revision ${imp.mapping.rev}. Committed ${esc(imp.finished.replace('T', ' ').replace('Z', ''))} UTC in ${dur(ms(imp.started, imp.finished))}.`, duplicate: `${esc(imp.file)} was already committed for source ${esc(imp.source)} as <a href="#/imports/${imp.of}" class="id">${imp.of}</a>. Nothing was inserted; every record is counted as duplicate.`, failed: `${esc(imp.file)} into source ${esc(imp.source)}. The transaction rolled back; nothing was inserted.` };
+  $('#report-lede').innerHTML = lede[imp.status];
+  const rec = imp.records; const ent = imp.entities; const w = imp.warnings;
+  const cls = (n, bad) => n === 0 ? 'zero' : bad ? bad : '';
+  let html = `<div class="row"><span class="pill ${pillClass(imp.status)}">${imp.status}</span><span class="small dim">Started ${esc(imp.started.replace('T', ' ').replace('Z', ''))} UTC · mapping <span class="id">${esc(imp.mapping.id)}</span></span></div>`;
+  if (imp.status === 'failed') html += `<div class="notice notice-danger" role="alert"><div class="body"><p><b>${esc(imp.error)}</b></p><p class="dim">Fix: map this file with a parquet mapping. The assistant can propose one from the field profile.</p></div><div class="actions"><a class="btn btn-sm" href="#/assistant">Open mapping assistant</a></div></div>`;
+  if (imp.status === 'duplicate') html += `<div class="notice notice-warn" role="note"><div class="body"><p>Duplicate detection is by exact bytes (SHA-256), locator and emission path, not by native ids. The same file under a new mapping revision inserts only what the earlier revision did not.</p></div></div>`;
+  html += `<div class="strip" aria-label="Source record outcomes">
+    <div><span class="label">Source records</span><span class="val">${fmt(imp.total)}</span><span class="sub">in ${imp.format}</span></div>
+    <div><span class="label">Accepted</span><span class="val ${cls(rec.accepted)}">${fmt(rec.accepted)}</span></div>
+    <div><span class="label">Partial</span><span class="val ${cls(rec.partial, 'warn')}">${fmt(rec.partial)}</span></div>
+    <div><span class="label">Duplicate</span><span class="val ${cls(rec.duplicate, 'warn')}">${fmt(rec.duplicate)}</span></div>
+    <div><span class="label">Rejected</span><span class="val ${cls(rec.rejected, 'bad')}">${fmt(rec.rejected)}</span></div>
+    <div><span class="label">Ignored</span><span class="val ${cls(rec.ignored)}">${fmt(rec.ignored)}</span></div>
+  </div>`;
+  if (imp.status === 'committed') html += `<div class="strip" aria-label="Entities emitted and warnings">
+    <div><span class="label">Sessions</span><span class="val">${fmt(ent.session || 0)}</span></div>
+    <div><span class="label">Model calls</span><span class="val">${fmt(ent.model_call || 0)}</span></div>
+    <div><span class="label">Tool calls</span><span class="val">${fmt(ent.tool_call || 0)}</span></div>
+    ${Object.keys(w).map(k => `<div><span class="label">Warning <code>${k}</code></span><span class="val warn">${fmt(w[k])}</span><span class="sub">${{ null: 'explicit null kept as null', absent: 'key missing, kept as null', invalid_value: 'value ignored by policy warn' }[k] || ''}</span></div>`).join('')}
+  </div>`;
+  html += `<section class="panel"><div class="tbl-wrap"><table><caption>Imported files<span class="cap-meta">${imp.status === 'committed' ? '1' : '1, not committed'}</span></caption><thead><tr><th scope="col">File</th><th scope="col">SHA-256</th><th scope="col" class="num">Bytes</th><th scope="col">Format</th><th scope="col" class="num">Records</th><th scope="col">Mapping revision</th></tr></thead><tbody><tr><td>${esc(imp.file)}</td><td class="hash wrap" style="max-width:34ch">${imp.sha}</td><td class="num">${fmt(imp.size)}</td><td>${imp.format}</td><td class="num">${fmt(imp.total)}</td><td>${esc(imp.mapping.name)} rev ${imp.mapping.rev}</td></tr></tbody></table></div></section>`;
+  /* rejects browser */
+  const rejects = imp.rejects || [];
+  const codes = {}; rejects.forEach(r => { codes[r.code] = (codes[r.code] || 0) + 1; });
+  const filter = state.rejectCode || '';
+  const shown = rejects.filter(r => !filter || r.code === filter);
+  html += `<section class="panel" id="rejects"><div class="panel-head"><h2>Rejects</h2><span class="muted small">${fmt(rejects.length)}</span>${rejects.length ? `<div class="filters" style="margin-left:12px" role="group" aria-label="Filter by code"><button class="chip" type="button" data-code="" aria-pressed="${filter === ''}">All ${rejects.length}</button>${Object.entries(codes).map(([c, n]) => `<button class="chip" type="button" data-code="${c}" aria-pressed="${filter === c}"><code>${c}</code> ${n}</button>`).join('')}</div>` : ''}</div>`;
+  if (!rejects.length) html += `<div class="empty"><h3>${imp.status === 'committed' ? 'No record was rejected' : 'No rejects: the import did not run the mapping'}</h3><p>${imp.status === 'committed' ? 'Every source record emitted what its rules declared. Warnings above are not rejects: they mark values kept as null.' : imp.status === 'failed' ? 'The reader failed before any rule ran, so there is nothing to browse. The error at the top says what to change.' : 'Duplicate records are not rejects. They are recognised by bytes and skipped, and the original import holds their outcomes.'}</p></div>`;
+  else html += `<div class="tbl-wrap"><table id="rejects-table"><caption class="sr-only">Rejected records</caption><thead><tr><th scope="col">Locator</th><th scope="col">Rule</th><th scope="col">Path</th><th scope="col">Code</th><th scope="col">Message</th></tr></thead><tbody>${shown.map((r, i) => `<tr tabindex="0" data-inspect="reject:${rejects.indexOf(r)}"><td class="id">${esc(r.locator)}</td><td><code>${esc(r.rule)}</code></td><td><code>${esc(r.path)}</code></td><td><code>${esc(r.code)}</code></td><td class="wrap">${esc(r.message)}</td></tr>`).join('')}</tbody></table></div><div class="tbl-foot"><span>${shown.length} of ${rejects.length} · select a row to read its raw payload in the inspector</span></div>`;
+  html += `</section>`;
+  $('#report-body').innerHTML = html;
+  $$('#rejects .chip').forEach(ch => ch.addEventListener('click', () => { state.rejectCode = ch.dataset.code; renderReport(); $$('#rejects .chip').find(c => c.dataset.code === state.rejectCode)?.focus(); }));
+  if (state.inspector.kind !== 'reject') inspect('page');
+}
+
+/* ---------------- 3. imports ---------------- */
+function renderImports() {
+  crumbs([{ label: 'Imports' }]);
+  $('#imports-body').innerHTML = IMPORTS.map((imp, i) => `<tr tabindex="0" data-inspect="importrow:${i}" data-open="#/imports/${imp.id}">
+    <td><a href="#/imports/${imp.id}" class="id" title="${imp.id}">${short(imp.id)}</a></td><td><span class="pill ${pillClass(imp.status)}">${imp.status}</span></td><td>${esc(imp.source)}</td><td>${esc(imp.file)}</td><td>${esc(imp.mapping.name)} <span class="muted">rev ${imp.mapping.rev}</span></td>
+    <td class="num">${fmt(imp.total)}</td><td class="num">${imp.records.rejected ? '<span style="color:var(--danger)">' + fmt(imp.records.rejected) + '</span>' : '<span class="muted">0</span>'}</td>
+    <td class="num">${imp.entities.session ? fmt(imp.entities.session) : '<span class="muted">—</span>'}</td><td class="num">${imp.entities.model_call ? fmt(imp.entities.model_call) : '<span class="muted">—</span>'}</td><td class="num">${imp.entities.tool_call ? fmt(imp.entities.tool_call) : '<span class="muted">—</span>'}</td>
+    <td class="nowrap">${esc(imp.started.replace('T', ' ').slice(0, 16))}</td></tr>`).join('');
+  inspect('page');
+}
+
+/* ---------------- 4. dashboard ---------------- */
+function scopeCells() { const f = state.filters; return CELLS.filter(c => (!f.source || c.source === f.source) && (!f.agent || c.agent === f.agent) && (!f.model || c.model === f.model)); }
+function scopeLabel() { const f = state.filters; return [f.source ? 'source ' + f.source : 'all sources', f.agent ? 'agent ' + f.agent : 'all agents', f.model ? 'model ' + f.model : 'all models', f.period === 'all' ? 'all time' : f.period === '14d' ? '2026-06-01 to 06-14' : 'last 7 days of data'].join(', '); }
+function aggregate() {
+  const cells = scopeCells(); const sum = k => cells.reduce((a, c) => a + (c[k] || 0), 0);
+  const cacheKnown = cells.filter(c => c.cache !== null);
+  return { sessions: sum('sessions'), calls: sum('calls'), input: sum('input'), output: sum('output'), tools: sum('tools'), unknownUsage: sum('unknownUsage'), unknownTs: sum('unknownTs'), unlinked: sum('unlinked'), cache: cacheKnown.length ? cacheKnown.reduce((a, c) => a + c.cache, 0) : null, cacheCov: cacheKnown.reduce((a, c) => a + c.calls, 0), rejects: [...new Set(cells.map(c => c.source))].reduce((a, s) => a + REJECTS_BY_SOURCE[s], 0), bySem: Object.entries(cells.reduce((m, c) => { m[c.sem] = (m[c.sem] || 0) + c.input; return m; }, {})), bySemOut: Object.entries(cells.reduce((m, c) => { m[c.sem] = (m[c.sem] || 0) + c.output; return m; }, {})), cells };
+}
+function renderDashboard() {
+  crumbs([{ label: 'Dashboard' }, { label: scopeLabel() }]);
+  const f = state.filters; $('#f-source').value = f.source; $('#f-agent').value = f.agent; $('#f-model').value = f.model; $('#f-period').value = f.period;
+  $('#f-clear').hidden = !(f.source !== 'tracelab' || f.agent || f.model || f.period !== 'all' || state.chartFilter);
+  $('#chart-filter-chip').hidden = !state.chartFilter; if (state.chartFilter) $('#chart-filter-label').textContent = state.chartFilter.label;
+  const a = aggregate();
+  const known = a.calls - a.unknownUsage;
+  const kpis = [
+    { key: 'sessions', label: 'Sessions', value: a.sessions, unit: 'count', def: DEFINITIONS[0][1], sub: 'distinct, from the identity key' },
+    { key: 'model_calls', label: 'Model calls', value: a.calls, unit: 'count', def: DEFINITIONS[1][1], sub: 'recorded observations' },
+    { key: 'input_tokens', label: 'Input tokens', value: known ? a.input : null, unit: 'tokens', def: DEFINITIONS[3][1], cov: { known, total: a.calls }, bySem: a.bySem },
+    { key: 'output_tokens', label: 'Output tokens', value: known ? a.output : null, unit: 'tokens', def: DEFINITIONS[4][1], cov: { known, total: a.calls }, bySem: a.bySemOut },
+  ];
+  $('#kpis').innerHTML = kpis.map((k, i) => { const pct = k.cov ? (k.cov.total ? k.cov.known / k.cov.total : 0) : 1; const gcls = !k.cov ? '' : pct === 0 ? 'none' : pct < 1 ? 'partial' : ''; return `<div class="kpi${state.kpi === k.key ? ' on' : ''}" data-kpi="${i}"><h2><button class="kpi-btn" type="button" aria-pressed="${state.kpi === k.key}" aria-describedby="kpi-cov-${i}">${esc(k.label)}<kbd aria-hidden="true">${i + 1}</kbd></button></h2><div class="val${k.value === null ? ' unavail' : ''}">${k.value === null ? 'Unavailable' : fmt(k.value)}</div><div class="cov" id="kpi-cov-${i}">${k.cov ? `<span class="gauge ${gcls}"><i style="width:${Math.round(pct * 100)}%"></i></span><span>coverage ${fmt(k.cov.known)} / ${fmt(k.cov.total)} calls${a.bySem.length > 1 ? ' · ' + a.bySem.length + ' semantics' : ''}</span>` : `<span>${esc(k.sub)}</span>`}</div></div>`; }).join('');
+  $$('#kpis .kpi').forEach(tile => tile.addEventListener('click', e => { const b = $('.kpi-btn', tile); const k = kpis[+tile.dataset.kpi]; state.kpi = k.key; $$('#kpis .kpi').forEach(x => { x.classList.toggle('on', x === tile); $('.kpi-btn', x).setAttribute('aria-pressed', String(x === tile)); }); inspect('kpi', k); if (e.target !== b && !b.contains(e.target)) b.focus({ preventScroll: true }); }));
+  const q = (n, label, bad, href, title) => `<span class="q" title="${esc(title)}"><b class="${n === 0 ? 'zero' : bad}">${fmt(n)}</b>${href ? `<a href="${href}">${label}</a>` : `<span>${label}</span>`}</span>`;
+  $('#quality').innerHTML = `<span class="small muted">Quality</span>` + q(a.rejects, 'rejects', 'bad', a.rejects ? '#/imports/imp_7c04d1e2b5a94f3c8d11' : '', 'Records rejected by the imports in scope') + q(a.unknownUsage, 'calls without usage', 'warn', '', 'Model calls whose input or output tokens are unknown; they lower coverage, never count as 0') + q(a.unknownTs, 'unknown timestamps', 'warn', '', 'Model calls without a parseable start; excluded from the by-day chart and from spans') + q(a.unlinked, 'unlinked tool calls', 'warn', '', 'Tool calls that could not be tied to a model call; they still count as tool calls') + `<span class="q" style="margin-left:auto"><a href="#/definitions">Definitions</a></span>`;
+  renderCharts(a);
+  renderSessions(a);
+  if (state.kpi) { const k = kpis.find(k => k.key === state.kpi); if (k) inspect('kpi', k); } else if (state.inspector.kind !== 'bar' && state.inspector.kind !== 'sessionrow') inspect('page');
+}
+$$('#dash-filters select').forEach(s => s.addEventListener('change', () => { state.filters[s.id.slice(2)] = s.value; state.chartFilter = null; state.sessionsPage = 0; renderDashboard(); announce('Scope: ' + scopeLabel()); }));
+$('#f-clear').addEventListener('click', () => { state.filters = { source: 'tracelab', agent: '', model: '', period: 'all' }; state.chartFilter = null; state.kpi = null; renderDashboard(); });
+$('#chart-filter-clear').addEventListener('click', () => { state.chartFilter = null; renderDashboard(); });
+
+/* charts: inline SVG built from data */
+const tip = $('#tooltip');
+function showTip(e, html) { tip.innerHTML = html; tip.hidden = false; moveTip(e); }
+function moveTip(e) { const x = (e.clientX || 0) + 12, y = (e.clientY || 0) + 12; tip.style.left = Math.min(x, window.innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = Math.min(y, window.innerHeight - tip.offsetHeight - 8) + 'px'; }
+function hideTip() { tip.hidden = true; }
+function bindBars(container, onPick) {
+  $$('g[tabindex]', container).forEach(g => {
+    const html = g.dataset.tip;
+    g.addEventListener('mouseenter', e => showTip(e, html)); g.addEventListener('mousemove', moveTip); g.addEventListener('mouseleave', hideTip);
+    g.addEventListener('focus', () => { const r = g.getBoundingClientRect(); showTip({ clientX: r.left, clientY: r.bottom }, html); }); g.addEventListener('blur', hideTip);
+    g.addEventListener('click', () => onPick(g));
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(g); } });
+  });
+}
+function renderCharts(a) {
+  const cells = a.cells; const sources = [...new Set(cells.map(c => c.source))];
+  /* by day */
+  const perSource = sources.map(s => { const w = DAY_W[s]; const total = cells.filter(c => c.source === s).reduce((x, c) => x + c.calls, 0); return apportion(total, w); });
+  const days = DAYS.map((d, i) => perSource.reduce((x, p) => x + p[i], 0));
+  const sessDays = apportion(a.sessions, days);
+  const W = Math.max(320, $('#chart-days').clientWidth - 24 || 520), H = 160, pl = 36, pb = 22, pt = 8; const max = Math.max(1, ...days); const bw = (W - pl - 8) / days.length;
+  const sel = state.chartFilter && state.chartFilter.kind === 'day' ? state.chartFilter.value : null;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Model calls by day, ${DAYS[0]} to ${DAYS[13]}"><title>Model calls by day</title>`;
+  [0, 0.5, 1].forEach(t => { const y = pt + (H - pt - pb) * (1 - t); svg += `<line class="grid" x1="${pl}" x2="${W - 4}" y1="${y}" y2="${y}"/><text x="${pl - 6}" y="${y + 4}" text-anchor="end">${abbr(Math.round(max * t))}</text>`; });
+  days.forEach((v, i) => { const h = (H - pt - pb) * v / max; const x = pl + i * bw + 3; const y = H - pb - h; const d = DAYS[i]; const cls = 'bar' + (sel ? (sel === d ? ' selected' : ' dimmed') : ''); svg += `<g tabindex="0" role="button" aria-label="${d}: ${fmt(v)} model calls, ${fmt(sessDays[i])} sessions" data-day="${d}" data-v="${v}" data-s="${sessDays[i]}" data-tip="<b>${d}</b><br>${fmt(v)} model calls<br><span class='muted'>${fmt(sessDays[i])} sessions · click to list them</span>"><rect class="${cls}" x="${x}" y="${y}" width="${bw - 6}" height="${h}" rx="1"/></g>`; if (i % 2 === 0) svg += `<text x="${x + (bw - 6) / 2}" y="${H - 6}" text-anchor="middle">${d.slice(5)}</text>`; });
+  svg += `<line class="axis" x1="${pl}" x2="${W - 4}" y1="${H - pb}" y2="${H - pb}"/></svg>`;
+  $('#chart-days').innerHTML = svg; $('#c1-sub').textContent = fmt(a.calls) + ' calls';
+  bindBars($('#chart-days'), g => { const d = g.dataset.day; state.chartFilter = state.chartFilter && state.chartFilter.value === d ? null : { kind: 'day', value: d, label: 'sessions on ' + d }; state.sessionsPage = 0; inspect('bar', { label: 'Model calls on ' + d, value: +g.dataset.v, unit: 'recorded observations · ' + fmt(+g.dataset.s) + ' sessions started', def: 'Model calls whose started_at falls on this UTC day. Calls with an unknown timestamp are excluded and counted in the quality strip.' }); renderDashboard(); $$('#chart-days g[tabindex]').find(x => x.dataset.day === d)?.focus(); });
+  /* by model (horizontal) */
+  const byModel = Object.entries(cells.reduce((m, c) => { m[c.model] = (m[c.model] || 0) + c.input; return m; }, {})).sort((x, y) => y[1] - x[1]);
+  const W2 = Math.max(260, $('#chart-models').clientWidth - 24 || 320), rowH = 30, H2 = Math.max(60, byModel.length * rowH + 22); const lw = 118; const max2 = Math.max(1, ...byModel.map(b => b[1]));
+  const selM = state.filters.model;
+  svg = `<svg viewBox="0 0 ${W2} ${H2}" role="img" aria-label="Input tokens by model"><title>Input tokens by model</title>`;
+  byModel.forEach(([m, v], i) => { const y = 6 + i * rowH; const w = (W2 - lw - 60) * v / max2; const ci = m === 'claude-opus-4-6' ? 1 : m === 'claude-opus-4-7' ? 2 : 3; const sem = [...new Set(cells.filter(c => c.model === m).map(c => c.sem))].join(', '); svg += `<g tabindex="0" role="button" aria-label="${m}: ${fmt(v)} input tokens" data-model="${m}" data-v="${v}" data-tip="<b>${m}</b><br>${fmt(v)} input tokens<br><span class='muted'>${sem} · click to scope to this model</span>"><text x="${lw - 8}" y="${y + 14}" text-anchor="end" style="fill:var(--ink-2)">${m}</text><rect class="bar bar-${ci}${selM && selM !== m ? ' dimmed' : ''}${selM === m ? ' selected' : ''}" x="${lw}" y="${y + 3}" width="${Math.max(2, w)}" height="16" rx="1"/><text x="${lw + Math.max(2, w) + 6}" y="${y + 14}">${abbr(v)}</text></g>`; });
+  svg += `</svg>`;
+  $('#chart-models').innerHTML = svg + `<div class="legend"><span><i style="background:var(--series-1)"></i>tracelab-claude</span><span><i style="background:var(--series-3)"></i>tracelab-codex / swe-chat-openai</span><span class="muted">axis abbreviated; exact values on hover</span></div>`;
+  bindBars($('#chart-models'), g => { const m = g.dataset.model; state.filters.model = state.filters.model === m ? '' : m; state.sessionsPage = 0; inspect('bar', { label: 'Input tokens for ' + m, value: +g.dataset.v, unit: 'tokens, exact', def: 'Sum of input_tokens over calls of this model with a known value, in the current scope. The bar is drawn from this exact integer; only the axis label is abbreviated.' }); renderDashboard(); $$('#chart-models g[tabindex]').find(x => x.dataset.model === m)?.focus(); });
+  /* tools */
+  const tools = sources.flatMap(s => TOOLS[s].map(([t, n]) => { const share = cells.filter(c => c.source === s).reduce((x, c) => x + c.tools, 0) / TOOLS[s].reduce((x, y) => x + y[1], 0); return [t, Math.round(n * share)]; }));
+  const fixTools = apportion(a.tools, tools.map(t => t[1])); tools.forEach((t, i) => { t[1] = fixTools[i]; });
+  const W3 = Math.max(260, $('#chart-tools').clientWidth - 24 || 320), H3 = 160, pl3 = 30, pb3 = 22, pt3 = 8; const max3 = Math.max(1, ...tools.map(t => t[1])); const bw3 = (W3 - pl3 - 8) / tools.length;
+  const selT = state.chartFilter && state.chartFilter.kind === 'tool' ? state.chartFilter.value : null;
+  svg = `<svg viewBox="0 0 ${W3} ${H3}" role="img" aria-label="Tool calls by tool"><title>Tool calls by tool</title>`;
+  [0, 0.5, 1].forEach(t => { const y = pt3 + (H3 - pt3 - pb3) * (1 - t); svg += `<line class="grid" x1="${pl3}" x2="${W3 - 4}" y1="${y}" y2="${y}"/><text x="${pl3 - 6}" y="${y + 4}" text-anchor="end">${abbr(Math.round(max3 * t))}</text>`; });
+  tools.forEach(([t, v], i) => { const h = (H3 - pt3 - pb3) * v / max3; const x = pl3 + i * bw3 + 4; const y = H3 - pb3 - h; const cls = 'bar' + (selT ? (selT === t ? ' selected' : ' dimmed') : ''); svg += `<g tabindex="0" role="button" aria-label="${t}: ${fmt(v)} tool calls" data-tool="${t}" data-v="${v}" data-tip="<b>${t}</b><br>${fmt(v)} tool calls<br><span class='muted'>click to list sessions that used it</span>"><rect class="${cls}" x="${x}" y="${y}" width="${bw3 - 8}" height="${h}" rx="1"/></g><text x="${x + (bw3 - 8) / 2}" y="${H3 - 6}" text-anchor="middle">${t.length > 8 ? t.slice(0, 7) + '…' : t}</text>`; });
+  svg += `<line class="axis" x1="${pl3}" x2="${W3 - 4}" y1="${H3 - pb3}" y2="${H3 - pb3}"/></svg>`;
+  $('#chart-tools').innerHTML = svg;
+  bindBars($('#chart-tools'), g => { const t = g.dataset.tool; state.chartFilter = state.chartFilter && state.chartFilter.value === t ? null : { kind: 'tool', value: t, label: 'sessions that used ' + t }; state.sessionsPage = 0; inspect('bar', { label: 'Tool calls to ' + t, value: +g.dataset.v, unit: 'recorded observations', def: 'Tool-call observations with this tool_name as the source spells it. Names are not normalised across sources (Bash and bash stay distinct).' }); renderDashboard(); $$('#chart-tools g[tabindex]').find(x => x.dataset.tool === t)?.focus(); });
+}
+function scopedSessions() {
+  const f = state.filters; const cf = state.chartFilter;
+  return SESSIONS.filter(s => (!f.source || s.source === f.source) && (!f.agent || s.agent === f.agent) && (!f.model || s.model === f.model) && (f.period !== '7d' || s.start >= '2026-06-08') && (!cf || (cf.kind === 'day' ? s.start.slice(0, 10) === cf.value : s.toolset.includes(cf.value))));
+}
+function renderSessions(a) {
+  const list = scopedSessions(); const page = list.slice(state.sessionsPage * 50, state.sessionsPage * 50 + 50);
+  const total = state.filters.source === 'swe-chat' || !state.filters.source ? (state.chartFilter ? list.length : a.sessions) : list.length;
+  $('#sessions-cap').textContent = state.chartFilter ? `${fmt(total)} ${state.chartFilter.label.replace('sessions ', '')} · ${fmt(a.sessions)} in scope` : `${fmt(total)} in scope`;
+  $('#sessions-foot').textContent = page.length ? `${state.sessionsPage * 50 + 1} to ${state.sessionsPage * 50 + page.length} of ${fmt(total)}` : '';
+  $('#sessions-next').disabled = list.length <= (state.sessionsPage + 1) * 50;
+  if (!page.length) { $('#sessions-body').innerHTML = `<tr><td colspan="9"><div class="empty"><h3>No sessions match ${esc(scopeLabel())}${state.chartFilter ? ', ' + esc(state.chartFilter.label) : ''}</h3><p>Widen the scope or clear the chart selection with <kbd>Esc</kbd>.</p></div></td></tr>`; return; }
+  $('#sessions-body').innerHTML = page.map(s => { const pct = s.known / s.calls; return `<tr tabindex="0" data-inspect="sessionrow:${s.id}" data-open="#/sessions/${s.id}"><td><a href="#/sessions/${s.id}" class="id">${esc(short(s.external))}</a></td><td>${s.agent ? esc(s.agent) : '<span class="muted">Unavailable</span>'}</td><td>${esc(s.model)}</td><td class="nowrap">${esc(s.start.replace('T', ' ').replace('Z', ''))}</td><td class="num nowrap">${dur(s.span)}</td><td class="num">${fmt(s.calls)}</td><td class="num">${fmt(s.tools)}</td><td class="num">${s.known ? fmt(s.input) : '<span class="muted">Unavailable</span>'}</td><td class="num nowrap"><span class="gauge ${pct < 1 ? 'partial' : ''}" style="display:inline-block;width:28px;vertical-align:middle;margin-right:6px"><i style="width:${Math.round(pct * 100)}%"></i></span>${fmt(s.known)} / ${fmt(s.calls)}</td></tr>`; }).join('');
+}
+function renderSessionsRoute() { renderDashboard(); crumbs([{ label: 'Dashboard', href: '#/dashboard' }, { label: 'Sessions' }]); $('#sessions-table').scrollIntoView({ block: 'start' }); const first = $('#sessions-body tr[tabindex]'); if (first) first.focus({ preventScroll: true }); }
+$('#sessions-next').addEventListener('click', () => { state.sessionsPage++; renderDashboard(); $('#sessions-table').scrollIntoView(); });
+
+/* ---------------- 5. session ---------------- */
+function renderSession() {
+  const s = SESSION_BY_ID[state.id] || SESSIONS[0]; state.id = s.id;
+  crumbs([{ label: 'Dashboard', href: '#/dashboard' }, { label: 'Sessions', href: '#/dashboard' }, { label: s.external }]);
+  $('#h-session').innerHTML = `Session <span class="id">${esc(s.external)}</span>`;
+  const det = sessionDetail(s);
+  const strip = $('#screen-session .strip');
+  const end = new Date(new Date(s.start).getTime() + s.span).toISOString();
+  strip.innerHTML = `<div><span class="label">Source</span><span class="val">${esc(s.source)}</span><span class="sub"><span class="id">${s.source === 'tracelab' ? 'imp_3e21f89dbaef419a8f60' : 'imp_7c04d1e2b5a94f3c8d11'}</span></span></div>
+    <div><span class="label">Agent</span><span class="val${s.agent ? '' : ' zero'}">${s.agent ? esc(s.agent) : 'Unavailable'}</span><span class="sub">${s.agent ? 'from harness field' : 'source names no harness'}</span></div>
+    <div><span class="label">Repository</span><span class="val id">${esc(s.repo)}</span><span class="sub">user <span class="id">${esc(s.user)}</span></span></div>
+    <div><span class="label">Observed interval</span><span class="val">${dur(s.span)}</span><span class="sub">${esc(s.start.slice(11, 23))} to ${esc(end.slice(11, 23))}, ${esc(s.start.slice(0, 10))}</span></div>
+    <div><span class="label">Declared interval</span><span class="val zero">Unavailable</span><span class="sub">source has no declared start or end</span></div>
+    <div><span class="label">Input tokens</span><span class="val${s.known ? '' : ' zero'}">${s.known ? fmt(s.input) : 'Unavailable'}</span><span class="sub">coverage ${fmt(s.known)} / ${fmt(s.calls)} calls · ${esc(s.sem)}</span></div>`;
+  $('#session-diag').hidden = s.id !== 'ses_c736618a';
+  $('#mc-table caption .cap-meta').innerHTML = `${fmt(det.mcs.length)} · the locator under each id opens its source record; <kbd>o</kbd> does the same for the selected row`;
+  $('#mc-body').innerHTML = det.mcs.map((m, i) => `<tr tabindex="0" data-inspect="mc:${i}"><td class="id">${esc(short(m.id))} <span class="muted">#${m.seq}</span><br><button class="btn-link mono" type="button" data-src="mc:${i}" aria-label="Source record of model call ${esc(m.id)}">${esc(m.locator)}</button></td><td>${esc(m.model)}</td><td class="nowrap">${esc(m.started.replace('T', ' ').replace('Z', ''))}</td><td class="num nowrap">${dur(ms(m.started, m.ended))}</td><td class="num">${m.input === null ? '<span class="muted">Unavailable</span>' : fmt(m.input)}</td><td class="num">${m.output === null ? '<span class="muted">Unavailable</span>' : fmt(m.output)}</td><td class="num">${m.cache === null ? '<span class="muted">Unavailable</span>' : fmt(m.cache)}</td></tr>`).join('');
+  $('#tc-table caption .cap-meta').textContent = fmt(det.tcs.length);
+  $('#tc-body').innerHTML = det.tcs.map((t, i) => `<tr tabindex="0" data-inspect="tc:${i}"><td class="id">${esc(short(t.id))}<br><button class="btn-link mono" type="button" data-src="tc:${i}" aria-label="Source record of tool call ${esc(t.id)}">${esc(t.locator)}</button></td><td>${esc(t.tool)}</td><td class="id">${esc(short(t.mc))}</td><td class="nowrap">${esc(t.at.replace('T', ' ').replace('Z', ''))}</td><td class="num">${t.latency === null ? '<span class="muted">Unavailable</span>' : fmt(t.latency) + ' ms'}</td><td>${t.error === null ? '<span class="muted">Unavailable</span>' : t.error ? '<span style="color:var(--danger)">yes</span>' : 'no'}</td></tr>`).join('');
+  if (state.inspector.kind !== 'call') inspect('session', s);
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-src]'); if (!b) return; const [kind, idx] = b.dataset.src.split(':'); const s = SESSION_BY_ID[state.id] || SESSIONS[0]; const det = sessionDetail(s); const c = kind === 'mc' ? det.mcs[+idx] : det.tcs[+idx]; openSource(Object.assign({ kind }, c)); });
+
+/* ---------------- 6. assistant ---------------- */
+function renderAssistant() {
+  crumbs([{ label: 'Import', href: '#/import' }, { label: 'swe-chat-conversations.parquet' }, { label: 'Mapping' }]);
+  $('#profile-list').innerHTML = PROFILE.map((p, i) => `<li tabindex="0" data-path="$.${esc(p.path)}" aria-selected="false"><span class="path">${esc(p.path)}</span><span class="type">${esc(p.type)}</span><span class="stat${p.redacted ? ' redacted' : ''}">${esc(p.stat)}</span></li>`).join('');
+  $$('#profile-list li').forEach(li => { const pick = () => { $$('#profile-list li').forEach(x => x.setAttribute('aria-selected', String(x === li))); const idx = state.mapping.findIndex(m => m.path === li.dataset.path); if (idx >= 0) { selectMapRow(idx); } else { const p = PROFILE.find(p => '$.' + p.path === li.dataset.path); inspect('mapfield', { target: 'Not mapped: ' + p.path, rule: 'none', conf: 0, why: p.redacted ? 'Free text. Excluded from the profile sent to the provider and from every proposal; the DSL has no target for it.' : 'Structural column. Its children are mapped, the column itself has no target.', ambiguity: null, path: li.dataset.path }); } }; li.addEventListener('click', pick); li.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } }); });
+  renderMapTable();
+  inspect('mapfield', state.mapping[state.mappingSel]);
+}
+function renderMapTable() {
+  const st = m => m.status === 'err' ? '<span class="status status-err" title="Validation error">!</span>' : m.status === 'amb' ? '<span class="status status-amb" title="Ambiguity">?</span>' : '<span class="status status-ok" title="Validated">✓</span>';
+  $('#map-body').innerHTML = state.mapping.map((m, i) => `<tr tabindex="0" data-inspect="mapfield:${i}" aria-selected="${i === state.mappingSel}"><td>${st(m)}<span class="sr-only">${m.status === 'err' ? 'error' : m.status === 'amb' ? 'ambiguity' : 'ok'}</span></td><td><span class="small">${esc(m.target)}</span><br><span class="micro muted">rule ${esc(m.rule)}</span></td><td>${m.path.startsWith('(') ? `<span class="muted mono">${esc(m.path)}</span>` : `<input class="input" type="text" value="${esc(m.path)}" data-edit="${i}" aria-label="Source path for ${esc(m.target)}" aria-invalid="${m.status === 'err'}">${m.error ? `<div class="error-text">${esc(m.error)}</div>` : ''}`}</td><td><span class="small">${esc(m.transform) || '<span class="muted">none</span>'}</span></td><td><select class="select select-sm" aria-label="Null policy for ${esc(m.target)}" data-policy="${i}">${['required', 'nullable', 'warn', 'reject', 'default'].map(p => `<option${p === m.policy ? ' selected' : ''}>${p}</option>`).join('')}</select></td><td><span class="conf" title="${Math.round(m.conf * 100)}%"><i style="width:${Math.round(m.conf * 100)}%"></i></span> <span class="micro muted">${Math.round(m.conf * 100)}%</span></td></tr>`).join('');
+  const amb = state.mapping.filter(m => m.status === 'amb').length, err = state.mapping.filter(m => m.status === 'err').length;
+  $('#map-status').textContent = `${state.mapping.length} fields · ${amb} ${amb === 1 ? 'ambiguity' : 'ambiguities'} · ${err} ${err === 1 ? 'error' : 'errors'}`;
+  $('#save-rev-btn').disabled = err > 0; $('#preview-map-btn').disabled = err > 0;
+  $$('#map-body [data-edit]').forEach(inp => {
+    inp.addEventListener('change', () => validatePath(+inp.dataset.edit, inp.value));
+    inp.addEventListener('focus', () => selectMapRow(+inp.dataset.edit, true));
+  });
+  $$('#map-body [data-policy]').forEach(sel => sel.addEventListener('change', () => { state.mapping[+sel.dataset.policy].policy = sel.value; }));
+}
+function selectMapRow(i, quiet) { state.mappingSel = i; $$('#map-body tr').forEach((tr, k) => tr.setAttribute('aria-selected', String(k === i))); inspect('mapfield', state.mapping[i]); if (!quiet) { const tr = $$('#map-body tr')[i]; if (tr) tr.focus(); } }
+function validatePath(i, value) {
+  const m = state.mapping[i]; m.path = value.trim();
+  const collection = m.type === 'collection';
+  const ok = collection ? (m.path === '$' || m.path === '$.turns[*].tool_calls[*]') : PROFILE_PATHS.has(m.path);
+  if (ok) { m.status = m.ambiguity ? 'amb' : 'ok'; m.error = null; }
+  else { m.status = 'err'; const paths = [...PROFILE_PATHS]; const parent = m.path.replace(/\.[^.]*$/, ''); const leaf = m.path.split('.').pop().toLowerCase(); const near = paths.find(p => p.startsWith(parent + '.') && p !== m.path) || paths.find(p => leaf.length > 3 && p.toLowerCase().includes(leaf.slice(0, 4))); m.error = `Path not in the profile.${near ? ' Did you mean ' + near + '?' : ''}`; }
+  renderMapTable(); const inp = $(`#map-body [data-edit="${i}"]`); if (inp) inp.focus(); inspect('mapfield', m); announce(m.error ? 'Validation error: ' + m.error : 'Path validated');
+}
+function renderChat() { return `<div class="chat">${state.chat.map(c => `<div class="msg ${c.who === 'You' ? 'msg-user' : 'msg-assist'}"><div class="who">${esc(c.who)}</div>${esc(c.text)}${c.list ? `<ul>${c.list.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}</div>`).join('')}<form id="chat-form" class="chat-input"><textarea id="chat-text" aria-label="Ask the assistant or request a change" placeholder="Ask, or request a change: 'treat created_at as ended_at'"></textarea><button class="btn btn-sm" type="submit">Send</button></form><p class="hint">Sent verbatim to the provider with the redacted profile. The reply is a new proposal you can accept or ignore; it never writes.</p></div>`; }
+function sendChat() {
+  const ta = $('#chat-text'); const text = ta.value.trim(); if (!text) return;
+  state.chat.push({ who: 'You', text });
+  const lower = text.toLowerCase();
+  let reply;
+  if (lower.includes('agent') && (lower.includes('literal') || lower.includes('swe-chat') || lower.includes('set'))) { const m = state.mapping[2]; m.path = '(literal) "swe-chat"'; m.transform = 'const "swe-chat"'; m.status = 'ok'; m.ambiguity = null; m.why = 'Set by you as a literal. Every swe-chat session will carry agent "swe-chat"; the dashboard labels it as declared, not observed.'; reply = { who: 'Assistant', text: 'Updated row 3: session.agent is now the literal "swe-chat" with confidence 100% (it is your decision, not an inference). The ambiguity is cleared. Remember this value is declared by the mapping, so agent-level comparisons with tracelab compare a declared label with an observed one.' }; }
+  else if (lower.includes('turn') && (lower.includes('per') || lower.includes('each'))) { reply = { who: 'Assistant', text: 'I can emit one model_call per assistant turn, but usage.prompt_tokens is reported once per conversation, so each of the roughly 9 calls would either repeat the total (inflating sums 9x) or receive null tokens (coverage drops to 0). Both lose exactness. If you want turn-level calls, I suggest keeping one model_call per record and recording turn count as a diagnostic, which is the current proposal.', list: ['Keep per-record (proposed).', 'Per-turn with null tokens: say "per turn, null tokens".'] }; }
+  else if (lower.includes('created_at') || lower.includes('ended')) { const m = state.mapping[8]; m.ambiguity = null; m.status = 'ok'; m.why += ' Confirmed by you: created_at is the start; ended_at stays unavailable.'; reply = { who: 'Assistant', text: 'Noted. Row 9 keeps created_at as started_at with unit epoch seconds; ended_at and the observed span stay Unavailable for this source. The ambiguity is cleared.' }; }
+  else reply = { who: 'Assistant', text: 'I cannot settle that from the profile alone. Tell me which column or literal to use and I will update the row, or edit the path in the table directly; either way the change is validated against the profile before you can save.' };
+  state.chat.push(reply); renderMapTable(); inspect('mapfield', state.mapping[state.mappingSel]); const t2 = $('#chat-text'); if (t2) t2.focus(); announce('Assistant replied.');
+}
+$('#validate-btn').addEventListener('click', () => { const err = state.mapping.filter(m => m.status === 'err').length; const amb = state.mapping.filter(m => m.status === 'amb').length; announce(err ? `${err} errors` : 'Mapping valid'); $('#map-foot').innerHTML = err ? `<span style="color:var(--danger)">Validation: ${err} error${err > 1 ? 's' : ''}. Fix the marked paths before saving.</span>` : `<span style="color:var(--ok)">Validated against DSL v1 and the profile: 0 errors${amb ? `, ${amb} open ambiguit${amb > 1 ? 'ies' : 'y'} (allowed, recorded in the revision)` : ''}.</span>`; });
+$('#preview-map-btn').addEventListener('click', () => { inspect('preview'); announce('Preview computed on 200 rows: 193 accepted, 3 partial, 4 rejected.'); });
+$('#save-rev-btn').addEventListener('click', () => { const b = $('#save-rev-btn'); b.textContent = 'Saved as swe-chat-parquet-v1 rev 1'; b.disabled = true; $('#screen-assistant .pill-neutral').textContent = 'revision 1 · map_c41d0e9b2a7f5836d1e0'; $('#screen-assistant .pill-neutral').className = 'pill pill-ok'; $('#map-foot').innerHTML = `Saved. <a href="#/import">Import swe-chat-conversations.parquet with revision 1</a> · the proposal, your messages and the provider metadata are stored with the revision.`; announce('Mapping saved as revision 1.'); });
+
+/* ---------------- 7. definitions ---------------- */
+function renderDefinitions() {
+  crumbs([{ label: 'Definitions' }]);
+  $('#def-body').innerHTML = DEFINITIONS.map((d, i) => `<tr tabindex="0" data-inspect="definition:${i}"><td><code>${esc(d[0])}</code></td><td class="wrap" style="max-width:52ch">${esc(d[1])}</td><td>${esc(d[2])}</td><td>${d[3].map(t => `<span class="tag">${esc(t)}</span>`).join('')}</td><td class="wrap" style="max-width:36ch">${esc(d[4])}</td></tr>`).join('');
+  inspect('page');
+}
+
+/* ---------------- command palette ---------------- */
+const palette = $('#palette'), pq = $('#palette-q'), plist = $('#palette-list'); let pIndex = 0, pItems = [];
+const ICON = { go: '<svg viewBox="0 0 16 16"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg>', act: '<svg viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11"/></svg>', id: '<svg viewBox="0 0 16 16"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg>' };
+function paletteItems(q) {
+  const base = [
+    { g: 'Go to', t: 'Import file', k: 'g i', run: () => navigate('#/import'), i: 'go' }, { g: 'Go to', t: 'Imports', k: 'g h', run: () => navigate('#/imports'), i: 'go' }, { g: 'Go to', t: 'Dashboard', k: 'g d', run: () => navigate('#/dashboard'), i: 'go' }, { g: 'Go to', t: 'Sessions', k: 'g s', run: () => navigate('#/sessions'), i: 'go' }, { g: 'Go to', t: 'Mapping assistant', k: 'g m', run: () => navigate('#/assistant'), i: 'go' }, { g: 'Go to', t: 'Definitions', k: 'g f', run: () => navigate('#/definitions'), i: 'go' },
+    { g: 'Actions', t: 'Filter dashboard: agent claude-code', run: () => { state.filters.agent = 'claude-code'; navigate('#/dashboard'); }, i: 'act' }, { g: 'Actions', t: 'Filter dashboard: agent codex', run: () => { state.filters.agent = 'codex'; navigate('#/dashboard'); }, i: 'act' }, { g: 'Actions', t: 'Filter dashboard: all sources', run: () => { state.filters.source = ''; navigate('#/dashboard'); }, i: 'act' }, { g: 'Actions', t: 'Filter dashboard: source swe-chat', run: () => { state.filters.source = 'swe-chat'; navigate('#/dashboard'); }, i: 'act' },
+    { g: 'Actions', t: 'Toggle inspector', k: 'i', run: () => setInspector(app.dataset.inspector !== 'open'), i: 'act' }, { g: 'Actions', t: 'Keyboard shortcuts', k: '?', run: () => $('#shortcuts').showModal(), i: 'act' },
+    { g: 'Demo', t: 'Show loading state', run: () => setDemo('loading'), i: 'act' }, { g: 'Demo', t: 'Show empty state', run: () => setDemo('empty'), i: 'act' }, { g: 'Demo', t: 'Show error state', run: () => setDemo('error'), i: 'act' }, { g: 'Demo', t: 'Show loaded data', run: () => setDemo('normal'), i: 'act' },
+  ];
+  const ids = IMPORTS.map(imp => ({ g: 'Imports', t: imp.id, sub: `${imp.status} · ${imp.file}`, run: () => navigate('#/imports/' + imp.id), i: 'id' })).concat(SESSIONS.slice(0, 200).map(s => ({ g: 'Sessions', t: s.external, sub: s.id, run: () => navigate('#/sessions/' + s.id), i: 'id' })));
+  const actionsOnly = q.trim().startsWith('>'); const all = actionsOnly ? base.filter(b => b.g !== 'Go to') : base.concat(ids); const s = q.trim().toLowerCase().replace(/^>\s*/, '');
+  if (!s) return actionsOnly ? all : base.concat(ids.slice(0, 6));
+  return all.filter(it => (it.t + ' ' + (it.sub || '') + ' ' + it.g).toLowerCase().includes(s)).slice(0, 40);
+}
+function setDemo(v) { state.demo = v; $(`#demo input[value=${v}]`).checked = true; applyDemo($('#' + ROUTES[state.route])); announce('Demo state: ' + v); }
+function demoLabel() { const sm = $('#demo-summary'); sm.textContent = state.demo === 'normal' ? 'States' : 'State: ' + state.demo; sm.classList.toggle('pill-warn', state.demo !== 'normal'); }
+function renderPalette() {
+  pItems = paletteItems(pq.value); pIndex = Math.min(pIndex, Math.max(0, pItems.length - 1)); let lastG = '';
+  plist.innerHTML = pItems.length ? pItems.map((it, i) => { const g = it.g !== lastG ? `<li class="palette-group" role="presentation">${it.g}</li>` : ''; lastG = it.g; return g + `<li class="palette-item" role="option" id="pi-${i}" aria-selected="${i === pIndex}" data-i="${i}"><span class="ico">${ICON[it.i]}</span><span>${esc(it.t)}${it.sub ? ` <span class="id">${esc(it.sub)}</span>` : ''}</span>${it.k ? `<span class="meta">${it.k.split(' ').map(k => `<kbd>${k}</kbd>`).join('')}</span>` : ''}</li>`; }).join('') : `<li class="palette-empty">Nothing matches "${esc(pq.value)}". Ids start with imp_ or ses_; sessions can also be found by their external id.</li>`;
+  pq.setAttribute('aria-activedescendant', 'pi-' + pIndex); const sel = $('#pi-' + pIndex); if (sel) sel.scrollIntoView({ block: 'nearest' });
+}
+function openPalette() { pq.value = ''; pIndex = 0; renderPalette(); palette.showModal(); pq.focus(); }
+$('#open-palette').addEventListener('click', openPalette);
+pq.addEventListener('input', () => { pIndex = 0; renderPalette(); });
+pq.addEventListener('keydown', e => { if (e.key === 'ArrowDown') { e.preventDefault(); pIndex = (pIndex + 1) % pItems.length; renderPalette(); } else if (e.key === 'ArrowUp') { e.preventDefault(); pIndex = (pIndex - 1 + pItems.length) % pItems.length; renderPalette(); } else if (e.key === 'Enter') { e.preventDefault(); runPalette(pIndex); } });
+plist.addEventListener('click', e => { const li = e.target.closest('.palette-item'); if (li) runPalette(+li.dataset.i); });
+plist.addEventListener('mousemove', e => { const li = e.target.closest('.palette-item'); if (li && +li.dataset.i !== pIndex) { pIndex = +li.dataset.i; renderPalette(); } });
+function runPalette(i) { const it = pItems[i]; if (!it) return; palette.close(); it.run(); }
+palette.addEventListener('click', e => { if (e.target === palette) palette.close(); });
+$('#open-shortcuts').addEventListener('click', () => $('#shortcuts').showModal());
+$('#close-shortcuts').addEventListener('click', () => $('#shortcuts').close());
+$('#shortcuts').addEventListener('click', e => { if (e.target === $('#shortcuts')) $('#shortcuts').close(); });
+
+/* ---------------- global keyboard ---------------- */
+let chord = null, chordTimer = null;
+document.addEventListener('keydown', e => {
+  const t = e.target; const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); if (palette.open) palette.close(); else openPalette(); return; }
+  if (typing) return;
+  if (document.querySelector('dialog[open]')) return;
+  if (chord === 'g') { chord = null; clearTimeout(chordTimer); const map = { i: '#/import', h: '#/imports', d: '#/dashboard', s: '#/sessions', m: '#/assistant', f: '#/definitions' }; if (map[e.key]) { e.preventDefault(); navigate(map[e.key]); } return; }
+  if (e.key === 'g') { chord = 'g'; chordTimer = setTimeout(() => { chord = null; }, 900); return; }
+  if (e.key === 'i') { e.preventDefault(); setInspector(app.dataset.inspector !== 'open'); return; }
+  if (e.key === '?') { e.preventDefault(); $('#shortcuts').showModal(); return; }
+  if (e.key === '/') { const f = $('#' + ROUTES[state.route]).querySelector('select, input'); if (f) { e.preventDefault(); f.focus(); } return; }
+  if (e.key === 'Escape') { if (state.chartFilter) { state.chartFilter = null; renderDashboard(); } else if ($('#demo').open) $('#demo').open = false; return; }
+  if (state.route === 'dashboard' && /^[1-4]$/.test(e.key)) { const b = $$('#kpis .kpi-btn')[+e.key - 1]; if (b) { b.click(); b.focus(); } return; }
+  if (e.key === 'j' || e.key === 'k' || e.key === 'Enter' || e.key === 'o') {
+    const tr = t.closest && t.closest('tbody tr[tabindex]');
+    const table = tr ? tr.closest('table') : $('#' + ROUTES[state.route]).querySelector('table:not([hidden]) tbody tr[tabindex]') ? $('#' + ROUTES[state.route]).querySelector('table:not([hidden]) tbody tr[tabindex]').closest('table') : null;
+    if (!table) return;
+    const rows = rowsOf(table); if (!rows.length) return;
+    let idx = tr ? rows.indexOf(tr) : -1;
+    if (e.key === 'j') { e.preventDefault(); selectRow(rows[Math.min(rows.length - 1, idx + 1)]); }
+    else if (e.key === 'k') { e.preventDefault(); selectRow(rows[Math.max(0, idx - 1)]); }
+    else if (e.key === 'Enter' && tr) { e.preventDefault(); if (tr.dataset.open) navigate(tr.dataset.open); else selectRow(tr); }
+    else if (e.key === 'o' && tr && tr.dataset.inspect && /^(mc|tc):/.test(tr.dataset.inspect)) { e.preventDefault(); const [kind, i] = tr.dataset.inspect.split(':'); const s = SESSION_BY_ID[state.id] || SESSIONS[0]; const det = sessionDetail(s); const c = kind === 'mc' ? det.mcs[+i] : det.tcs[+i]; openSource(Object.assign({ kind }, c)); }
+  }
+});
+
+/* ---------------- init ---------------- */
+let resizeT; window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (state.route === 'dashboard' || state.route === 'sessions') renderCharts(aggregate()); }, 120); });
+window.addEventListener('hashchange', () => { state.rejectCode = ''; render(); });
+if (!location.hash) history.replaceState(null, '', '#/dashboard');
+render();
+})();
+</script>
+</body>
+</html>
