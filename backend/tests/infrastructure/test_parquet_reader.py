@@ -105,7 +105,7 @@ def test_every_supported_type_converts_exactly() -> None:
     assert a["dict"] == "k"
     assert a["nul"] is None
     for r in rows:
-        assert loads_exact(dumps_exact(r.payload)) == loads_exact(dumps_exact(r.payload))
+        assert loads_exact(dumps_exact(r.payload)) == r.payload
 
 
 def test_extension_types_uuid_and_json_convert_and_others_are_refused() -> None:
@@ -133,10 +133,20 @@ def test_extension_types_uuid_and_json_convert_and_others_are_refused() -> None:
     pa.register_extension_type(Odd())
     try:
         odd = pa.table({"o": pa.ExtensionArray.from_storage(Odd(), pa.array([1], pa.int64()))})
+        data = parquet_bytes(odd)
         with pytest.raises(InvalidInputError, match="unsupported extension"):
-            read_all(parquet_bytes(odd))
+            read_all(data)
+        nested = pa.table(
+            {"s": pa.StructArray.from_arrays([odd.column("o").combine_chunks()], names=["o"])}
+        )
+        nested_data = parquet_bytes(nested)
     finally:
         pa.unregister_extension_type("test.odd")
+    # unregistered here, the producer's extension surfaces as storage + metadata: still refused
+    with pytest.raises(InvalidInputError, match="unsupported extension"):
+        read_all(data)
+    with pytest.raises(InvalidInputError, match="unsupported extension"):
+        read_all(nested_data)
 
 
 def test_schema_validation_refuses_ambiguous_shapes() -> None:
@@ -248,6 +258,30 @@ def test_review_findings_dictionary_time32_and_date_range() -> None:
         read_all(data, max_decoded_bytes=1_000_000)
     rows = read_all(data, max_decoded_bytes=2_000_000_000)
     assert len(rows) == 10_000 and rows[9_999].payload == {"s": "x" * 32_768}
+    # the refusal happens before expansion: a 300 KiB string repeated 1,000 times is
+    # decided from the dictionary alone, and nested dictionaries count too
+    import tracemalloc
+
+    big = pa.table({"s": pa.array(["y" * 300_000] * 1_000).dictionary_encode()})
+    tracemalloc.start()
+    with pytest.raises(LimitExceededError):
+        read_all(parquet_bytes(big), max_decoded_bytes=50_000_000)
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    assert peak < 20_000_000  # far below the 300 MB the expansion would need
+    nested = pa.table(
+        {
+            "st": pa.StructArray.from_arrays(
+                [pa.array(["z" * 100_000] * 500).dictionary_encode()], names=["v"]
+            )
+        }
+    )
+    with pytest.raises(LimitExceededError):
+        read_all(parquet_bytes(nested), max_decoded_bytes=10_000_000)
+    # the row limit counts UTF-8 bytes, not characters
+    emoji = pa.table({"s": pa.array(["😀" * 1_100_000])})
+    rows = read_all(parquet_bytes(emoji), max_record_bytes=4 * 1024 * 1024, max_decoded_bytes=2**31)
+    assert rows[0].payload is None and "decodes to" in (rows[0].error or "")
     # time32 has int32 storage
     t32 = pa.table({"t": pa.array([1234, None], pa.time32("ms"))})
     assert [r.payload["t"] for r in read_all(parquet_bytes(t32))] == [

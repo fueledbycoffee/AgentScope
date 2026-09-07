@@ -103,6 +103,22 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # The narrower key cannot hold two files' records with the same locator in one
+    # attempt: refuse rather than drop audit rows silently.
+    collisions = (
+        op.get_bind()
+        .execute(
+            sa.text(
+                "SELECT COUNT(*) FROM (SELECT import_id, locator FROM record_results "
+                "GROUP BY import_id, locator HAVING COUNT(*) > 1)"
+            )
+        )
+        .scalar_one()
+    )
+    if collisions:
+        raise RuntimeError(
+            f"cannot downgrade: {collisions} (import, locator) pairs span several files"
+        )
     op.create_table(
         "record_results_old",
         sa.Column("import_id", sa.String(length=40), nullable=False),
@@ -116,7 +132,7 @@ def downgrade() -> None:
         sa.PrimaryKeyConstraint("import_id", "locator"),
     )
     op.execute(
-        "INSERT OR IGNORE INTO record_results_old "
+        "INSERT INTO record_results_old "
         "(import_id, locator, file_sha256, outcome, entity_counts, warning_counts) "
         "SELECT import_id, locator, file_sha256, outcome, entity_counts, warning_counts "
         "FROM record_results"

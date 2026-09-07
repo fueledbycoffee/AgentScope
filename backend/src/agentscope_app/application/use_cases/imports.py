@@ -324,18 +324,19 @@ class CommitImport:
                 uow.commit()
             return report
         except ConflictError:
-            # Another import of the same bytes won the race: nothing of ours was written.
-            # The attempt still goes into the ledger before the 409 propagates.
-            files = tuple(duplicate_info(g) for g in groups.values())
+            # Another import of some of these bytes won the race: nothing of ours was
+            # written, and which file collided is unknown, so every file is recorded
+            # as failed (not duplicate) before the 409 propagates. Retrying is safe.
+            files = tuple(file_info(g, "failed", _counts()) for g in groups.values())
             self._persist(
                 build(
-                    "duplicate",
-                    _counts(duplicate=sum(g.info.record_count for g in groups.values())),
+                    "failed",
+                    _counts(),
                     {},
                     {},
                     0,
                     files,
-                    error="lost a race with a concurrent import of the same bytes",
+                    error="ConflictError: lost a race with a concurrent import of the same bytes",
                 )
             )
             raise

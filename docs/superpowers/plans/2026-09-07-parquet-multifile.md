@@ -8,7 +8,7 @@ footer; durations and times are exact decimal seconds so no `where` unit
 guard exists; null wrapped values keep the wrapper shape; timestamp notes
 propagate through both coercion paths; migration 0003 backfills per-file
 counts and repairs historical double claims; the aggregate limits answer
-`413`; a lost race is recorded as `duplicate` before the `409`; the sampler
+`413`; a lost race is recorded as `failed` before the `409` (which file collided is unknown); the sampler
 bounds the sum of both tables' rows. Per-file record limit is 4 MiB (the
 JSONL line limit), not 1 MiB.
 

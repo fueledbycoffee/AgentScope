@@ -265,16 +265,36 @@ def test_failure_after_store_rolls_back_everything_and_records_failed(
     }
 
 
-def test_race_loser_is_recorded_as_duplicate_then_conflicts(env: Env) -> None:
+def test_race_loser_is_recorded_as_failed_then_conflicts(env: Env) -> None:
     a = env.upload.execute("a.jsonl", jsonl("r1"))
+    b = env.upload.execute("b.jsonl", jsonl("r2"))
     racing = env.commit_with(_failing_factory(env, "update_report", ConflictError("lost the race")))
+    bindings = [FileBinding(a.upload_id, "map_tracelab"), FileBinding(b.upload_id, "map_tracelab")]
     with pytest.raises(ConflictError):
-        racing.execute("tracelab", [FileBinding(a.upload_id, "map_tracelab")])
+        racing.execute("tracelab", bindings)
     with env.uow_factory() as uow:
         attempts = uow.imports.list(10, 0)
-    assert [r.status for r in attempts] == ["duplicate"]
-    assert "race" in (attempts[0].error or "") and attempts[0].files[0].status == "duplicate"
+    # which file collided is unknown: neither is claimed as duplicate, the retry decides
+    assert [r.status for r in attempts] == ["failed"]
+    assert "race" in (attempts[0].error or "")
+    assert {f.status for f in attempts[0].files} == {"failed"}
     assert env.sql("SELECT COUNT(*) FROM sessions") == [(0,)]
+    retry = env.commit.execute("tracelab", bindings)
+    assert retry.status == "committed" and retry.entities["session"] == 2
+
+
+def test_downgrade_refuses_when_two_files_share_a_locator(env: Env) -> None:
+    a = env.upload.execute("a.jsonl", jsonl("d1"))
+    b = env.upload.execute("b.jsonl", jsonl("d2"))
+    env.commit.execute(
+        "tracelab",
+        [FileBinding(a.upload_id, "map_tracelab"), FileBinding(b.upload_id, "map_tracelab")],
+    )
+    config = alembic_config(env.engine)
+    with pytest.raises(RuntimeError, match="cannot downgrade"), env.engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.downgrade(config, "0002")
+    assert env.sql("SELECT COUNT(*) FROM record_results") == [(2,)]
 
 
 TWO = '{"accepted": 2, "partial": 0, "duplicate": 0, "rejected": 0, "ignored": 0}'

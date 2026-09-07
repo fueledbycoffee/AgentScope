@@ -68,7 +68,8 @@ infrastructure library, or if `infrastructure` imports `interfaces`.
    their counts, and writes the per-record outcomes, raw payloads and rejects
    (all keyed by file hash and locator). Any failure rolls the transaction
    back and records a `failed` attempt with every file `failed`; a race lost
-   to a concurrent import is recorded as `duplicate` and answered `409`.
+   to a concurrent import is recorded as `failed` (no file claimed) and
+   answered `409`.
 4. Reads go through the same unit of work: sessions with per-session token
    coverage, the session detail with links to raw records, the import
    history and rejects, and the day-1 metrics summary.

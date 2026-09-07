@@ -22,6 +22,7 @@ from decimal import Decimal
 from typing import Any, BinaryIO, Final
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from agentscope_app.application.dto import MAX_DECODED_BYTES, MAX_RECORDS_PER_FILE, RawRecord
@@ -34,6 +35,7 @@ DEFAULT_BATCH_ROWS: Final = 1_000
 DEFAULT_MAX_RECORD_BYTES: Final = 4 * 1024 * 1024  # same ceiling as a JSONL line
 MAX_COLUMNS: Final = 64
 MAX_DEPTH: Final = 8
+SUPPORTED_EXTENSIONS: Final = frozenset({"arrow.uuid", "arrow.json"})
 _UNIT_DIGITS: Final = {"s": 0, "ms": 3, "us": 6, "ns": 9}
 
 
@@ -80,10 +82,12 @@ class ParquetRecordReader:
             batches = parquet.iter_batches(batch_size=self._batch_rows)
             for batch in batches:
                 # Dictionary encoding hides repetition from the footer sizes and from
-                # the encoded buffers; only the dense buffers show the real size, so
-                # dictionaries are expanded (at any depth) before the budget is checked.
-                batch = batch.cast(_dense_schema(batch.schema))
-                decoded_so_far += batch.nbytes
+                # the encoded buffers. The logical size is computed from the dictionary
+                # and its indices *before* anything is expanded, so an oversize batch
+                # is refused without the allocation it would have needed.
+                decoded_so_far += sum(
+                    _logical_nbytes(batch.column(i)) for i in range(batch.num_columns)
+                )
                 if decoded_so_far > self._max_decoded_bytes:
                     raise LimitExceededError(
                         f"File decodes to more than {self._max_decoded_bytes} bytes "
@@ -97,7 +101,7 @@ class ParquetRecordReader:
                     payload = {
                         name: column[row_index] for name, column in zip(names, columns, strict=True)
                     }
-                    size = len(dumps_exact(payload))
+                    size = len(dumps_exact(payload).encode("utf-8"))
                     if size > self._max_record_bytes:
                         yield RawRecord(
                             locator,
@@ -123,7 +127,16 @@ def validate_schema(schema: pa.Schema) -> None:
         raise InvalidInputError(f"File has {len(schema.names)} columns; the limit is {MAX_COLUMNS}")
     _check_names(schema.names, "top level")
     for field in schema:
-        _check_type(field.type, field.name, 1)
+        _check_field(field, field.name, 1)
+
+
+def _check_field(field: pa.Field, path: str, depth: int) -> None:
+    # A producer's extension type that is not registered here arrives as its storage
+    # type plus this metadata; the logical meaning would be silently lost.
+    name = (field.metadata or {}).get(b"ARROW:extension:name")
+    if name is not None and name.decode() not in SUPPORTED_EXTENSIONS:
+        raise InvalidInputError(f"Column {path!r} has unsupported extension type {name.decode()!r}")
+    _check_type(field.type, path, depth)
 
 
 def _check_names(names: Sequence[str], where: str) -> None:
@@ -142,7 +155,7 @@ def _check_type(typ: pa.DataType, path: str, depth: int) -> None:
     if depth > MAX_DEPTH:
         raise InvalidInputError(f"Column {path!r} is nested deeper than {MAX_DEPTH} levels")
     if isinstance(typ, pa.BaseExtensionType):
-        if typ.extension_name not in ("arrow.uuid", "arrow.json"):
+        if typ.extension_name not in SUPPORTED_EXTENSIONS:
             raise InvalidInputError(
                 f"Column {path!r} has unsupported extension type {typ.extension_name!r}"
             )
@@ -153,7 +166,7 @@ def _check_type(typ: pa.DataType, path: str, depth: int) -> None:
         _check_names([typ.field(i).name for i in range(typ.num_fields)], path)
         for i in range(typ.num_fields):
             child = typ.field(i)
-            _check_type(child.type, f"{path}.{child.name}", depth + 1)
+            _check_field(child, f"{path}.{child.name}", depth + 1)
     elif pa.types.is_map(typ):
         _check_type(typ.key_type, f"{path}[key]", depth + 1)
         _check_type(typ.item_type, f"{path}[value]", depth + 1)
@@ -304,6 +317,46 @@ def _civil_date(days: int) -> str:
         y += 1
     year = f"{y:04d}" if y >= 0 else f"-{-y:04d}"
     return f"{year}-{m:02d}-{d:02d}"
+
+
+def _logical_nbytes(array: pa.Array) -> int:
+    """Bytes the array occupies once every dictionary in it is expanded.
+
+    Computed from the dictionary and the indices, never by expanding: for a
+    dictionary array it is the sum of the referenced values' sizes plus the
+    dense offsets; nested children are visited the same way.
+    """
+    typ = array.type
+    if pa.types.is_dictionary(typ):
+        values = array.dictionary
+        per_value = _value_sizes(values)
+        indices = array.indices
+        if per_value is None:  # fixed-width values: width times the number of rows
+            return int(values.type.bit_width) // 8 * len(array) + len(array) // 8 + 1
+        referenced = pc.take(per_value, indices.fill_null(0))
+        total = pc.sum(referenced).as_py() or 0
+        return int(total) + 8 * (len(array) + 1)
+    if pa.types.is_struct(typ):
+        return sum(_logical_nbytes(array.field(i)) for i in range(typ.num_fields)) + len(array) // 8
+    if pa.types.is_map(typ):
+        return _logical_nbytes(array.keys) + _logical_nbytes(array.items) + 4 * (len(array) + 1)
+    if _is_list(typ):
+        return _logical_nbytes(array.values) + 8 * (len(array) + 1)
+    return int(array.nbytes)
+
+
+def _value_sizes(values: pa.Array) -> pa.Array | None:
+    typ = values.type
+    if pa.types.is_string(typ) or pa.types.is_large_string(typ) or pa.types.is_string_view(typ):
+        return pc.binary_length(values.cast(pa.large_binary())).cast(pa.int64())
+    if pa.types.is_binary(typ) or pa.types.is_large_binary(typ) or pa.types.is_binary_view(typ):
+        return pc.binary_length(values.cast(pa.large_binary())).cast(pa.int64())
+    if _is_list(typ) or pa.types.is_struct(typ) or pa.types.is_map(typ):
+        # nested dictionary values: expand only the (small) dictionary itself
+        return pa.array(
+            [_logical_nbytes(values.slice(i, 1)) for i in range(len(values))], pa.int64()
+        )
+    return None
 
 
 def _dense_schema(schema: pa.Schema) -> pa.Schema:
