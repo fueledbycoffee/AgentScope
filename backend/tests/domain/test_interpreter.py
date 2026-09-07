@@ -621,3 +621,48 @@ def test_bounds_take_chronological_extrema_not_positions() -> None:
         spec, {"sid": "s", "events": [{"ts": "soon"}]}, file_sha256="f", locator="line:3"
     )
     assert [(r.code, r.field) for r in bad.rejects] == [("invalid_value", "started_at")]
+
+
+def _bounds_doc(**started_at: Any) -> dict[str, Any]:
+    return {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "model_call",
+                "entity": "model_call",
+                "select": "$",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "started_at": {"path": "$.events[*].ts", "bounds": "min", **started_at},
+                },
+            }
+        ],
+    }
+
+
+def test_bounds_defaults_are_coerced_like_any_other_value() -> None:
+    spec = parse_mapping(_bounds_doc(on_missing="default", default="2026-01-01T00:00:00Z")).spec
+    assert spec is not None
+    result = apply_mapping(spec, {"sid": "s", "events": []}, file_sha256="f", locator="line:1")
+    assert result.emissions[0].fields["started_at"] == datetime(2026, 1, 1, tzinfo=UTC)
+
+    spec = parse_mapping(_bounds_doc(on_missing="default", default="not-a-date")).spec
+    assert spec is not None
+    result = apply_mapping(spec, {"sid": "s", "events": []}, file_sha256="f", locator="line:1")
+    assert [(r.code, r.field) for r in result.rejects] == [("invalid_value", "started_at")]
+
+
+def test_bounds_apply_transforms_to_each_candidate_before_parsing() -> None:
+    spec = parse_mapping(_bounds_doc(transforms=["trim"])).spec
+    assert spec is not None
+    record = {
+        "sid": "s",
+        "events": [{"ts": "  2026-01-02T00:00:00Z "}, {"ts": "2026-01-01T00:00:00Z"}],
+    }
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    assert result.rejects == ()
+    assert result.emissions[0].fields["started_at"] == datetime(2026, 1, 1, tzinfo=UTC)

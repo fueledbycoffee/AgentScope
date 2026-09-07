@@ -162,10 +162,18 @@ def _bounds(fm: FieldMapping, item: Any, root: Any) -> tuple[Any, str]:
         candidates = resolve_many(fm.paths[0], item, root, limit=MAX_BOUNDS_ITEMS)
     except ValueError as exc:
         raise ConversionError("selector_limit", str(exc)) from exc
-    present = [c for c in candidates if c is not None]
-    if not present:
+    parsed = []
+    for candidate in candidates:
+        value = candidate
+        for transform in fm.transforms:  # transforms run on each raw candidate first
+            if value is None:
+                break
+            value = apply_transform(transform, value)
+        if value is None:
+            continue
+        parsed.append(coerce(value, FieldType.TIMESTAMP, timestamp_format=fm.timestamp_format))
+    if not parsed:
         return MISSING, "absent"
-    parsed = [coerce(c, FieldType.TIMESTAMP, timestamp_format=fm.timestamp_format) for c in present]
     return (min(parsed) if fm.bounds == "min" else max(parsed)), "present"
 
 
@@ -272,6 +280,8 @@ def _evaluate(
             value, state = _bounds(fm, item, root)
         except ConversionError as exc:
             return _on_invalid(fm, exc, rule, occurrence, warnings)
+        if state == "present":
+            return value  # already transformed and parsed per candidate
     else:
         value, state = MISSING, "absent"
         for path in fm.paths:
@@ -311,8 +321,7 @@ def _evaluate(
             # Exact unit conversion first (ints, floats and numeric strings); the strict
             # coercion below then rejects anything not integral instead of rounding.
             value = convert_duration(value, fm.unit_from, fm.unit_to)
-        if fm.bounds is None:
-            value = coerce(value, fm.type, timestamp_format=fm.timestamp_format)
+        value = coerce(value, fm.type, timestamp_format=fm.timestamp_format)
     except ConversionError as exc:
         return _on_invalid(fm, exc, rule, occurrence, warnings)
     target_unit = TARGET_SCHEMA[rule.entity].fields[fm.target].unit
