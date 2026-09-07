@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import Integer, cast, func, insert, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -24,7 +24,9 @@ from agentscope_app.application.dto import (
     ModelCallRow,
     RawRecordRef,
     RecordOutcome,
+    RecordRow,
     RejectRow,
+    RejectSummary,
     SessionDetail,
     SessionSummary,
     ToolCallRow,
@@ -319,6 +321,7 @@ class SqlAlchemyImports:
                     mapping=self._mapping_ref(f.mapping_id or row.mapping_id),
                     status=f.status,
                     records={k: int(v) for k, v in (f.records or {}).items()},
+                    duplicate_of=self._original_of(f) if f.status == "duplicate" else None,
                 )
                 for f in files
             ),
@@ -328,6 +331,13 @@ class SqlAlchemyImports:
             reject_count=row.reject_count,
             error=row.error,
         )
+
+    def _original_of(self, f: m.ImportFile) -> str | None:
+        """The earliest committed import of these bytes for this source, other than this one."""
+        for ref in self.find_committed(f.sha256, f.source):
+            if ref.import_id != f.import_id:
+                return ref.import_id
+        return None
 
     def _mapping_ref(self, mapping_id: str) -> MappingRef:
         row = self._s.get(m.Mapping, mapping_id)
@@ -348,6 +358,7 @@ class SqlAlchemyImports:
         import_id: str,
         code: str | None,
         file_sha256: str | None,
+        rule_id: str | None,
         limit: int,
         offset: int,
     ) -> Sequence[RejectRow]:
@@ -356,6 +367,8 @@ class SqlAlchemyImports:
             stmt = stmt.where(m.Reject.code == code)
         if file_sha256:
             stmt = stmt.where(m.Reject.file_sha256 == file_sha256)
+        if rule_id:
+            stmt = stmt.where(m.Reject.rule_id == rule_id)
         stmt = stmt.order_by(m.Reject.id).limit(limit).offset(offset)
         return [
             RejectRow(
@@ -367,6 +380,63 @@ class SqlAlchemyImports:
                 r.message,
                 r.payload,
                 file_sha256=r.file_sha256,
+            )
+            for r in self._s.scalars(stmt)
+        ]
+
+    def reject_summary(self, import_id: str) -> RejectSummary:
+        def counts(column: Any) -> dict[str, int]:
+            stmt = (
+                select(column, func.count())
+                .where(m.Reject.import_id == import_id)
+                .group_by(column)
+                .order_by(func.count().desc(), column)
+            )
+            return {str(key): int(n) for key, n in self._s.execute(stmt)}
+
+        outcomes_stmt = (
+            select(m.RecordResult.outcome, func.count())
+            .where(m.RecordResult.import_id == import_id)
+            .group_by(m.RecordResult.outcome)
+        )
+        outcomes = {str(k): int(n) for k, n in self._s.execute(outcomes_stmt)}
+        return RejectSummary(
+            codes=counts(m.Reject.code),
+            rules=counts(m.Reject.rule_id),
+            files=counts(m.Reject.file_sha256),
+            outcomes=outcomes,
+        )
+
+    def records(
+        self,
+        import_id: str,
+        outcome: str | None,
+        file_sha256: str | None,
+        limit: int,
+        offset: int,
+    ) -> Sequence[RecordRow]:
+        stmt = select(m.RecordResult).where(m.RecordResult.import_id == import_id)
+        if outcome:
+            stmt = stmt.where(m.RecordResult.outcome == outcome)
+        if file_sha256:
+            stmt = stmt.where(m.RecordResult.file_sha256 == file_sha256)
+        # Locators are ``line:N`` / ``row:N``: order by the number, not the text.
+        position = cast(
+            func.substr(m.RecordResult.locator, func.instr(m.RecordResult.locator, ":") + 1),
+            Integer,
+        )
+        stmt = (
+            stmt.order_by(m.RecordResult.file_sha256, position, m.RecordResult.locator)
+            .limit(limit)
+            .offset(offset)
+        )
+        return [
+            RecordRow(
+                r.file_sha256,
+                r.locator,
+                r.outcome,
+                {k: int(v) for k, v in r.entity_counts.items()},
+                {k: int(v) for k, v in r.warning_counts.items()},
             )
             for r in self._s.scalars(stmt)
         ]

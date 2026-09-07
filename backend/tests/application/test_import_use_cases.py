@@ -197,7 +197,7 @@ def test_commit_import_persists_everything_once_and_reports_counts() -> None:
         "rejected",
         "accepted",
     ]
-    assert h.uow.imports.rejects("imp_0002", None, None, 10, 0)[0].code == "invalid_json"
+    assert h.uow.imports.rejects("imp_0002", None, None, None, 10, 0)[0].code == "invalid_json"
     assert h.uow.commits == 2 and h.uow.rollbacks == 0  # one for the upload, one for the import
 
 

@@ -14,9 +14,11 @@ from agentscope_app.application.use_cases.queries import (
     GetSession,
     ListImports,
     ListMappings,
+    ListRecordOutcomes,
     ListRejects,
     ListSessions,
     MetricsSummary,
+    RejectSummaryQuery,
 )
 from agentscope_app.application.use_cases.uploads import StoreUpload
 from agentscope_app.infrastructure.db.engine import create_engine_for, run_migrations
@@ -40,6 +42,8 @@ class Container:
     list_imports: ListImports
     get_import: GetImport
     list_rejects: ListRejects
+    reject_summary: RejectSummaryQuery
+    list_records: ListRecordOutcomes
     list_sessions: ListSessions
     get_session: GetSession
     get_raw_record: GetRawRecord
@@ -69,6 +73,8 @@ def build_container(settings: Settings) -> Container:
         list_imports=ListImports(uow_factory),
         get_import=GetImport(uow_factory),
         list_rejects=ListRejects(uow_factory),
+        reject_summary=RejectSummaryQuery(uow_factory),
+        list_records=ListRecordOutcomes(uow_factory),
         list_sessions=ListSessions(uow_factory),
         get_session=GetSession(uow_factory),
         get_raw_record=GetRawRecord(uow_factory),

@@ -79,6 +79,27 @@ class RecordOutcome:
 
 
 @dataclass(frozen=True)
+class RecordRow:
+    """One source record's outcome in one import, for browsing (no payload)."""
+
+    file_sha256: str
+    locator: str
+    outcome: str
+    entity_counts: dict[str, int]
+    warning_counts: dict[str, int]
+
+
+@dataclass(frozen=True)
+class RejectSummary:
+    """How the rejects of one import distribute, for filters with counts."""
+
+    codes: dict[str, int]
+    rules: dict[str, int]
+    files: dict[str, int]
+    outcomes: dict[str, int]
+
+
+@dataclass(frozen=True)
 class RejectRow:
     locator: str
     rule_id: str
@@ -132,6 +153,7 @@ class FileInfo:
     mapping: MappingRef | None = None
     status: str = "committed"  # pending | committed | duplicate | failed
     records: dict[str, int] = field(default_factory=dict)
+    duplicate_of: str | None = None  # the committed import these bytes were skipped in favour of
 
 
 @dataclass(frozen=True)

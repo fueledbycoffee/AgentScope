@@ -10,15 +10,17 @@ from agentscope_app.application.dto import (
     ImportReport,
     MappingRecord,
     Metric,
+    RecordRow,
     RejectRow,
+    RejectSummary,
     SessionDetail,
     SessionSummary,
 )
 from agentscope_app.application.dto import (
     MetricsSummary as MetricsSummaryDTO,
 )
-from agentscope_app.application.errors import NotFoundError
-from agentscope_app.application.ports import UnitOfWorkFactory
+from agentscope_app.application.errors import InvalidInputError, NotFoundError
+from agentscope_app.application.ports import UnitOfWork, UnitOfWorkFactory
 
 MAX_PAGE = 500
 
@@ -79,14 +81,51 @@ class ListRejects:
         import_id: str,
         code: str | None = None,
         file_sha256: str | None = None,
+        rule_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> Sequence[RejectRow]:
         limit, offset = _page(limit, offset)
         with self._uow_factory() as uow:
-            if uow.imports.get(import_id) is None:
-                raise NotFoundError(f"Import {import_id!r} does not exist")
-            return list(uow.imports.rejects(import_id, code, file_sha256, limit, offset))
+            _require_import(uow, import_id)
+            return list(uow.imports.rejects(import_id, code, file_sha256, rule_id, limit, offset))
+
+
+class RejectSummaryQuery:
+    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+        self._uow_factory = uow_factory
+
+    def execute(self, import_id: str) -> RejectSummary:
+        with self._uow_factory() as uow:
+            _require_import(uow, import_id)
+            return uow.imports.reject_summary(import_id)
+
+
+class ListRecordOutcomes:
+    OUTCOMES = frozenset({"accepted", "partial", "duplicate", "rejected", "ignored"})
+
+    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+        self._uow_factory = uow_factory
+
+    def execute(
+        self,
+        import_id: str,
+        outcome: str | None = None,
+        file_sha256: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Sequence[RecordRow]:
+        if outcome is not None and outcome not in self.OUTCOMES:
+            raise InvalidInputError(f"Unknown outcome {outcome!r}", [sorted(self.OUTCOMES)])
+        limit, offset = _page(limit, offset)
+        with self._uow_factory() as uow:
+            _require_import(uow, import_id)
+            return list(uow.imports.records(import_id, outcome, file_sha256, limit, offset))
+
+
+def _require_import(uow: UnitOfWork, import_id: str) -> None:
+    if uow.imports.get(import_id) is None:
+        raise NotFoundError(f"Import {import_id!r} does not exist")
 
 
 class ListSessions:

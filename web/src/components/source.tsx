@@ -1,9 +1,9 @@
 import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { getRawRecord } from '../api'
+import { ApiError, getRawRecord } from '../api'
 import type { RawReference } from '../api'
 import { useResource } from '../useResource'
-import { Drawer, JsonText, StateBlock } from './primitives'
+import { Drawer, JsonText, Notice, StateBlock } from './primitives'
 
 /**
  * The exact source record behind one observation: file hash, locator, the
@@ -26,8 +26,10 @@ export function SourceRecordDialog({ reference, onClose, mapping, importId, high
         ? 'Decoded Parquet row: values are shown exactly as converted from the file, not as source bytes.'
         : 'Numbers are shown exactly as stored; nothing is rounded.'}
     </p>
-    <StateBlock loading={resource.loading} error={resource.error} retry={resource.retry} lines={6}>
-      {resource.data && <JsonText text={resource.data.payload_text} highlight={highlight} />}
-    </StateBlock>
+    {resource.error instanceof ApiError && resource.error.status === 404
+      ? <Notice kind="warn" title="No stored payload for this record.">The record could not be decoded when it was read (an undecodable line has no JSON to keep), so only its locator is known.</Notice>
+      : <StateBlock loading={resource.loading} error={resource.error} retry={resource.retry} lines={6}>
+        {resource.data && <JsonText text={resource.data.payload_text} highlight={highlight} />}
+      </StateBlock>}
   </Drawer>
 }

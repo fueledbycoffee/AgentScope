@@ -15,7 +15,9 @@ from agentscope_app.application.dto import (
     MappingRecord,
     MetricsSummary,
     PreviewReport,
+    RecordRow,
     RejectRow,
+    RejectSummary,
     SessionSummary,
     UploadInfo,
 )
@@ -102,10 +104,30 @@ def list_rejects(
     import_id: str,
     code: str | None = None,
     file_sha256: str | None = None,
+    rule_id: str | None = None,
     limit: Limit = 50,
     offset: Offset = 0,
 ) -> list[RejectRow]:
-    return list(_c(request).list_rejects.execute(import_id, code, file_sha256, limit, offset))
+    return list(
+        _c(request).list_rejects.execute(import_id, code, file_sha256, rule_id, limit, offset)
+    )
+
+
+@router.get("/imports/{import_id}/rejects/summary")
+def reject_summary(request: Request, import_id: str) -> RejectSummary:
+    return _c(request).reject_summary.execute(import_id)
+
+
+@router.get("/imports/{import_id}/records")
+def list_records(
+    request: Request,
+    import_id: str,
+    outcome: str | None = None,
+    file_sha256: str | None = None,
+    limit: Limit = 50,
+    offset: Offset = 0,
+) -> list[RecordRow]:
+    return list(_c(request).list_records.execute(import_id, outcome, file_sha256, limit, offset))
 
 
 @router.get("/sessions")

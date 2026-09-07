@@ -133,6 +133,10 @@ def test_mixed_batch_commits_each_file_under_its_own_mapping(env: Env) -> None:
         "ignored": 0,
     }
     assert by_sha(second)[c.sha256].status == "committed"
+    assert by_sha(second)[a.sha256].duplicate_of == report.import_id  # points at the original
+    assert by_sha(second)[c.sha256].duplicate_of is None
+    with env.uow_factory() as uow:
+        assert uow.imports.get(second.import_id) == second  # same on read
     assert second.records["duplicate"] == 3 and second.records["accepted"] == 1
     assert second.entities == {"session": 1, "model_call": 1, "tool_call": 1}
     assert env.sql("SELECT COUNT(*) FROM model_calls") == [(6,)]
@@ -415,7 +419,7 @@ def test_migration_0003_backfills_a_populated_0002_database(tmp_path: Path) -> N
         report = uow.imports.get("imp_b")
         assert report is not None and report.files[0].status == "duplicate"
         assert report.files[0].mapping is not None and report.files[0].mapping.name == "m"
-        rejects: Sequence[RejectRow] = uow.imports.rejects("imp_c", None, sha, 10, 0)
+        rejects: Sequence[RejectRow] = uow.imports.rejects("imp_c", None, sha, None, 10, 0)
         assert [r.locator for r in rejects] == ["line:2"]
         outcomes: list[RecordOutcome] = []
         assert outcomes == []
@@ -475,3 +479,50 @@ def test_migration_0003_clears_a_newer_legacy_claim_before_promoting_the_older_a
             for r in c.execute(text("SELECT import_id, status, committed FROM import_files"))
         }
     assert rows == {"imp_old": ("committed", 1), "imp_new": ("duplicate", 0)}
+
+
+def test_record_outcomes_and_reject_summary_are_browsable(env: Env) -> None:
+    bad = (
+        b'{"provider": "claude", "round_index": 0, "model": "m", "input_tokens_total": 10,'
+        b' "output_tokens": 1, "timing_events": [{"timestamp": "2026-05-11T06:40:00Z"}],'
+        b' "tools": [], "user": "u", "trace_key": "k-bad"}\n'
+    )
+    a = env.upload.execute("a.jsonl", jsonl(*[f"o{i}" for i in range(12)]) + bad)
+    b = env.upload.execute("b.jsonl", jsonl("p1") + bad + bad)
+    report = env.commit.execute(
+        "tracelab",
+        [FileBinding(a.upload_id, "map_tracelab"), FileBinding(b.upload_id, "map_tracelab")],
+    )
+    assert report.status == "committed" and report.records["rejected"] == 3
+    with env.uow_factory() as uow:
+        rows = uow.imports.records(report.import_id, None, None, 100, 0)
+        # ordered by file, then by locator position (line:10 after line:9, not after line:1)
+        assert [r.locator for r in rows if r.file_sha256 == a.sha256] == [
+            f"line:{i}" for i in range(1, 14)
+        ]
+        assert [r.outcome for r in rows if r.file_sha256 == b.sha256] == [
+            "accepted",
+            "rejected",
+            "rejected",
+        ]
+        rejected = uow.imports.records(report.import_id, "rejected", None, 100, 0)
+        assert [(r.file_sha256[:1], r.locator) for r in rejected] == sorted(
+            [(a.sha256[:1], "line:13"), (b.sha256[:1], "line:2"), (b.sha256[:1], "line:3")]
+        )
+        only_b = uow.imports.records(report.import_id, None, b.sha256, 2, 1)
+        assert [r.locator for r in only_b] == ["line:2", "line:3"]
+        summary = uow.imports.reject_summary(report.import_id)
+        assert summary.outcomes == {"accepted": 13, "rejected": 3}
+        assert summary.files == {a.sha256: 2, b.sha256: 4}  # both rules reject each bad line
+        assert summary.rules == {"session": 3, "model_call": 3}
+        assert summary.codes == {"missing_value": 6}
+        by_rule = uow.imports.rejects(report.import_id, None, None, "session", 10, 0)
+        assert len(by_rule) == 3 and {r.rule_id for r in by_rule} == {"session"}
+    # zero-based Parquet locators sort by position as well (row:10 after row:9)
+    p = env.upload.execute("p.parquet", parquet_file(parquet_rows("pq", 12)))
+    parquet_report = env.commit.execute("tracelab", [FileBinding(p.upload_id, "map_parquet")])
+    with env.uow_factory() as uow:
+        rows = uow.imports.records(parquet_report.import_id, None, None, 100, 0)
+        assert [r.locator for r in rows] == [f"row:{i}" for i in range(12)]
+        page = uow.imports.records(parquet_report.import_id, None, None, 3, 9)
+        assert [r.locator for r in page] == ["row:9", "row:10", "row:11"]
