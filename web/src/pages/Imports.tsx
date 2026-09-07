@@ -13,6 +13,14 @@ const n = (value: number | null | undefined) => value == null ? 'Unavailable' : 
 
 /* ------------------------------------------------------------------ history */
 
+/** One label for the mappings of an attempt: the file bindings decide, not the attempt-level echo. */
+function mappingLabel(report: ImportSummary) {
+  const names = Array.from(new Set(report.files.map(f => f.mapping ? `${f.mapping.name} · rev ${f.mapping.revision}` : '')))
+    .filter(Boolean)
+  if (names.length === 0) return `${report.mapping.name} · rev ${report.mapping.revision}`
+  return names.length === 1 ? names[0] : `${names.length} mappings: ${names.join(', ')}`
+}
+
 /** The ledger of every attempt, newest first. Entities show a dash on attempts that inserted nothing. */
 export function ImportsPage() {
   const [offset, setOffset] = useState(0)
@@ -23,11 +31,11 @@ export function ImportsPage() {
     { key: 'status', header: 'Status', render: r => <StatusPill status={r.status} /> },
     { key: 'source', header: 'Source', render: r => r.source },
     { key: 'files', header: 'Files', wrap: true, render: r => r.files.map(f => f.filename).join(', ') },
-    { key: 'mapping', header: 'Mapping', render: r => `${r.mapping.name} · rev ${r.mapping.revision}` },
+    { key: 'mapping', header: 'Mapping', render: r => mappingLabel(r) },
     { key: 'records', header: 'Records', render: r => (['accepted', 'partial', 'duplicate', 'rejected', 'ignored'] as const).filter(k => k === 'accepted' || r.records[k]).map(k => `${n(r.records[k])} ${k}`).join(' · ') },
     { key: 'sessions', header: 'Sessions', align: 'num', render: r => r.status === 'committed' ? n(entityCounts(r.entities).session) : <span className="muted">—</span> },
     { key: 'calls', header: 'Model calls', align: 'num', render: r => r.status === 'committed' ? n(entityCounts(r.entities).model_call) : <span className="muted">—</span> },
-    { key: 'rejected', header: 'Rejected', align: 'num', render: r => <span style={r.reject_count ? { color: 'var(--bad)' } : undefined}>{n(r.reject_count)}</span> },
+    { key: 'rejected', header: 'Rejected records', align: 'num', render: r => <span style={r.records.rejected ? { color: 'var(--bad)' } : undefined}>{n(r.records.rejected)}</span> },
     { key: 'started', header: 'Started', mono: true, render: r => r.started_at },
     { key: 'error', header: 'Error', wrap: true, render: r => r.error ?? <span className="muted">—</span> },
   ]
@@ -79,7 +87,14 @@ function CountPanel({ title, counts, order, hint }: { title: string; counts: Rec
   </section>
 }
 
-function Records({ id, files, summary }: { id: string; files: ImportedFile[]; summary?: RejectSummary }) {
+type SummaryResource = { data?: RejectSummary; error?: unknown; retry: () => void }
+
+function SummaryProblem({ summary }: { summary: SummaryResource }) {
+  if (!summary.error) return null
+  return <Notice kind="warn" title="Filter counts are unavailable."><p>The summary request failed; the rows below are unaffected. <button className="btn small" onClick={summary.retry}>Retry</button></p></Notice>
+}
+
+function Records({ id, files, summary }: { id: string; files: ImportedFile[]; summary: SummaryResource }) {
   const [outcome, setOutcome] = useState('')
   const [file, setFile] = useState('')
   const [offset, setOffset] = useState(0)
@@ -94,11 +109,12 @@ function Records({ id, files, summary }: { id: string; files: ImportedFile[]; su
     { key: 'warnings', header: 'Warnings', render: r => Object.entries(r.warning_counts).map(([k, v]) => `${k} ${v}`).join(', ') || <span className="muted">—</span> },
     { key: 'raw', header: 'Source', render: r => <button className="btn small" aria-label={`Raw payload for ${r.locator}`} onClick={() => setOpen({ file_sha256: r.file_sha256, locator: r.locator })}>Raw payload</button> },
   ]
-  const outcomes = summary?.outcomes ?? {}
+  const outcomes = summary.data?.outcomes ?? {}
   const replayed = files.filter(f => f.status === 'duplicate')
   return <section className="panel" id="records" aria-label="Records">
     <div className="panel-head"><h2>Records</h2><span className="count">one row per source record read in this attempt</span></div>
     {replayed.length > 0 && <p style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)', marginBottom: 12 }}>{replayed.map(f => f.filename).join(', ')}: skipped as exact duplicates, so their records are not listed here; see the original import.</p>}
+    <SummaryProblem summary={summary} />
     <div className="row" style={{ marginBottom: 12 }}>
       <label className="dim"><span>Outcome</span><select aria-label="Outcome filter" value={outcome} onChange={e => { setOutcome(e.target.value); setOffset(0) }}>
         <option value="">All</option>
@@ -118,7 +134,7 @@ function Records({ id, files, summary }: { id: string; files: ImportedFile[]; su
   </section>
 }
 
-function Rejects({ id, files, summary, total }: { id: string; files: ImportedFile[]; summary?: RejectSummary; total: number }) {
+function Rejects({ id, files, summary, total, report }: { id: string; files: ImportedFile[]; summary: SummaryResource; total: number; report: ImportReport }) {
   const [code, setCode] = useState('')
   const [rule, setRule] = useState('')
   const [file, setFile] = useState('')
@@ -136,18 +152,23 @@ function Rejects({ id, files, summary, total }: { id: string; files: ImportedFil
     { key: 'message', header: 'Message', wrap: true, render: r => r.message },
     { key: 'raw', header: 'Source', render: r => <button className="btn small" aria-label={`Raw payload for reject at ${r.locator}`} onClick={() => setOpen({ reference: { file_sha256: r.file_sha256 ?? files[0]?.sha256 ?? '', locator: r.locator } })}>Raw payload</button> },
   ]
-  if (total === 0) return <section className="panel" id="rejects" aria-label="Rejects"><div className="panel-head"><h2>Rejects</h2></div><p className="state-block">No record was rejected: every source record produced at least one observation or was skipped as a duplicate.</p></section>
+  if (total === 0) return <section className="panel" id="rejects" aria-label="Rejects"><div className="panel-head"><h2>Rejects</h2></div>
+    <p className="state-block">{report.status === 'failed' ? 'No reject rows: the attempt failed before its records were evaluated.'
+      : report.status === 'duplicate' ? 'No reject rows: nothing was read, the bytes were already imported.'
+      : report.records.ignored > 0 ? `No reject rows. ${n(report.records.ignored)} record${report.records.ignored === 1 ? ' was' : 's were'} ignored because no rule selected ${report.records.ignored === 1 ? 'it' : 'them'}; the rest produced observations or were skipped as duplicates.`
+      : 'No reject rows for this attempt.'}</p></section>
   const select = (label: string, value: string, set: (v: string) => void, options: Record<string, number>) =>
     <label className="dim"><span>{label}</span><select aria-label={`${label} filter`} value={value} onChange={e => { set(e.target.value); setOffset(0) }}>
       <option value="">All</option>{Object.entries(options).map(([k, v]) => <option key={k} value={k}>{k} ({n(v)})</option>)}
     </select></label>
   return <section className="panel" id="rejects" aria-label="Rejects">
-    <div className="panel-head"><h2>Rejects</h2><span className="count">{n(total)} reject{total === 1 ? '' : 's'}, one per rule that refused a record</span></div>
+    <div className="panel-head"><h2>Rejects</h2><span className="count">{n(total)} reject row{total === 1 ? '' : 's'}, one per rule that refused a record ({n(report.records.rejected)} record{report.records.rejected === 1 ? '' : 's'} rejected outright)</span></div>
+    <SummaryProblem summary={summary} />
     <div className="row" style={{ marginBottom: 12 }}>
-      {select('Code', code, setCode, summary?.codes ?? {})}
-      {select('Rule', rule, setRule, summary?.rules ?? {})}
+      {select('Code', code, setCode, summary.data?.codes ?? {})}
+      {select('Rule', rule, setRule, summary.data?.rules ?? {})}
       {files.length > 1 && <label className="dim"><span>File</span><select aria-label="Reject file filter" value={file} onChange={e => { setFile(e.target.value); setOffset(0) }}>
-        <option value="">All files</option>{files.map(f => <option key={f.sha256} value={f.sha256}>{f.filename}{summary?.files[f.sha256] ? ` (${n(summary.files[f.sha256])})` : ''}</option>)}
+        <option value="">All files</option>{files.map(f => <option key={f.sha256} value={f.sha256}>{f.filename}{summary.data?.files[f.sha256] ? ` (${n(summary.data.files[f.sha256])})` : ''}</option>)}
       </select></label>}
     </div>
     <StateBlock loading={resource.loading} error={resource.error} retry={resource.retry} lines={4}>
@@ -167,7 +188,7 @@ export function ReportPage() {
   const summary = useResource(useCallback(() => getRejectSummary(id), [id]))
   const report = resource.data
   const mappings = report ? Array.from(new Set(report.files.map(f => f.mapping ? `${f.mapping.name} · revision ${f.mapping.revision}` : ''))).filter(Boolean) : []
-  useFileBar('Import', report ? [
+  useFileBar('Report', report ? [
     { label: 'Import', value: report.import_id, mono: true },
     { label: 'Source', value: report.source },
     { label: mappings.length > 1 ? 'Mappings' : 'Mapping', value: mappings.length > 1 ? `${mappings.length} mappings` : mappings[0] ?? `${report.mapping.name} · revision ${report.mapping.revision}` },
@@ -202,8 +223,8 @@ export function ReportPage() {
         <section className="panel" aria-label="Imported files"><div className="panel-head"><h2>Imported files</h2><span className="count">{report.files.length}</span></div>
           <DataTable caption="Imported files" hideCaption columns={fileColumns} rows={report.files} rowKey={f => f.sha256} empty="No files." /></section>
         <div className="actions"><a className="btn small" href="#rejects">View rejects ({n(report.reject_count)})</a><a className="btn small" href="#records">Browse records</a><Link className="btn small" to={link('/overview')}>Open dashboard</Link><Link className="btn small" to="/imports">Imports history</Link></div>
-        {report.status !== 'failed' && <Records key={`records-${id}`} id={id} files={report.files} summary={summary.data} />}
-        <Rejects key={`rejects-${id}`} id={id} files={report.files} summary={summary.data} total={report.reject_count} />
+        {report.status !== 'failed' && <Records key={`records-${id}`} id={id} files={report.files} summary={summary} />}
+        <Rejects key={`rejects-${id}`} id={id} files={report.files} summary={summary} total={report.reject_count} report={report} />
       </>}
     </StateBlock>
   </>

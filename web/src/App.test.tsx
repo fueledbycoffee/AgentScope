@@ -325,6 +325,32 @@ describe('Reports, history, and session detail', () => {
     expect(within(table).getByRole('cell', { name: '—' })).toBeInTheDocument()
   })
 
+  it('history counts rejected records, not reject rows, and names every mapping of a batch', async () => {
+    fetchMock.mockImplementation((url, options) => String(url).startsWith('/api/imports?')
+      ? Promise.resolve(json([{ ...report, reject_count: 2, records: { ...report.records, rejected: 1 },
+        files: [report.files[0], { ...report.files[0], sha256: 'b'.repeat(64), filename: 'b.parquet', mapping: { id: 'map_p', name: 'parquet-test-v1', revision: 1 } }] }]))
+      : defaultResponse(url, options))
+    start('/imports')
+    const table = await screen.findByRole('table', { name: 'Import attempts, newest first' })
+    expect(within(table).getByRole('columnheader', { name: 'Rejected records' })).toBeInTheDocument()
+    const row = within(table).getAllByRole('row')[1]
+    const cells = within(row).getAllByRole('cell').map(cell => cell.textContent)
+    expect(cells[cells.indexOf('2 mappings: tracelab-v1 · rev 1, parquet-test-v1 · rev 1') + 4]).toBe('1') // rejected records, not the 2 reject rows
+    expect(table).toHaveTextContent('2 mappings: tracelab-v1 · rev 1, parquet-test-v1 · rev 1')
+  })
+
+  it('shows a retry when the rejects summary fails, without hiding the rows', async () => {
+    fetchMock.mockImplementation((url, options) => String(url).endsWith('/rejects/summary')
+      ? Promise.resolve(json({ error: { code: 'query_failed', message: 'summary unavailable', details: [] } }, 500))
+      : defaultResponse(url, options))
+    start('/imports/imp_1')
+    await screen.findByRole('table', { name: 'Rejected records' })
+    const rejects = screen.getByRole('region', { name: 'Rejects' })
+    expect(within(rejects).getByText('Filter counts are unavailable.')).toBeInTheDocument()
+    fireEvent.click(within(rejects).getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/rejects/summary'))).toHaveLength(2))
+  })
+
   it('opens an import report from history', async () => {
     start('/imports')
     fireEvent.click(await screen.findByRole('link', { name: 'imp_1' }))
