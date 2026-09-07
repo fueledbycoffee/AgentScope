@@ -89,7 +89,7 @@ def convert_duration(value: Any, from_unit: str, to_unit: str) -> int | Decimal:
             "precision_loss",
             f"Duration {value!r} {from_unit} cannot be converted to {to_unit} exactly",
         ) from exc
-    if abs(result) >= MAX_DURATION_MAGNITUDE:
+    if result.copy_abs() >= MAX_DURATION_MAGNITUDE:  # copy_abs is context-free
         # Never expand a huge exponent into a huge integer: bound before int().
         raise ConversionError(
             "out_of_range", f"Duration {value!r} {from_unit} exceeds the supported range"

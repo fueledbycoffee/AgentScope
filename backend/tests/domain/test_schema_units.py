@@ -173,3 +173,16 @@ def test_scientific_zero_is_zero_not_out_of_range() -> None:
     assert coerce(Decimal("0e19"), FieldType.INTEGER) == 0
     assert coerce(Decimal("0e99999"), FieldType.INTEGER) == 0
     assert coerce(Decimal("0e19"), FieldType.NUMBER) == 0.0
+
+
+def test_duration_bound_check_is_context_independent() -> None:
+    from decimal import Inexact, localcontext
+
+    with localcontext() as ctx:
+        ctx.traps[Inexact] = True
+        assert convert_duration("1.00000000000000000000000000001", "ms", "ms") == Decimal(
+            "1.00000000000000000000000000001"
+        )
+        assert convert_duration("2.5", "ms", "ms") == Decimal("2.5")
+        with pytest.raises(ConversionError):
+            convert_duration("1e19", "ms", "ms")

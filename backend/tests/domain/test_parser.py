@@ -457,3 +457,25 @@ def test_unknown_enum_map_parameters_are_warned() -> None:
         "rules[2].fields.tool_name.transforms[0].enum_map.unmapped_policy",
         "unknown_key",
     ) in codes(parsed, Severity.WARNING)
+
+
+def test_parsed_spec_is_detached_from_the_input_document() -> None:
+    doc = copy.deepcopy(VALID)
+    doc["rules"][0]["fields"]["agent"] = {"literal": {"nested": ["x"]}}
+    doc["rules"][1]["fields"]["model"] = {
+        "path": "$.m",
+        "on_missing": "default",
+        "default": ["d"],
+        "transforms": [{"enum_map": {"mapping": {"a": "original"}, "unmapped": "keep"}}],
+    }
+    doc["rules"][1]["where"] = [{"path": "$.kind", "op": "in", "value": ["call"]}]
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    doc["rules"][1]["fields"]["model"]["transforms"][0]["enum_map"]["mapping"]["a"] = "edited"
+    doc["rules"][1]["where"][0]["value"].append("other")
+    doc["rules"][0]["fields"]["agent"]["literal"]["nested"].append("y")
+    doc["rules"][1]["fields"]["model"]["default"].append("e")
+    assert spec.rules[1].fields["model"].transforms[0].params["mapping"] == {"a": "original"}
+    assert spec.rules[1].where[0].value == ["call"]
+    assert spec.rules[0].fields["agent"].literal == {"nested": ["x"]}
+    assert spec.rules[1].fields["model"].default == ["d"]

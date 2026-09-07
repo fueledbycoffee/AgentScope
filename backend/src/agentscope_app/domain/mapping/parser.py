@@ -8,6 +8,7 @@ they come back as issues so a draft can still be shown and corrected.
 
 from __future__ import annotations
 
+import copy
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -379,7 +380,9 @@ def _parse_condition(raw: Any, path: str, issues: _Issues) -> Condition | None:
         )
     if cond_path is None:
         return None
-    return Condition(cond_path, str(op), value)
+    # Detach from the input document so later edits to the draft cannot change a
+    # spec that was already validated.
+    return Condition(cond_path, str(op), copy.deepcopy(value))
 
 
 def _path(raw: Any, path: str, issues: _Issues, *, allow_wildcard: bool) -> Path | None:
@@ -588,7 +591,7 @@ def _parse_field(raw: Any, target: TargetField, path: str, issues: _Issues) -> F
         target=target.name,
         type=target.type,
         paths=tuple(paths),
-        literal=raw.get("literal"),
+        literal=copy.deepcopy(raw.get("literal")),
         has_literal="literal" in raw,
         transforms=tuple(transforms),
         timestamp_format=timestamp_format if target.type is FieldType.TIMESTAMP else None,
@@ -596,7 +599,7 @@ def _parse_field(raw: Any, target: TargetField, path: str, issues: _Issues) -> F
         unit_to=unit_to,
         empty_as_missing=empty_as_missing,
         on_missing=str(on_missing),
-        default=raw.get("default"),
+        default=copy.deepcopy(raw.get("default")),
         on_invalid=str(on_invalid),
         bounds=bounds,
     )
@@ -645,7 +648,7 @@ def _parse_transform(raw: Any, path: str, issues: _Issues) -> Transform | None:
         issues.warning(
             "semantic", path, "ignored_params", f"Transform {name!r} takes no parameters"
         )
-    return Transform(name, dict(params))
+    return Transform(name, copy.deepcopy(dict(params)))
 
 
 def _parse_unmapped(raw: Any, issues: _Issues) -> list[UnmappedPath]:
