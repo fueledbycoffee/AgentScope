@@ -222,6 +222,66 @@ def test_router_sniffs_by_magic_before_extension() -> None:
         list(router.read(io.BytesIO(b""), "csv"))
 
 
+def _oracle(days: int) -> str:
+    """Proleptic Gregorian date from a Julian day number (Fliegel & Van Flandern)."""
+    jdn = 2_440_588 + days
+    a = jdn + 32_044
+    b = (4 * a + 3) // 146_097
+    c = a - 146_097 * b // 4
+    d = (4 * c + 3) // 1_461
+    e = c - 1_461 * d // 4
+    m = (5 * e + 2) // 153
+    day = e - (153 * m + 2) // 5 + 1
+    month = m + 3 - 12 * (m // 10)
+    year = 100 * b + d - 4_800 + m // 10
+    sign = "" if year >= 0 else "-"
+    return f"{sign}{abs(year):04d}-{month:02d}-{day:02d}"
+
+
+def test_review_findings_dictionary_time32_and_date_range() -> None:
+    # An Arrow dictionary-typed column reads back as dictionary type: the footer and the
+    # encoded buffers stay tiny while the logical data does not.
+    table = pa.table({"s": pa.array(["x" * 32_768] * 10_000).dictionary_encode()})
+    data = parquet_bytes(table)
+    assert len(data) < 5_000
+    with pytest.raises(LimitExceededError, match="decodes to more than"):
+        read_all(data, max_decoded_bytes=1_000_000)
+    rows = read_all(data, max_decoded_bytes=2_000_000_000)
+    assert len(rows) == 10_000 and rows[9_999].payload == {"s": "x" * 32_768}
+    # time32 has int32 storage
+    t32 = pa.table({"t": pa.array([1234, None], pa.time32("ms"))})
+    assert [r.payload["t"] for r in read_all(parquet_bytes(t32))] == [
+        {"_arrow": "time", "seconds": Decimal("1.234"), "unit": "ms"},
+        {"_arrow": "time", "seconds": None, "unit": "ms"},
+    ]
+    # dates and timestamps beyond Python's range still render, with their full year
+    far = pa.table(
+        {
+            "d": pa.array([3_000_000, 0, -1_000_000], pa.date32()),
+            "ts": pa.array([2**62, -(2**62)], pa.timestamp("us")).slice(0, 2).take([0, 1, 1]),
+        }
+    )
+    payloads = [r.payload for r in read_all(parquet_bytes(far))]
+    # expectations from an independent Julian-day oracle (and Arrow's own strftime)
+    assert payloads[0]["d"] == _oracle(3_000_000) == "10183-09-21"
+    assert payloads[1]["d"] == "1970-01-01"
+    assert payloads[2]["d"] == _oracle(-1_000_000) == "-0768-02-04"
+    assert payloads[0]["ts"]["iso"].startswith(_oracle(2**62 // 10**6 // 86_400) + "T")
+    assert payloads[1]["ts"]["iso"].startswith(_oracle(-(2**62) // 10**6 // 86_400) + "T")
+    for days in range(-3_000_000, 4_000_000, 9_973):
+        assert read_all(parquet_bytes(pa.table({"d": pa.array([days], pa.date32())})))[0].payload[
+            "d"
+        ] == _oracle(days)
+    # in range they agree with the standard library
+    import datetime as dt
+
+    for days in (0, 19_000, -25_567, 2_932_896):
+        assert (
+            read_all(parquet_bytes(pa.table({"d": pa.array([days], pa.date32())})))[0].payload["d"]
+            == (dt.date(1970, 1, 1) + dt.timedelta(days=days)).isoformat()
+        )
+
+
 # ---------------------------------------------------------------- property test
 from hypothesis import given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402

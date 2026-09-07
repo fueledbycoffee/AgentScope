@@ -184,7 +184,7 @@ names, so ordinary paths reach them:
 | integers (incl. uint64), bool, string, decimal128/256 | native; decimals stay `Decimal` |
 | float | finite: shortest round-trip decimal; NaN / ±Inf: `{"_arrow": "float", "value": "NaN"}` — a non-numeric value, so the field's `on_invalid` policy applies |
 | binary | `{"_arrow": "binary", "base64": "…"}` |
-| timestamp | `{"_arrow": "timestamp", "iso": "2026-06-01T12:00:00.000000000Z", "unit": "ns", "tz": "UTC", "value": 1748779200000000000}`; `iso` keeps the unit's full precision and is `null` outside years 1 to 9999; naive timestamps have no `Z` |
+| timestamp | `{"_arrow": "timestamp", "iso": "2026-06-01T12:00:00.000000000Z", "unit": "ns", "tz": "UTC", "value": 1748779200000000000}`; `iso` keeps the unit's full precision; years outside 0001 to 9999 render with their full digits (ISO parsers refuse them, so the field follows `on_invalid`); naive timestamps have no `Z` |
 | date | `"YYYY-MM-DD"` |
 | duration | `{"_arrow": "duration", "seconds": 1.500, "unit": "ms"}` — exact decimal seconds |
 | time of day | `{"_arrow": "time", "seconds": 45296.5, "unit": "us"}` |

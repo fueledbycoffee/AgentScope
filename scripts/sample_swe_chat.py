@@ -110,6 +110,36 @@ def within_limits(
     )
 
 
+def offending_sessions(conversations_out: Path, sessions_out: Path) -> set[str]:
+    """Sessions whose rows the product's reader would refuse or turn into record errors.
+
+    The closed outputs are read exactly as an import would read them, so a row
+    over the per-record limit (or a schema the reader refuses) is caught here,
+    not after the excerpt has been published.
+    """
+    import pyarrow.parquet as pq
+
+    try:
+        from agentscope_app.application.errors import ApplicationError
+        from agentscope_app.infrastructure.readers.parquet import ParquetRecordReader
+    except ImportError as exc:  # pragma: no cover - the backend environment provides it
+        raise SystemExit(
+            "run inside the backend environment (uv --directory backend run ...)"
+        ) from exc
+    reader = ParquetRecordReader()
+    bad: set[str] = set()
+    for path in (conversations_out, sessions_out):
+        ids = pq.read_table(path, columns=["session_id"]).column("session_id").to_pylist()
+        with path.open("rb") as stream:
+            try:
+                for record in reader.read(stream, "parquet"):
+                    if record.error is not None:
+                        bad.add(str(ids[int(record.locator.split(":")[1])]))
+            except ApplicationError as exc:
+                raise SystemExit(f"{path.name} is not importable as written: {exc}") from exc
+    return bad
+
+
 def build_excerpt(
     sessions_path: Path,
     conversations_path: Path,
@@ -127,7 +157,16 @@ def build_excerpt(
     while True:
         s_out, c_out, s_rows, c_rows = write_outputs(selected, conversations_path, out_dir)
         if within_limits(s_out, c_out, s_rows, c_rows):
-            break
+            bad = offending_sessions(c_out, s_out)
+            if not bad:
+                break
+            # a row the reader would refuse: its whole session leaves the excerpt
+            selected = [r for r in selected if str(r["session_id"]) not in bad]
+            if not selected:
+                raise SystemExit(
+                    f"every candidate session has rows the reader refuses: {sorted(bad)}"
+                )
+            continue
         if len(selected) == 1:
             raise SystemExit(
                 f"a single session ({selected[0]['session_id']}) exceeds the limits: "

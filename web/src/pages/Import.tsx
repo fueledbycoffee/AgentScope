@@ -34,6 +34,7 @@ export default function ImportPage() {
   const pairs = current ? [...batch, current] : batch
   const source = pairs[0]?.mapping.source
   const mixedSources = new Set(pairs.map(pair => pair.mapping.source)).size > 1
+  const batchMixed = new Set(batch.map(pair => pair.mapping.source)).size > 1
   const duplicateInBatch = !!current && batch.some(pair => pair.upload.sha256 === current.upload.sha256)
 
   async function run(label: string, action: () => Promise<void>) {
@@ -60,6 +61,14 @@ export default function ImportPage() {
           <td>{pair.preview.records.sampled} sampled · {pair.preview.rejects.length} rejects</td>
           <td><button type="button" disabled={!!busy} onClick={() => setBatch(batch.filter(item => item !== pair))}>Remove {pair.upload.filename}</button></td></tr>)}
       </Table>
+      {!current && <>
+        {batchMixed && <p className="error" role="alert">The mappings in this batch declare different sources. One import writes to one source.</p>}
+        <p>Import {batch.length} {batch.length === 1 ? 'file' : 'files'} ({batch.reduce((total, pair) => total + pair.upload.record_count, 0)} records) into source <strong>{batch[0].mapping.source}</strong>, each with its own mapping, or add another file below.</p>
+        <button disabled={!!busy || batchMixed} onClick={() => void run('Importing…', async () => {
+          const report = await commitImport(requestFor(batch, batch[0].mapping.source))
+          if (mounted.current) navigate(`/imports/${encodeURIComponent(report.import_id)}`)
+        })}>{batch.length === 1 ? 'Import' : `Import ${batch.length} files`}</button>
+      </>}
     </section>}
     <label htmlFor="trace-file">{batch.length > 0 ? 'Add another trace file' : 'Trace file'}</label>
     <input id="trace-file" type="file" accept=".jsonl,.jsonl.gz,.gz,.parquet" disabled={!!busy}

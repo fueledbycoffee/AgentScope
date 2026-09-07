@@ -399,3 +399,59 @@ def test_migration_0003_backfills_a_populated_0002_database(tmp_path: Path) -> N
         assert [r.locator for r in rejects] == ["line:2"]
         outcomes: list[RecordOutcome] = []
         assert outcomes == []
+
+
+def test_migration_0003_clears_a_newer_legacy_claim_before_promoting_the_older_attempt(
+    tmp_path: Path,
+) -> None:
+    """A 0002 database where the newer attempt already holds committed=1 and the older one
+    (written by 0001) holds committed=0: the repair must not trip the partial index."""
+    engine = create_engine_for(f"sqlite:///{tmp_path / 'old.sqlite3'}")
+    config = alembic_config(engine)
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0002")
+    sha = "c" * 64
+    with engine.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO mappings (id, name, source, revision, created_by, input_format, "
+                "document, content_hash, created_at) VALUES ('map_1', 'm', 'tracelab', 1, 't', "
+                "'jsonl', '{}', 'h', '2026-09-07 10:00:00.000000')"
+            )
+        )
+        c.execute(
+            text(
+                "INSERT INTO raw_files (sha256, size_bytes, storage_key, created_at) "
+                "VALUES (:s, 1, '', '2026-09-07 10:00:00.000000')"
+            ),
+            {"s": sha},
+        )
+        for import_id, started, committed in (
+            ("imp_old", "2026-09-07 10:00:00.000000", 0),
+            ("imp_new", "2026-09-07 11:00:00.000000", 1),
+        ):
+            c.execute(
+                text(
+                    "INSERT INTO imports (id, status, source, mapping_id, mapping_name, "
+                    "mapping_revision, started_at, finished_at, records, entities, warnings, "
+                    "reject_count, error) VALUES (:i, 'committed', 'tracelab', 'map_1', 'm', 1, "
+                    ":t, :t, :r, '{}', '{}', 0, NULL)"
+                ),
+                {"i": import_id, "t": started, "r": TWO},
+            )
+            c.execute(
+                text(
+                    "INSERT INTO import_files (id, import_id, sha256, filename, size_bytes, "
+                    "format, record_count, source, committed) "
+                    "VALUES (:f, :i, :s, 'a.jsonl', 1, 'jsonl', 2, 'tracelab', :c)"
+                ),
+                {"f": f"if_{import_id}", "i": import_id, "s": sha, "c": committed},
+            )
+    run_migrations(engine)
+    with engine.connect() as c:
+        rows = {
+            r[0]: (r[1], r[2])
+            for r in c.execute(text("SELECT import_id, status, committed FROM import_files"))
+        }
+    assert rows == {"imp_old": ("committed", 1), "imp_new": ("duplicate", 0)}

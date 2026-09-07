@@ -18,7 +18,6 @@ import base64
 import math
 import uuid
 from collections.abc import Iterator, Sequence
-from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, BinaryIO, Final
 
@@ -35,7 +34,6 @@ DEFAULT_BATCH_ROWS: Final = 1_000
 DEFAULT_MAX_RECORD_BYTES: Final = 4 * 1024 * 1024  # same ceiling as a JSONL line
 MAX_COLUMNS: Final = 64
 MAX_DEPTH: Final = 8
-_EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
 _UNIT_DIGITS: Final = {"s": 0, "ms": 3, "us": 6, "ns": 9}
 
 
@@ -81,8 +79,10 @@ class ParquetRecordReader:
         try:
             batches = parquet.iter_batches(batch_size=self._batch_rows)
             for batch in batches:
-                # Dictionary encoding hides repetition from the footer sizes; the
-                # decoded Arrow buffers do not, so the budget is enforced again here.
+                # Dictionary encoding hides repetition from the footer sizes and from
+                # the encoded buffers; only the dense buffers show the real size, so
+                # dictionaries are expanded (at any depth) before the budget is checked.
+                batch = batch.cast(_dense_schema(batch.schema))
                 decoded_so_far += batch.nbytes
                 if decoded_so_far > self._max_decoded_bytes:
                     raise LimitExceededError(
@@ -222,9 +222,11 @@ def _convert_array(array: pa.Array) -> list[Any]:
         raw = array.cast(pa.int64()).to_pylist()
         return [_wrap_timestamp(v, typ.unit, typ.tz) for v in raw]
     if pa.types.is_date(typ):
-        return [None if v is None else v.isoformat() for v in array.cast(pa.date32()).to_pylist()]
+        days = array.cast(pa.date32()).cast(pa.int32()).to_pylist()
+        return [None if v is None else _civil_date(v) for v in days]
     if pa.types.is_time(typ):
-        raw = array.cast(pa.int64()).to_pylist()
+        storage = pa.int32() if typ.bit_width == 32 else pa.int64()
+        raw = array.cast(storage).to_pylist()
         return [_wrap_seconds("time", v, typ.unit) for v in raw]
     if pa.types.is_duration(typ):
         raw = array.cast(pa.int64()).to_pylist()
@@ -269,22 +271,64 @@ def _wrap_timestamp(value: int | None, unit: str, tz: str | None) -> Any:
     if value is None:
         return {WRAPPER_KEY: "timestamp", "iso": None, "unit": unit, "tz": tz, "value": None}
     digits = _UNIT_DIGITS[unit]
-    scale = 10**digits
-    seconds, fraction = divmod(value, scale)
-    try:
-        base = _EPOCH + timedelta(seconds=seconds)
-    except OverflowError:
-        base = None
-    if base is None:
-        iso = None
-    else:
-        iso = base.strftime("%Y-%m-%dT%H:%M:%S")
-        if digits:
-            iso += "." + str(fraction).rjust(digits, "0")
-        if tz is not None:
-            # Arrow stores tz-aware instants as UTC; the tz name is display metadata.
-            iso += "Z"
+    seconds, fraction = divmod(value, 10**digits)
+    days, secs = divmod(seconds, 86_400)
+    hh, rem = divmod(secs, 3_600)
+    mm, ss = divmod(rem, 60)
+    iso = f"{_civil_date(days)}T{hh:02d}:{mm:02d}:{ss:02d}"
+    if digits:
+        iso += "." + str(fraction).rjust(digits, "0")
+    if tz is not None:
+        # Arrow stores tz-aware instants as UTC; the tz name is display metadata.
+        iso += "Z"
     return {WRAPPER_KEY: "timestamp", "iso": iso, "unit": unit, "tz": tz, "value": value}
+
+
+def _civil_date(days: int) -> str:
+    """Proleptic Gregorian date for a day count from 1970-01-01, any range.
+
+    Python's ``date`` stops at year 9999; Arrow does not. Years outside 0001 to
+    9999 render with their full digits (and a sign), which ISO 8601 parsers
+    refuse, so a mapping sees an invalid timestamp rather than a wrong one.
+    """
+    z = days + 719_468
+    era = z // 146_097  # floor division: no separate negative branch needed
+    doe = z - era * 146_097
+    yoe = (doe - doe // 1_460 + doe // 36_524 - doe // 146_096) // 365
+    y = yoe + era * 400
+    doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+    mp = (5 * doy + 2) // 153
+    d = doy - (153 * mp + 2) // 5 + 1
+    m = mp + 3 if mp < 10 else mp - 9
+    if m <= 2:
+        y += 1
+    year = f"{y:04d}" if y >= 0 else f"-{-y:04d}"
+    return f"{year}-{m:02d}-{d:02d}"
+
+
+def _dense_schema(schema: pa.Schema) -> pa.Schema:
+    return pa.schema([pa.field(f.name, _dense_type(f.type), f.nullable) for f in schema])
+
+
+def _dense_type(typ: pa.DataType) -> pa.DataType:
+    if pa.types.is_dictionary(typ):
+        return _dense_type(typ.value_type)
+    if pa.types.is_struct(typ):
+        return pa.struct(
+            [
+                pa.field(typ.field(i).name, _dense_type(typ.field(i).type), typ.field(i).nullable)
+                for i in range(typ.num_fields)
+            ]
+        )
+    if pa.types.is_map(typ):
+        return pa.map_(_dense_type(typ.key_type), _dense_type(typ.item_type))
+    if pa.types.is_large_list(typ):
+        return pa.large_list(_dense_type(typ.value_type))
+    if pa.types.is_fixed_size_list(typ):
+        return pa.list_(_dense_type(typ.value_type), typ.list_size)
+    if _is_list(typ):
+        return pa.list_(_dense_type(typ.value_type))
+    return typ
 
 
 def _convert_extension(array: pa.Array) -> list[Any]:

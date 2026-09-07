@@ -81,6 +81,15 @@ class ExcerptTests(unittest.TestCase):
         )
         self.assertEqual(len(kept), 2)
 
+    def test_rows_the_reader_refuses_drop_their_whole_session(self):
+        conv = pq.read_table(self.conversations).to_pylist()
+        conv.append({"session_id": "s2", "turn_number": 9, "content": "x" * (5 * 1024 * 1024)})
+        pq.write_table(pa.Table.from_pylist(conv), self.conversations)
+        manifest = sampler.build_excerpt(self.sessions, self.conversations, self.out, seed="s")
+        kept = set(pq.read_table(self.out / "sessions.parquet").column("session_id").to_pylist())
+        self.assertEqual(kept, {"s1", "s3"})
+        self.assertEqual(manifest["outputs"]["conversations.parquet"]["rows"], 8)
+
     def test_single_oversized_session_fails_explicitly(self):
         original = sampler.MAX_TOTAL_ROWS
         sampler.MAX_TOTAL_ROWS = 2

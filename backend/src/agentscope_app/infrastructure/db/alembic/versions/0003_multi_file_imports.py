@@ -44,6 +44,9 @@ def upgrade() -> None:
         "WHEN 'failed' THEN 'failed' ELSE 'pending' END FROM imports "
         "WHERE imports.id = import_files.import_id)"
     )
+    # No row claims the bytes while statuses are being repaired: the partial unique
+    # index stays satisfied whatever order SQLite updates rows in.
+    op.execute("UPDATE import_files SET committed = 0")
     # Historical attempts had one file: its counts are the attempt's counts.
     op.execute(
         "UPDATE import_files SET records = (SELECT records FROM imports "

@@ -168,6 +168,27 @@ describe('Import flow', () => {
     expect(screen.getByRole('table', { name: 'Imported files' })).toHaveTextContent('tracelab-v1 · revision 1')
   })
 
+  it('submits a fully queued batch without a current preview', async () => {
+    start()
+    await makePreview()
+    fireEvent.click(screen.getByRole('button', { name: 'Add to batch and choose another file' }))
+    fetchMock.mockImplementationOnce(() => Promise.resolve(json({ ...upload, upload_id: 'upl_2', sha256: 'b'.repeat(64), filename: 'second.jsonl' })))
+    fireEvent.change(screen.getByLabelText('Add another trace file'), { target: { files: [new File(['{}'], 'second.jsonl')] } })
+    await screen.findByText('second.jsonl')
+    fireEvent.change(screen.getByLabelText('Mapping'), { target: { value: 'map_2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
+    await screen.findByRole('heading', { name: 'Import preview' })
+    fireEvent.click(screen.getByRole('button', { name: 'Add to batch and choose another file' }))
+    expect(screen.queryByRole('heading', { name: 'Import preview' })).not.toBeInTheDocument()
+    const submit = screen.getByRole('button', { name: 'Import 2 files' })
+    expect(submit).toBeEnabled()
+    fireEvent.click(submit)
+    await screen.findAllByText('committed')
+    expect(fetchMock).toHaveBeenCalledWith('/api/imports', expect.objectContaining({
+      body: JSON.stringify({ source: 'tracelab', files: [{ upload_id: 'upl_1', mapping_id: 'map_1' }, { upload_id: 'upl_2', mapping_id: 'map_2' }] }),
+    }))
+  })
+
   it('does not redirect away from a new page when an earlier import finishes', async () => {
     start()
     await makePreview()
