@@ -10,7 +10,7 @@ _school/
 .env.*
 !.env.example
 
-# Data (never commit raw uploads or datasets; see docs for retrieval)
+# Data (only reviewed, attributed fixtures may be committed)
 data/
 *.jsonl
 *.jsonl.gz
@@ -19,6 +19,9 @@ data/
 *.sqlite
 *.sqlite3
 *.db
+!/fixtures/**/*.jsonl
+!/fixtures/**/*.jsonl.gz
+!/fixtures/**/*.parquet
 
 # Python
 __pycache__/
