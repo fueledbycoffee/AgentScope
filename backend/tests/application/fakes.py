@@ -173,6 +173,11 @@ class FakeTraces:
         self.fail = fail
         self.stored: list[dict[str, Any]] = []
 
+    def existing_sessions(
+        self, source: str, external_ids: Sequence[str]
+    ) -> dict[str, SessionAggregate]:
+        return {}
+
     def store(
         self,
         *,

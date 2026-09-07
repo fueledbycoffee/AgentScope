@@ -14,6 +14,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import ENCODERS_BY_TYPE
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -64,6 +65,17 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "error": {"code": exc.code, "message": exc.message, "details": list(exc.details)}
         }
         return JSONResponse(status_code=status, content=body)
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        details = [
+            {"path": ".".join(str(p) for p in e.get("loc", ())), "message": e.get("msg", "")}
+            for e in exc.errors()
+        ]
+        body = {
+            "error": {"code": "invalid_input", "message": "Invalid request", "details": details}
+        }
+        return JSONResponse(status_code=400, content=body)
 
     web_dist = Path(__file__).resolve().parents[5] / "web" / "dist"
     if web_dist.is_dir():

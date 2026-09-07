@@ -230,8 +230,12 @@ class CommitImport:
                     )
                     rejects.extend(_reject_rows(result, record.payload))
                     emissions.extend(result.emissions)
-            sessions = reduce_sessions(emissions)
             with self._uow_factory() as uow:
+                # Sessions known from earlier files seed the reducer, so cross-file
+                # merging follows the same domain rules as within one file.
+                ids = sorted({str(k) for k in _session_keys(emissions)})
+                seeds = uow.traces.existing_sessions(source, ids)
+                sessions = reduce_sessions(emissions, seeds)
                 # The entity rows reference the import row, so it exists first as
                 # "running" and is finalised with the counts in the same transaction.
                 uow.imports.add_report(build("running", _counts(), {}, {}, 0))
@@ -268,6 +272,19 @@ class CommitImport:
             uow.imports.add_report(report)
             uow.imports.add_results(report.import_id, file_sha256, outcomes, rejects)
             uow.commit()
+
+
+def _session_keys(emissions: Sequence[Emission]) -> set[Any]:
+    keys: set[Any] = set()
+    for e in emissions:
+        key = (
+            e.fields.get("external_id")
+            if e.entity == "session"
+            else e.fields.get("session_external_id")
+        )
+        if key is not None:
+            keys.add(key)
+    return keys
 
 
 def _counts(**values: int) -> dict[str, int]:

@@ -130,9 +130,11 @@ def test_trace_repository_enforces_occurrence_uniqueness_per_source(engine: Any)
         )
         uow.commit()
     assert counts == {"session": 1, "model_call": 1}
+    from agentscope_app.application.errors import ConflictError
+
     with uow_factory() as uow:
         uow.imports.add_report(_report("imp_2", "tracelab"))
-        with pytest.raises(IntegrityError):
+        with pytest.raises(ConflictError):
             uow.traces.store(
                 import_id="imp_2",
                 file_sha256="f" * 64,
@@ -372,13 +374,14 @@ def test_cross_file_session_merge_keeps_reducer_rules(engine: Any) -> None:
     with uow_factory() as uow:
         uow.imports.add_report(_report("imp_2", "tracelab"))
         e = [session_emission(1, repo="repo-b", ended_at=ten)]
+        seeds = uow.traces.existing_sessions("tracelab", ["s"])
         uow.traces.store(
             import_id="imp_2",
             file_sha256="g" * 64,
             source="tracelab",
             mapping_id="map_tracelab",
             emissions=e,
-            sessions=reduce_sessions(e),
+            sessions=reduce_sessions(e, seeds),
         )
         uow.commit()
     sessions = ListSessions(uow_factory).execute(source="tracelab", agent=None, limit=10, offset=0)
@@ -389,3 +392,47 @@ def test_cross_file_session_merge_keeps_reducer_rules(engine: Any) -> None:
         ("conflicting_value", "repo"),
         ("reversed_interval", "ended_at"),
     ]
+
+
+def test_cross_file_reduction_keeps_valid_timestamps_via_seeds(engine: Any) -> None:
+    uow_factory = make_uow_factory(engine)
+    with uow_factory() as uow:
+        uow.mappings.add(mapping_record())
+        uow.commit()
+    from datetime import datetime as dt
+
+    def emission(sha: str, line: int, **fields: Any) -> Emission:
+        occ = SourceOccurrence(sha * 64, f"line:{line}", "session")
+        return Emission("session", "session", occ, {"external_id": "s", **fields}, ("s",))
+
+    t = lambda h: dt(2026, 1, 1, h, tzinfo=UTC)  # noqa: E731
+    with uow_factory() as uow:
+        uow.imports.add_report(_report("imp_1", "tracelab"))
+        e = [emission("f", 1, started_at=t(12))]
+        uow.traces.store(
+            import_id="imp_1",
+            file_sha256="f" * 64,
+            source="tracelab",
+            mapping_id="map_tracelab",
+            emissions=e,
+            sessions=reduce_sessions(e),
+        )
+        uow.commit()
+    with uow_factory() as uow:
+        uow.imports.add_report(_report("imp_2", "tracelab"))
+        e = [emission("g", 1, started_at=t(14)), emission("g", 2, ended_at=t(13))]
+        seeds = uow.traces.existing_sessions("tracelab", ["s"])
+        assert seeds["s"].declared_started_at == t(12)
+        uow.traces.store(
+            import_id="imp_2",
+            file_sha256="g" * 64,
+            source="tracelab",
+            mapping_id="map_tracelab",
+            emissions=e,
+            sessions=reduce_sessions(e, seeds),
+        )
+        uow.commit()
+    sessions = ListSessions(uow_factory).execute(source="tracelab", agent=None, limit=10, offset=0)
+    detail = GetSession(uow_factory).execute(sessions[0].id)
+    assert (detail.declared_started_at, detail.declared_ended_at) == (t(12), t(13))
+    assert [d.code for d in detail.diagnostics] == ["conflicting_value"]

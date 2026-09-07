@@ -6,6 +6,7 @@ from dataclasses import asdict
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Query, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 
 from agentscope_app.application.dto import (
     MAX_UPLOAD_BYTES,
@@ -39,7 +40,10 @@ async def create_upload(request: Request, file: Annotated[UploadFile, File()]) -
     data = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         raise LimitExceededError(f"File exceeds {MAX_UPLOAD_BYTES} bytes (25 MiB)")
-    return _c(request).store_upload.execute(file.filename or "upload", data)
+    # Hashing, decoding and counting are CPU work: keep them off the event loop.
+    return await run_in_threadpool(
+        _c(request).store_upload.execute, file.filename or "upload", data
+    )
 
 
 @router.get("/mappings")

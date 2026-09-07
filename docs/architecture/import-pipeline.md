@@ -72,7 +72,13 @@ infrastructure library, or if `infrastructure` imports `interfaces`.
 - `model_calls` and `tool_calls` are unique on `(source, occurrence_key)`,
   where the occurrence key is `sha256:locator:emission_path` (ADR-002).
 - `sessions` are unique on `(source, external_id)` and are updated, not
-  duplicated, when a later file contributes to the same session.
+  duplicated, when a later file contributes to the same session. The stored
+  state seeds the domain reducer for the new file, so cross-file merging
+  follows exactly the rules that apply within one file (first declared value
+  wins, reversed intervals are refused, counts accumulate).
+- A race between two imports of the same bytes for one source is caught by the
+  occurrence-key uniqueness inside the transaction and reported as `409`, not
+  as a `failed` import.
 - `raw_records` are unique on `(file_sha256, locator)` and written once.
 - `entity_contributions` link every accepted emission back to its record,
   mapping revision and rule; exactly one entity foreign key is set.

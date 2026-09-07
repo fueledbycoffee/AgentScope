@@ -72,3 +72,37 @@ def test_jsonl_reader_keeps_numbers_exact_and_rejects_non_objects() -> None:
     assert records[0].payload == {"n": Decimal("1.00000000000000001")}
     assert [r.error is not None for r in records[1:]] == [True, True]
     assert json.dumps({"ok": True})  # sanity: stdlib json still available for callers
+
+
+def test_exact_json_codec_never_rewrites_strings_or_keys() -> None:
+    from decimal import Decimal
+
+    from agentscope_app.infrastructure.jsonx import dumps_exact, loads_exact
+
+    payload = {
+        "n": 7,
+        "text": "__exact_number_0__",
+        "__exact_number_1__": "key",
+        "big": 9007199254740993,
+        "dec": Decimal("1.00000000000000001"),
+        "int_dec": Decimal("3.0"),
+        "nested": [None, True, False, 1.5, {"k": "v"}, []],
+        "empty": {},
+    }
+    text = dumps_exact(payload)
+    assert loads_exact(text) == {**payload, "int_dec": 3}
+    assert '"__exact_number_0__"' in text and '"__exact_number_1__"' in text
+    assert "9007199254740993" in text and "1.00000000000000001" in text
+    pretty = dumps_exact(payload, indent=2)
+    assert pretty.startswith("{\n  ") and loads_exact(pretty) == loads_exact(text)
+
+
+def test_exact_json_codec_is_linear_in_size() -> None:
+    import time
+
+    from agentscope_app.infrastructure.jsonx import dumps_exact
+
+    record = {"values": list(range(200_000))}
+    started = time.perf_counter()
+    text = dumps_exact(record)
+    assert text.endswith("199999]}") and time.perf_counter() - started < 3

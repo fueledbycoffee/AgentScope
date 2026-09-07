@@ -333,9 +333,53 @@ class SqlAlchemyTraces:
     def __init__(self, session: Session) -> None:
         self._s = session
 
+    def existing_sessions(
+        self, source: str, external_ids: Sequence[str]
+    ) -> dict[str, SessionAggregate]:
+        if not external_ids:
+            return {}
+        rows = self._s.scalars(
+            select(m.Session).where(
+                m.Session.source == source, m.Session.external_id.in_(list(external_ids))
+            )
+        )
+        return {
+            row.external_id: SessionAggregate(
+                external_id=row.external_id,
+                agent=row.agent,
+                repo=row.repo,
+                user=row.user,
+                declared_started_at=row.declared_started_at,
+                declared_ended_at=row.declared_ended_at,
+                observed_start_at=row.observed_start_at,
+                observed_end_at=row.observed_end_at,
+                model_call_count=row.model_call_count,
+                tool_call_count=row.tool_call_count,
+            )
+            for row in rows
+        }
+
     def store(
         self,
         *,
+        import_id: str,
+        file_sha256: str,
+        source: str,
+        mapping_id: str,
+        emissions: Sequence[Emission],
+        sessions: dict[str, SessionAggregate],
+    ) -> dict[str, int]:
+        try:
+            return self._store(import_id, file_sha256, source, mapping_id, emissions, sessions)
+        except IntegrityError as exc:
+            # The pre-check passed, so an occurrence-key collision means another import
+            # of the same bytes for this source is racing us.
+            raise ConflictError(
+                "Another import of the same bytes for this source is already committed"
+            ) from exc
+
+    def _store(
+        self,
         import_id: str,
         file_sha256: str,
         source: str,
@@ -493,17 +537,17 @@ class SqlAlchemyTraces:
                 self._s.add(row)
                 counts["session"] += 1
             else:
-                self._merge_existing(row, agg, import_id)
-                if agg.observed_start_at is not None and (
-                    row.observed_start_at is None or agg.observed_start_at < row.observed_start_at
-                ):
-                    row.observed_start_at = agg.observed_start_at
-                if agg.observed_end_at is not None and (
-                    row.observed_end_at is None or agg.observed_end_at > row.observed_end_at
-                ):
-                    row.observed_end_at = agg.observed_end_at
-                row.model_call_count += agg.model_call_count
-                row.tool_call_count += agg.tool_call_count
+                # The aggregate is the full new state (the reducer was seeded with
+                # this row), so the columns are simply replaced.
+                row.agent = agg.agent
+                row.repo = agg.repo
+                row.user = agg.user
+                row.declared_started_at = agg.declared_started_at
+                row.declared_ended_at = agg.declared_ended_at
+                row.observed_start_at = agg.observed_start_at
+                row.observed_end_at = agg.observed_end_at
+                row.model_call_count = agg.model_call_count
+                row.tool_call_count = agg.tool_call_count
             ids[external_id] = row.id
             for d in agg.conflicts:
                 self._s.add(
@@ -518,53 +562,6 @@ class SqlAlchemyTraces:
                 )
         self._s.flush()
         return ids
-
-    def _merge_existing(self, row: m.Session, agg: SessionAggregate, import_id: str) -> None:
-        """Merge a later file's contribution with the reducer's rules: first non-null
-        wins, a differing non-null value is a conflict, a declared interval may not
-        be reversed by the merge."""
-        first = agg.contributions[0] if agg.contributions else None
-        locator = first.locator if first else ""
-
-        def diag(code: str, field: str, message: str) -> None:
-            self._s.add(
-                m.SessionDiagnostic(
-                    session_id=row.id,
-                    import_id=import_id,
-                    code=code,
-                    field=field,
-                    message=message,
-                    locator=locator,
-                )
-            )
-
-        for attr in ("agent", "repo", "user"):
-            incoming = getattr(agg, attr)
-            current = getattr(row, attr)
-            if incoming is None:
-                continue
-            if current is None:
-                setattr(row, attr, incoming)
-            elif current != incoming:
-                diag("conflicting_value", attr, f"{attr}: kept {current!r}, ignored {incoming!r}")
-        if agg.declared_started_at is not None:
-            if row.declared_started_at is None:
-                end = row.declared_ended_at
-                if end is not None and end < agg.declared_started_at:
-                    diag("reversed_interval", "started_at", "declared start after end; ignored")
-                else:
-                    row.declared_started_at = agg.declared_started_at
-            elif row.declared_started_at != agg.declared_started_at:
-                diag("conflicting_value", "started_at", "declared start differs; kept first")
-        if agg.declared_ended_at is not None:
-            if row.declared_ended_at is None:
-                start = row.declared_started_at
-                if start is not None and agg.declared_ended_at < start:
-                    diag("reversed_interval", "ended_at", "declared end before start; ignored")
-                else:
-                    row.declared_ended_at = agg.declared_ended_at
-            elif row.declared_ended_at != agg.declared_ended_at:
-                diag("conflicting_value", "ended_at", "declared end differs; kept first")
 
     def _token_metric(self, session_id: str) -> Metric:
         known, total, total_tokens = self._s.execute(

@@ -105,6 +105,12 @@ class ImportRepository(Protocol):
 class TraceRepository(Protocol):
     """Canonical entities with provenance."""
 
+    def existing_sessions(
+        self, source: str, external_ids: Sequence[str]
+    ) -> dict[str, SessionAggregate]:
+        """Known state of these sessions, as seeds for the domain reducer."""
+        ...
+
     def store(
         self,
         *,
@@ -115,7 +121,9 @@ class TraceRepository(Protocol):
         emissions: Sequence[Emission],
         sessions: dict[str, SessionAggregate],
     ) -> dict[str, int]:
-        """Persist accepted emissions; return counts per entity actually inserted."""
+        """Persist accepted emissions; ``sessions`` is the full new state of each
+        session (seeded from ``existing_sessions``). Returns counts per entity
+        actually inserted; raises ConflictError on an occurrence-key collision."""
         ...
 
     def list_sessions(

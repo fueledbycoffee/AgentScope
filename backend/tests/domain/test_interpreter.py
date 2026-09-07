@@ -1033,3 +1033,37 @@ def test_timestamp_defaults_are_iso8601_regardless_of_source_format(source_forma
     )
     assert present.rejects == ()
     assert present.emissions[0].fields["started_at"] == datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def test_predicates_compare_json_numbers_by_value_including_decimals() -> None:
+    from decimal import Decimal
+
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "s",
+                "entity": "session",
+                "select": "$.rows[*]",
+                "where": [{"path": "$.n", "op": "eq", "value": 1}],
+                "fields": {"external_id": {"path": "$.id"}},
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    record = {
+        "rows": [
+            {"id": "int", "n": 1},
+            {"id": "float", "n": 1.0},
+            {"id": "decimal", "n": Decimal("1.0")},
+            {"id": "other", "n": Decimal("1.5")},
+            {"id": "snan", "n": Decimal("sNaN")},
+        ]
+    }
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    assert [e.fields["external_id"] for e in result.emissions] == ["int", "float", "decimal"]

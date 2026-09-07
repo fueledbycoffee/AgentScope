@@ -8,7 +8,7 @@ timestamps of accepted model calls and tool calls.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from agentscope_app.domain.identity import SourceOccurrence
@@ -45,21 +45,37 @@ class _Accumulator:
 
     __slots__ = ("aggregate", "conflicts", "contributions", "declared", "first_child")
 
-    def __init__(self, external_id: str) -> None:
-        self.aggregate = SessionAggregate(external_id)
+    def __init__(self, external_id: str, seed: SessionAggregate | None = None) -> None:
+        if seed is None:
+            self.aggregate = SessionAggregate(external_id)
+            self.declared = False
+        else:
+            # Start from the state already known (an earlier file): the same rules
+            # then apply to the new contributions, so nothing is merged twice or
+            # merged differently depending on which file arrived first.
+            self.aggregate = replace(seed, contributions=(), conflicts=())
+            self.declared = True
         self.contributions: list[SourceOccurrence] = []
         self.conflicts: list[Diagnostic] = []
-        self.declared = False
         self.first_child: Emission | None = None
 
 
-def reduce_sessions(emissions: Iterable[Emission]) -> dict[str, SessionAggregate]:
+def reduce_sessions(
+    emissions: Iterable[Emission], seeds: dict[str, SessionAggregate] | None = None
+) -> dict[str, SessionAggregate]:
+    """Fold session contributions and children into aggregates.
+
+    ``seeds`` are aggregates already known from earlier imports; the result for
+    a seeded session is its full new state (counts and bounds included) with
+    only the diagnostics raised by this fold.
+    """
     accumulators: dict[str, _Accumulator] = {}
 
     def get(external_id: str, emission: Emission) -> _Accumulator:
         acc = accumulators.get(external_id)
         if acc is None:
-            acc = _Accumulator(external_id)
+            seed = seeds.get(external_id) if seeds else None
+            acc = _Accumulator(external_id, seed)
             accumulators[external_id] = acc
         if emission.entity == "session":
             acc.declared = True

@@ -129,7 +129,9 @@ def test_errors_follow_the_contract(client: TestClient) -> None:
     too_many = client.post(
         "/api/imports/preview", json={"upload_id": "x", "mapping_id": "y", "sample": 5000}
     )
-    assert too_many.status_code == 422  # request validation, FastAPI's own shape
+    assert too_many.status_code == 400
+    assert too_many.json()["error"]["code"] == "invalid_input"
+    assert too_many.json()["error"]["details"][0]["path"] == "body.sample"
 
 
 def test_payload_text_keeps_big_integers_and_decimals_exact() -> None:
