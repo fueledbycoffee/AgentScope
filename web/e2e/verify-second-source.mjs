@@ -9,7 +9,8 @@
 //     --message "Propose a mapping for this file" [--sample] [--revise "…"] [--replace 'old=>new']
 //     [--force-import] [--out ../data/verification/runs]
 //   --replace applies a human correction to the editor text as a plain string replacement (no
-//   parsing; recorded with base and target hashes). Import runs only when the preview accepted at
+//   parsing; recorded with base and target hashes). --delete-field rule_id.field removes one field
+//   mapping (this one parses and re-indents the document; recorded as such with hashes). Import runs only when the preview accepted at
 //   least one record, unless --force-import.
 //   node e2e/verify-second-source.mjs --replay ../data/verification/runs/A-sessions/snapshot --file … --out …
 //
@@ -125,6 +126,17 @@ async function live() {
       const target = createHash('sha256').update(documentText).digest('hex')
       corrections.push({ from, to, applied: true, base_sha256: base, target_sha256: target })
       log('correction applied', from, '=>', to)
+    }
+    for (const spec of [].concat(args['delete-field'] ?? [])) {
+      const [ruleId, field] = spec.split('.')
+      const parsed = JSON.parse(documentText)
+      const rule = (parsed.rules ?? []).find(r => r.id === ruleId)
+      const base = createHash('sha256').update(documentText).digest('hex')
+      if (!rule || !(field in (rule.fields ?? {}))) { log('field not present', spec); corrections.push({ delete: spec, applied: false }); continue }
+      delete rule.fields[field]
+      documentText = JSON.stringify(parsed, null, 2)
+      corrections.push({ delete: spec, applied: true, reserialised: true, base_sha256: base, target_sha256: createHash('sha256').update(documentText).digest('hex') })
+      log('field removed', spec)
     }
     if (corrections.some(c => c.applied)) {
       await page.getByLabel('Mapping document (JSON)').fill(documentText)
