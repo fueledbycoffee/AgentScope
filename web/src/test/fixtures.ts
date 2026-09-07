@@ -23,7 +23,7 @@ export const report: ImportReport = {
   started_at: '2026-09-07T10:00:00Z', finished_at: '2026-09-07T10:00:01Z',
   files: [{ filename: upload.filename, sha256: upload.sha256, size_bytes: 1024, format: 'jsonl', record_count: 3 }],
   records: { accepted: 2, partial: 0, duplicate: 0, rejected: 1, ignored: 0 },
-  entities: preview.entities, warnings: preview.warnings, reject_count: 1,
+  entities: preview.entities, warnings: preview.warnings, reject_count: 1, error: null,
 }
 export const metrics: MetricsSummary = {
   sessions: { value: 1, definition: 'Distinct sessions in scope' },

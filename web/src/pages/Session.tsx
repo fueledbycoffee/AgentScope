@@ -57,7 +57,7 @@ export default function SessionPage() {
       {session.tool_calls.length === 0 && <p>No tool calls recorded.</p>}
       <h2>Diagnostics</h2>
       {session.diagnostics.length === 0 ? <p>No diagnostics.</p> : <Table caption="Session diagnostics" headers={['Code', 'Field', 'Message']}>
-        {session.diagnostics.map((item, index) => <tr key={index}><td>{item.code}</td><td>{item.field}</td><td>{item.message}</td></tr>)}
+        {session.diagnostics.map((item, index) => <tr key={index}><td>{item.code}</td><td>{item.field ?? '—'}</td><td>{item.message}</td></tr>)}
       </Table>}
     </>}
     {source?.sessionId === id && <SourceDrawer reference={source.reference} onClose={() => setSource(undefined)} />}

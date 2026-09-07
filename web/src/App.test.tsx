@@ -73,6 +73,29 @@ describe('Import flow', () => {
     expect(await screen.findByRole('region', { name: 'Sessions' })).toHaveTextContent('1')
   })
 
+  it.each([{}, { session: 1, model_call: 2 }])('fills missing preview entity kinds with zero for %j and renders null reject fields', async entities => {
+    fetchMock.mockImplementation((url, options) => url === '/api/imports/preview'
+      ? Promise.resolve(json({ ...preview, entities, rejects: [{ ...reject, field: null }] }))
+      : defaultResponse(url, options))
+    start()
+    await makePreview()
+    const counts = screen.getByRole('heading', { name: 'Entity observations' }).parentElement!
+    for (const [kind, value] of [['session', 'session' in entities ? 1 : 0], ['model call', 'model_call' in entities ? 2 : 0], ['tool call', 0]] as const) {
+      expect(within(within(counts).getByText(kind).parentElement!).getByText(String(value))).toBeInTheDocument()
+    }
+    expect(counts).not.toHaveTextContent('undefined')
+    expect(within(screen.getByRole('table', { name: 'Rejects sample' })).getByRole('cell', { name: '—' })).toBeInTheDocument()
+  })
+
+  it('shows the decode error for an undecodable upload preview line', async () => {
+    fetchMock.mockImplementation((url, options) => url === '/api/uploads'
+      ? Promise.resolve(json({ ...upload, preview: [{ locator: 'line:1', payload: null, error: 'Invalid JSON at line 1' }] }))
+      : defaultResponse(url, options))
+    start()
+    await selectFile()
+    expect(screen.getByRole('table', { name: 'First decoded records (up to 20)' })).toHaveTextContent('Invalid JSON at line 1')
+  })
+
   it('invalidates confirmation when the mapping or file changes', async () => {
     start()
     await makePreview()
@@ -185,11 +208,47 @@ describe('Dashboard', () => {
 describe('Reports, history, and session detail', () => {
   it.each(['duplicate', 'failed'] as const)('explains a %s report without implying observations were inserted', async status => {
     fetchMock.mockImplementation((url, options) => url === '/api/imports/imp_1'
-      ? Promise.resolve(json({ ...report, status, ...(status === 'failed' ? { error: { code: 'failed', message: 'Transaction rolled back', details: [] } } : {}) }))
+      ? Promise.resolve(json({ ...report, status, entities: {}, error: status === 'failed' ? 'IntegrityError: Transaction rolled back' : null }))
       : defaultResponse(url, options))
     start('/imports/imp_1')
     await screen.findByText(status, { selector: 'dd' })
     expect(screen.getByText(/No observations were inserted/)).toBeInTheDocument()
+    const counts = screen.getByRole('heading', { name: 'Entity observations' }).parentElement!
+    expect(within(counts).getAllByText('0', { exact: true })).toHaveLength(3)
+    for (const kind of ['session', 'model call', 'tool call']) expect(within(counts).getByText(kind)).toBeInTheDocument()
+    expect(counts).not.toHaveTextContent('undefined')
+    if (status === 'failed') expect(screen.getByRole('alert')).toHaveTextContent('IntegrityError: Transaction rolled back')
+  })
+
+  it('shows string errors and empty entity counts in history', async () => {
+    fetchMock.mockImplementation((url, options) => String(url).startsWith('/api/imports?')
+      ? Promise.resolve(json([
+        { ...report, status: 'failed', entities: {}, error: 'IntegrityError: Transaction rolled back' },
+        { ...report, import_id: 'imp_duplicate', status: 'duplicate', entities: {} },
+      ])) : defaultResponse(url, options))
+    start('/imports')
+    const table = await screen.findByRole('table', { name: 'Import attempts, newest first' })
+    expect(table).toHaveTextContent('IntegrityError: Transaction rolled back')
+    expect(within(table).getAllByText('session: 0, model_call: 0, tool_call: 0')).toHaveLength(2)
+    expect(table).not.toHaveTextContent('undefined')
+  })
+
+  it('renders a dash for a reject without a field', async () => {
+    fetchMock.mockImplementation((url, options) => String(url).startsWith('/api/imports/imp_1/rejects')
+      ? Promise.resolve(json([{ ...reject, code: 'invalid_json', field: null, payload: null }]))
+      : defaultResponse(url, options))
+    start('/imports/imp_1')
+    const table = await screen.findByRole('table', { name: 'Rejected records' })
+    expect(within(table).getByRole('cell', { name: '—' })).toBeInTheDocument()
+  })
+
+  it('renders a dash for a session diagnostic without a field', async () => {
+    fetchMock.mockImplementation((url, options) => url === '/api/sessions/ses_1'
+      ? Promise.resolve(json({ ...session, diagnostics: [{ code: 'internal_error', field: null, message: 'Processing failed' }] }))
+      : defaultResponse(url, options))
+    start('/sessions/ses_1')
+    const table = await screen.findByRole('table', { name: 'Session diagnostics' })
+    expect(within(table).getByRole('cell', { name: '—' })).toBeInTheDocument()
   })
 
   it('opens an import report from history', async () => {

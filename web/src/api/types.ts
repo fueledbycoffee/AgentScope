@@ -14,7 +14,7 @@ export interface FileInfo {
 }
 export interface Upload extends FileInfo {
   upload_id: string
-  preview: { locator: string; payload: Json }[]
+  preview: { locator: string; payload: Json; error?: string | null }[]
   already_imported: { import_id: string; imported_at: string }[]
 }
 export interface Mapping {
@@ -32,10 +32,10 @@ export interface MappingDetail extends Mapping { document: { [key: string]: Json
 export interface PreviewRequest { upload_id: string; mapping_id: string; sample: number }
 export interface ImportRequest { upload_id: string; mapping_id: string; source: string }
 export interface Reject {
-  locator: string; rule_id: string; path: string; code: string; field: string; message: string
+  locator: string; rule_id: string; path: string; code: string; field: string | null; message: string
 }
 export interface ImportReject extends Reject { payload: Json }
-export interface EntityCounts { session: number; model_call: number; tool_call: number }
+export type EntityCounts = Partial<Record<'session' | 'model_call' | 'tool_call', number>>
 export interface ImportPreview {
   records: { accepted: number; partial: number; rejected: number; sampled: number }
   entities: EntityCounts
@@ -54,7 +54,7 @@ export interface ImportSummary {
   records: { accepted: number; partial: number; duplicate: number; rejected: number; ignored: number }
   entities: EntityCounts
   reject_count: number
-  error?: ErrorDetail
+  error: string | null
 }
 export interface ImportReport extends ImportSummary { warnings: Record<string, number> }
 export interface Coverage { known: number; total: number }
@@ -88,7 +88,7 @@ export interface SessionDetail extends Session {
   declared_started_at: string | null; declared_ended_at: string | null
   repo: string | null; user: string | null
   model_calls: ModelCall[]; tool_calls: ToolCall[]
-  diagnostics: { code: string; field: string; message: string }[]
+  diagnostics: { code: string; field: string | null; message: string }[]
 }
 export interface Metric { value: number | null; definition: string }
 export interface MetricsSummary {

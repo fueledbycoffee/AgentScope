@@ -1,3 +1,4 @@
+import { entityCounts } from '../format'
 import { useResource } from '../useResource'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -54,8 +55,8 @@ export default function ImportPage() {
           <ul>{upload.already_imported.map(item => <li key={item.import_id}>
             <Link to={`/imports/${encodeURIComponent(item.import_id)}`}>{item.import_id}</Link> — {item.imported_at}
           </li>)}</ul></aside>}
-        <Table caption="First decoded records (up to 20)" headers={['Locator', 'Payload']}>
-          {upload.preview.map(row => <tr key={row.locator}><td>{row.locator}</td><td><JsonView value={row.payload} /></td></tr>)}
+        <Table caption="First decoded records (up to 20)" headers={['Locator', 'Payload', 'Error']}>
+          {upload.preview.map(row => <tr key={row.locator}><td>{row.locator}</td><td><JsonView value={row.payload} /></td><td>{row.error ?? '—'}</td></tr>)}
         </Table>
       </section>
       <label htmlFor="mapping">Mapping</label>
@@ -74,11 +75,11 @@ export default function ImportPage() {
       {preview && mapping && <section><h2>Import preview</h2>
         <p>Source records and emitted observations are counted separately. One record can emit several entities.</p>
         <Counts title="Source records sampled" counts={preview.records} />
-        <Counts title="Entity observations" counts={preview.entities} />
+        <Counts title="Entity observations" counts={entityCounts(preview.entities)} />
         <Counts title="Warnings" counts={preview.warnings} />
         {Object.keys(preview.warnings).length === 0 && <p>No warnings.</p>}
         <Table caption="Rejects sample" headers={['Locator', 'Rule', 'Path', 'Code', 'Field', 'Message']}>
-          {preview.rejects.map((row, index) => <tr key={index}><td>{row.locator}</td><td>{row.rule_id}</td><td>{row.path}</td><td>{row.code}</td><td>{row.field}</td><td>{row.message}</td></tr>)}
+          {preview.rejects.map((row, index) => <tr key={index}><td>{row.locator}</td><td>{row.rule_id}</td><td>{row.path}</td><td>{row.code}</td><td>{row.field ?? '—'}</td><td>{row.message}</td></tr>)}
         </Table>
         {preview.rejects.length === 0 && <p>No rejects in this sample.</p>}
         <Table caption="Emissions sample" headers={['Entity', 'Path', 'Locator', 'Fields']}>
