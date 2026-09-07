@@ -479,3 +479,29 @@ def test_parsed_spec_is_detached_from_the_input_document() -> None:
     assert spec.rules[1].where[0].value == ["call"]
     assert spec.rules[0].fields["agent"].literal == {"nested": ["x"]}
     assert spec.rules[1].fields["model"].default == ["d"]
+
+
+def test_deeply_nested_literals_defaults_and_params_are_issues_not_crashes() -> None:
+    import json
+
+    deep = json.loads("[" * 600 + "0" + "]" * 600)
+    for mutate, location in [
+        (
+            lambda d: d["rules"][0]["fields"].__setitem__("agent", {"literal": deep}),
+            "rules[0].fields.agent.literal",
+        ),
+        (
+            lambda d: d["rules"][1]["fields"].__setitem__(
+                "model", {"path": "$.m", "on_missing": "default", "default": deep}
+            ),
+            "rules[1].fields.model.default",
+        ),
+        (
+            lambda d: d["rules"][2]["fields"]["tool_name"].__setitem__(
+                "transforms", [{"enum_map": {"mapping": {"a": deep}}}]
+            ),
+            "rules[2].fields.tool_name.transforms[0]",
+        ),
+    ]:
+        parsed = variant(mutate)
+        assert (location, "value_too_deep") in codes(parsed), location

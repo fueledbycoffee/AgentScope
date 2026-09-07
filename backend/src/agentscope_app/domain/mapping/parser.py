@@ -418,6 +418,15 @@ def _parse_field(raw: Any, target: TargetField, path: str, issues: _Issues) -> F
                 "schema", f"{path}.{option}", "invalid_type", f"{option} cannot be null; omit it"
             )
             return None
+    for option in ("literal", "default"):
+        if _depth(raw.get(option)) > MAX_CONDITION_DEPTH:
+            issues.error(
+                "schema",
+                f"{path}.{option}",
+                "value_too_deep",
+                f"{option} may not be nested deeper than {MAX_CONDITION_DEPTH}",
+            )
+            return None
     sources = [k for k in ("path", "paths", "literal") if k in raw]
     if len(sources) != 1:
         issues.error(
@@ -623,6 +632,14 @@ def _parse_transform(raw: Any, path: str, issues: _Issues) -> Transform | None:
         params = raw_params
     else:
         issues.error("schema", path, "invalid_type", "A transform is a name or a single-key object")
+        return None
+    if _depth(params) > MAX_CONDITION_DEPTH:
+        issues.error(
+            "schema",
+            path,
+            "value_too_deep",
+            f"Transform parameters nested deeper than {MAX_CONDITION_DEPTH}",
+        )
         return None
     if name not in TRANSFORM_NAMES:
         issues.error(

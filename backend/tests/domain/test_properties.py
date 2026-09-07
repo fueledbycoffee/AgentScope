@@ -60,6 +60,9 @@ scalars = (
         ]
     )
 )
+deep_values = st.integers(min_value=17, max_value=800).map(
+    lambda n: json.loads("[" * n + "0" + "]" * n)
+)
 json_values = st.recursive(
     scalars,
     lambda children: (
@@ -127,7 +130,7 @@ def test_transforms_raise_only_conversion_errors(
 
 
 @SETTINGS
-@given(document=json_values)
+@given(document=json_values | deep_values)
 def test_parser_never_raises(document: Any) -> None:
     parsed = parse_mapping(document)
     assert all(issue.message for issue in parsed.issues)
@@ -171,30 +174,34 @@ mutation_paths = st.sampled_from(
         ["unmapped", 0, "reason"],
     ]
 )
-option_values = json_values | st.sampled_from(
-    [
-        "$",
-        "$.a[*]",
-        "$" + ".a" * 17,
-        "@root.x",
-        "min",
-        "max",
-        "epoch_ms",
-        "reject",
-        "default",
-        {"from": "s", "to": "ms"},
-        {"from": "s", "to": "s"},
-        [{"enum_map": {"mapping": {"a": "b"}}}],
-        ["trim", {"json_decode": {}}],
-        {"path": "$.x", "bounds": "min"},
-        {"path": "$.x[*]", "bounds": "min", "timestamp_format": "epoch_s"},
-        {"literal": None},
-        {"path": "$.x", "on_missing": "default", "default": 0},
-        {"path": "$.x", "on_missing": "default", "default": None},
-        None,
-        True,
-        1,
-    ]
+option_values = (
+    json_values
+    | deep_values
+    | st.sampled_from(
+        [
+            "$",
+            "$.a[*]",
+            "$" + ".a" * 17,
+            "@root.x",
+            "min",
+            "max",
+            "epoch_ms",
+            "reject",
+            "default",
+            {"from": "s", "to": "ms"},
+            {"from": "s", "to": "s"},
+            [{"enum_map": {"mapping": {"a": "b"}}}],
+            ["trim", {"json_decode": {}}],
+            {"path": "$.x", "bounds": "min"},
+            {"path": "$.x[*]", "bounds": "min", "timestamp_format": "epoch_s"},
+            {"literal": None},
+            {"path": "$.x", "on_missing": "default", "default": 0},
+            {"path": "$.x", "on_missing": "default", "default": None},
+            None,
+            True,
+            1,
+        ]
+    )
 )
 
 
