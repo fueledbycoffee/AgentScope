@@ -116,6 +116,32 @@ def parse_timestamp(value: Any, fmt: str) -> datetime:
         raise ConversionError("invalid_timestamp", f"Cannot parse {value!r} as {fmt}") from exc
 
 
+_FRACTION = re.compile(r"[Tt ]\d{2}:\d{2}:\d{2}[.,](\d+)")
+
+
+def timestamp_notes(value: Any, fmt: str) -> tuple[str, ...]:
+    """Codes describing what ``parse_timestamp`` had to give up on ``value``.
+
+    ``precision_reduced``: more than six fractional digits (the canonical
+    datetime is microsecond). ``naive_timestamp``: no offset or ``Z``, so the
+    instant was taken as UTC. Both are warnings, never rejections, and both
+    are decided by the same parser that accepts the value.
+    """
+    if fmt != "iso8601" or not isinstance(value, str):
+        return ()
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00").replace("z", "+00:00"))
+    except ValueError:
+        return ()
+    notes: list[str] = []
+    if parsed.tzinfo is None:
+        notes.append("naive_timestamp")
+    match = _FRACTION.search(value)
+    if match and len(match.group(1)) > 6:
+        notes.append("precision_reduced")
+    return tuple(notes)
+
+
 def coerce(value: Any, field_type: FieldType, *, timestamp_format: str | None = None) -> Any:
     """Convert ``value`` to ``field_type`` without guessing.
 

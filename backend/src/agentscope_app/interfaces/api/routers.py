@@ -10,6 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from agentscope_app.application.dto import (
     MAX_UPLOAD_BYTES,
+    FileBinding,
     ImportReport,
     MappingRecord,
     MetricsSummary,
@@ -81,7 +82,8 @@ def preview_import(request: Request, body: PreviewRequest) -> PreviewReport:
 
 @router.post("/imports", status_code=201)
 def create_import(request: Request, body: ImportRequest) -> ImportReport:
-    return _c(request).commit_import.execute(body.upload_id, body.mapping_id, body.source)
+    bindings = [FileBinding(b.upload_id, b.mapping_id) for b in body.bindings()]
+    return _c(request).commit_import.execute(body.source, bindings)
 
 
 @router.get("/imports")
@@ -99,10 +101,11 @@ def list_rejects(
     request: Request,
     import_id: str,
     code: str | None = None,
+    file_sha256: str | None = None,
     limit: Limit = 50,
     offset: Offset = 0,
 ) -> list[RejectRow]:
-    return list(_c(request).list_rejects.execute(import_id, code, limit, offset))
+    return list(_c(request).list_rejects.execute(import_id, code, file_sha256, limit, offset))
 
 
 @router.get("/sessions")
@@ -134,6 +137,8 @@ def get_raw_record(request: Request, file_sha256: str, locator: str) -> dict[str
         "locator": locator,
         "payload": payload,
         "payload_text": dumps_exact(payload, indent=2),
+        # Parquet rows are decoded values, not source bytes; the UI labels them so.
+        "derived": "parquet-row" if locator.startswith("row:") else None,
     }
 
 

@@ -13,6 +13,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "alembic>=1.13",
     "python-multipart>=0.0.9",
+    "pyarrow>=25.0.1",
 ]
 
 [dependency-groups]
@@ -94,3 +95,7 @@ forbidden_modules = [
     "httpx", "httpx2", "requests", "openai", "anthropic",
     "pydantic_settings",
 ]
+
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true

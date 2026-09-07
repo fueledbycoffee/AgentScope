@@ -12,6 +12,9 @@ from typing import Any
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_RECORDS_PER_FILE = 100_000
+MAX_FILES_PER_IMPORT = 20
+MAX_BATCH_BYTES = 4 * MAX_UPLOAD_BYTES  # bytes read by one import attempt (duplicates excluded)
+MAX_DECODED_BYTES = 256 * 1024 * 1024  # Parquet: sum of uncompressed row groups
 PREVIEW_RECORDS = 20
 MAX_PREVIEW_SAMPLE = 1_000
 
@@ -72,6 +75,7 @@ class RecordOutcome:
     entity_counts: dict[str, int]
     warning_counts: dict[str, int]
     payload: Any = None
+    file_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -83,6 +87,7 @@ class RejectRow:
     field: str | None
     message: str
     payload: Any = None
+    file_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -103,19 +108,30 @@ class PreviewReport:
 
 
 @dataclass(frozen=True)
+class MappingRef:
+    id: str
+    name: str
+    revision: int
+
+
+@dataclass(frozen=True)
+class FileBinding:
+    """One file of an import attempt and the mapping revision it runs under."""
+
+    upload_id: str
+    mapping_id: str
+
+
+@dataclass(frozen=True)
 class FileInfo:
     filename: str
     sha256: str
     size_bytes: int
     format: str
     record_count: int
-
-
-@dataclass(frozen=True)
-class MappingRef:
-    id: str
-    name: str
-    revision: int
+    mapping: MappingRef | None = None
+    status: str = "committed"  # pending | committed | duplicate | failed
+    records: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

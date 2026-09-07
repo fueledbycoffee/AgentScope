@@ -24,7 +24,7 @@ from agentscope_app.infrastructure.db.unit_of_work import make_uow_factory
 from agentscope_app.infrastructure.files.raw_store import FilesystemRawFileStore
 from agentscope_app.infrastructure.ids import UtcClock, UuidIdGenerator
 from agentscope_app.infrastructure.mappings.bundled import load_bundled_mappings
-from agentscope_app.infrastructure.readers.jsonl import JsonlRecordReader
+from agentscope_app.infrastructure.readers.router import FormatRouter
 from agentscope_app.infrastructure.settings import Settings
 
 
@@ -57,7 +57,7 @@ def build_container(settings: Settings) -> Container:
     clock, ids = UtcClock(), UuidIdGenerator()
     load_bundled_mappings(uow_factory, settings.bundled_mappings_dir, clock)
     store = FilesystemRawFileStore(settings.raw_file_dir)
-    reader = JsonlRecordReader()
+    reader = FormatRouter()
     return Container(
         settings=settings,
         uow_factory=uow_factory,

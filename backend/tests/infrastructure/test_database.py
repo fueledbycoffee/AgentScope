@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
-from agentscope_app.application.dto import ImportReport, MappingRecord, MappingRef
+from agentscope_app.application.dto import FileBinding, ImportReport, MappingRecord, MappingRef
 from agentscope_app.application.use_cases.imports import CommitImport, PreviewImport
 from agentscope_app.application.use_cases.queries import GetSession, ListSessions, MetricsSummary
 from agentscope_app.application.use_cases.uploads import StoreUpload
@@ -122,9 +122,8 @@ def test_trace_repository_enforces_occurrence_uniqueness_per_source(engine: Any)
         uow.imports.add_report(_report("imp_1", "tracelab"))
         counts = uow.traces.store(
             import_id="imp_1",
-            file_sha256="f" * 64,
             source="tracelab",
-            mapping_id="map_tracelab",
+            bindings={"f" * 64: "map_tracelab"},
             emissions=emissions,
             sessions=reduce_sessions(emissions),
         )
@@ -137,9 +136,8 @@ def test_trace_repository_enforces_occurrence_uniqueness_per_source(engine: Any)
         with pytest.raises(ConflictError):
             uow.traces.store(
                 import_id="imp_2",
-                file_sha256="f" * 64,
                 source="tracelab",
-                mapping_id="map_tracelab",
+                bindings={"f" * 64: "map_tracelab"},
                 emissions=emissions,
                 sessions=reduce_sessions(emissions),
             )
@@ -149,9 +147,8 @@ def test_trace_repository_enforces_occurrence_uniqueness_per_source(engine: Any)
         uow.imports.add_report(_report("imp_3", "other"))
         counts = uow.traces.store(
             import_id="imp_3",
-            file_sha256="f" * 64,
             source="other",
-            mapping_id="map_tracelab",
+            bindings={"f" * 64: "map_tracelab"},
             emissions=emissions,
             sessions=reduce_sessions(emissions),
         )
@@ -192,7 +189,7 @@ def test_end_to_end_commit_over_the_fixture_then_reimport(engine: Any, tmp_path:
     assert preview.records["sampled"] == 100 and preview.records["accepted"] == 100
 
     report = CommitImport(uow_factory, store, reader, clock, ids).execute(
-        info.upload_id, "map_tracelab", "tracelab"
+        "tracelab", [FileBinding(info.upload_id, "map_tracelab")]
     )
     assert report.status == "committed", report.error
     assert report.records == {
@@ -208,7 +205,7 @@ def test_end_to_end_commit_over_the_fixture_then_reimport(engine: Any, tmp_path:
     with uow_factory() as uow:
         assert uow.imports.get(report.import_id) == report
         assert [r.import_id for r in uow.imports.list(10, 0)] == [report.import_id]
-        assert uow.imports.rejects(report.import_id, None, 10, 0) == []
+        assert uow.imports.rejects(report.import_id, None, None, 10, 0) == []
         assert uow.traces.raw_record(info.sha256, "line:1")["provider"] in ("claude", "codex")
 
     sessions = ListSessions(uow_factory).execute(source="tracelab", agent=None, limit=100, offset=0)
@@ -238,7 +235,7 @@ def test_end_to_end_commit_over_the_fixture_then_reimport(engine: Any, tmp_path:
     )
     assert [r.import_id for r in again.already_imported] == [report.import_id]
     second = CommitImport(uow_factory, store, reader, clock, ids).execute(
-        again.upload_id, "map_tracelab", "tracelab"
+        "tracelab", [FileBinding(again.upload_id, "map_tracelab")]
     )
     assert second.status == "duplicate" and second.records["duplicate"] == 4770
     after = MetricsSummary(uow_factory).execute(source="tracelab", agent=None)
@@ -278,7 +275,7 @@ def test_decimal_payloads_round_trip_through_json_columns(engine: Any, tmp_path:
     lines = b"".join(_tracelab_line(f"s{i}") for i in range(25))  # past the 20-record preview
     lines += _tracelab_line("s25", ', "extra": 1.00000000000000001, "big": 9007199254740993')
     info = upload.execute("dec.jsonl", lines)
-    report = commit.execute(info.upload_id, "map_tracelab", "tracelab")
+    report = commit.execute("tracelab", [FileBinding(info.upload_id, "map_tracelab")])
     assert report.status == "committed", report.error
     with uow_factory() as uow:
         payload = uow.traces.raw_record(info.sha256, "line:26")
@@ -299,14 +296,20 @@ def test_committed_uniqueness_is_a_database_guarantee(engine: Any) -> None:
 
     file_info = FileInfo("a.jsonl", "a" * 64, 1, "jsonl", 1)
     first = replace(_report("imp_a", "tracelab"), files=(file_info,))
-    second = replace(_report("imp_b", "tracelab"), files=(file_info,), status="running")
+    pending = replace(file_info, status="pending")
+    second = replace(_report("imp_b", "tracelab"), files=(pending,), status="running")
     with uow_factory() as uow:
         uow.imports.add_report(first)
         uow.commit()
     with uow_factory() as uow:
-        uow.imports.add_report(second)
+        uow.imports.add_report(second)  # pending file rows never claim the bytes
+        committed_files = (replace(file_info, status="committed"),)
         with pytest.raises(ConflictError):
-            uow.imports.update_report(replace(second, status="committed"))
+            uow.imports.update_report(replace(second, status="committed", files=committed_files))
+        uow.rollback()
+    with uow_factory() as uow:  # nor does inserting a row that claims them outright
+        with pytest.raises(ConflictError):
+            uow.imports.add_report(replace(_report("imp_b2", "tracelab"), files=(file_info,)))
         uow.rollback()
     with uow_factory() as uow:  # a different source is fine
         other = replace(_report("imp_c", "other"), files=(file_info,))
@@ -325,7 +328,7 @@ def test_results_insert_in_bounded_batches_at_the_record_cap(engine: Any) -> Non
         uow.mappings.add(mapping_record())
         uow.commit()
     outcomes = [
-        RecordOutcome(f"line:{i}", "accepted", {"session": 1}, {}, {"i": i})
+        RecordOutcome(f"line:{i}", "accepted", {"session": 1}, {}, {"i": i}, file_sha256="b" * 64)
         for i in range(1, 100_001)
     ]
     with uow_factory() as uow:
@@ -335,7 +338,7 @@ def test_results_insert_in_bounded_batches_at_the_record_cap(engine: Any) -> Non
                 files=(FileInfo("b", "b" * 64, 1, "jsonl", 100_000),),
             )
         )
-        uow.imports.add_results("imp_big", "b" * 64, outcomes, [])
+        uow.imports.add_results("imp_big", outcomes, [])
         uow.commit()
     with uow_factory() as uow:
         assert uow.traces.raw_record("b" * 64, "line:100000") == {"i": 100000}
@@ -364,9 +367,8 @@ def test_cross_file_session_merge_keeps_reducer_rules(engine: Any) -> None:
         e = [session_emission(1, repo="repo-a", started_at=noon)]
         uow.traces.store(
             import_id="imp_1",
-            file_sha256="f" * 64,
             source="tracelab",
-            mapping_id="map_tracelab",
+            bindings={"f" * 64: "map_tracelab"},
             emissions=e,
             sessions=reduce_sessions(e),
         )
@@ -377,9 +379,8 @@ def test_cross_file_session_merge_keeps_reducer_rules(engine: Any) -> None:
         seeds = uow.traces.existing_sessions("tracelab", ["s"])
         uow.traces.store(
             import_id="imp_2",
-            file_sha256="g" * 64,
             source="tracelab",
-            mapping_id="map_tracelab",
+            bindings={"f" * 64: "map_tracelab", "g" * 64: "map_tracelab"},
             emissions=e,
             sessions=reduce_sessions(e, seeds),
         )
@@ -411,9 +412,8 @@ def test_cross_file_reduction_keeps_valid_timestamps_via_seeds(engine: Any) -> N
         e = [emission("f", 1, started_at=t(12))]
         uow.traces.store(
             import_id="imp_1",
-            file_sha256="f" * 64,
             source="tracelab",
-            mapping_id="map_tracelab",
+            bindings={"f" * 64: "map_tracelab"},
             emissions=e,
             sessions=reduce_sessions(e),
         )
@@ -425,9 +425,8 @@ def test_cross_file_reduction_keeps_valid_timestamps_via_seeds(engine: Any) -> N
         assert seeds["s"].declared_started_at == t(12)
         uow.traces.store(
             import_id="imp_2",
-            file_sha256="g" * 64,
             source="tracelab",
-            mapping_id="map_tracelab",
+            bindings={"g" * 64: "map_tracelab"},
             emissions=e,
             sessions=reduce_sessions(e, seeds),
         )

@@ -1067,3 +1067,44 @@ def test_predicates_compare_json_numbers_by_value_including_decimals() -> None:
     }
     result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
     assert [e.fields["external_id"] for e in result.emissions] == ["int", "float", "decimal"]
+
+
+def test_timestamp_notes_become_located_warnings_on_both_coercion_paths() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "s",
+                "entity": "session",
+                "select": "$",
+                "fields": {
+                    "external_id": {"path": "$.id"},
+                    "started_at": {"path": "$.start", "timestamp_format": "iso8601"},
+                    "ended_at": {
+                        "path": "$.events[*].at",
+                        "timestamp_format": "iso8601",
+                        "bounds": "max",
+                    },
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    record = {
+        "id": "s1",
+        "start": "2026-09-07T09:00:00.123456789Z",
+        "events": [{"at": "2026-09-07T12:00:00"}, {"at": "2026-09-07T13:00:00.1234567+02:00"}],
+    }
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    assert not result.rejects and len(result.emissions) == 1
+    assert sorted((w.code, w.field) for w in result.warnings) == [
+        ("naive_timestamp", "ended_at"),
+        ("precision_reduced", "ended_at"),
+        ("precision_reduced", "started_at"),
+    ]
+    assert result.emissions[0].fields["started_at"].microsecond == 123456

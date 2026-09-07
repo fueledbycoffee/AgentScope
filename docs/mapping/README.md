@@ -171,6 +171,45 @@ Rejects (emission dropped, explained): `missing_value` (`on_missing: reject`),
 
 Reducer diagnostics: `conflicting_value`, `implicit_session`.
 
+## Parquet values
+
+Parquet rows reach the DSL as JSON-typed objects keyed by column name, converted
+from the Arrow schema without loss (`infrastructure/readers/parquet.py`).
+Locators are `row:N`, zero-based over the whole file. Values that JSON cannot
+carry directly are wrapped in objects with an `_arrow` kind and plain member
+names, so ordinary paths reach them:
+
+| Arrow type | Payload |
+|---|---|
+| integers (incl. uint64), bool, string, decimal128/256 | native; decimals stay `Decimal` |
+| float | finite: shortest round-trip decimal; NaN / ±Inf: `{"_arrow": "float", "value": "NaN"}` — a non-numeric value, so the field's `on_invalid` policy applies |
+| binary | `{"_arrow": "binary", "base64": "…"}` |
+| timestamp | `{"_arrow": "timestamp", "iso": "2026-06-01T12:00:00.000000000Z", "unit": "ns", "tz": "UTC", "value": 1748779200000000000}`; `iso` keeps the unit's full precision; years outside 0001 to 9999 render with their full digits (ISO parsers refuse them, so the field follows `on_invalid`); naive timestamps have no `Z` |
+| date | `"YYYY-MM-DD"` |
+| duration | `{"_arrow": "duration", "seconds": 1.500, "unit": "ms"}` — exact decimal seconds |
+| time of day | `{"_arrow": "time", "seconds": 45296.5, "unit": "us"}` |
+| list, struct | `list`, `dict`; a null struct is `null`, `[]` and `[null]` stay distinct |
+| map | `[{"key": k, "value": v}, …]`, order and duplicate keys preserved |
+| UUID / JSON extension | canonical UUID string / the JSON text |
+
+A null value in a wrapped column keeps the wrapper with null members, so
+`$.latency.seconds` reports `null`, not `absent`. Durations are always decimal
+seconds whatever unit the file used, so a mapping converts with a static unit:
+
+```json
+"wall_latency_ms": {"path": "$.latency.seconds", "unit": {"from": "s", "to": "ms"}},
+"started_at": {"path": "$.ts.iso", "timestamp_format": "iso8601"}
+```
+
+Mapping a `time` wrapper to a duration is a modelling mistake the DSL cannot
+detect; the `_arrow` kind is there to make it visible in previews. Timestamps
+with more than microsecond precision parse with a `precision_reduced` warning
+(the canonical value is microsecond); timestamps without a zone parse as UTC
+with a `naive_timestamp` warning. Refused files: duplicate column names at any
+level, a struct field named `_arrow`, unsupported extension types, more than 64
+columns or nesting deeper than 8, a footer row count above 100,000, or more
+than 256 MiB of decoded data.
+
 ## What the DSL cannot do, on purpose
 
 No expressions, regular expressions, arithmetic, joins across records, grouping

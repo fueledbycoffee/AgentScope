@@ -3,6 +3,7 @@ import { useResource } from '../useResource'
 import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getImport, listImports, listRejects } from '../api'
+import type { ImportedFile } from '../api'
 import { Counts, JsonView, Pagination, ResourceState, Table } from '../components'
 
 export function ImportsPage() {
@@ -26,17 +27,19 @@ export function ImportsPage() {
   </>
 }
 
-function Rejects({ id }: { id: string }) {
+function Rejects({ id, files }: { id: string; files: ImportedFile[] }) {
   const [offset, setOffset] = useState(0)
   const [code, setCode] = useState('')
   const resource = useResource(useCallback(() => listRejects(id, { code, limit: PAGE_SIZE, offset }), [id, code, offset]))
+  const multi = files.length > 1
+  const nameOf = (sha?: string) => files.find(file => file.sha256 === sha)?.filename ?? sha ?? '—'
   return <section id="rejects"><h2>Rejects</h2>
     <label htmlFor="reject-code">Reject code filter</label>
     <input id="reject-code" value={code} onChange={event => { setCode(event.target.value); setOffset(0) }} />
     <ResourceState {...resource} />
     {resource.data && <>
-      <Table caption="Rejected records" headers={['Locator', 'Rule', 'Path', 'Code', 'Field', 'Message', 'Payload']}>
-        {resource.data.map((row, index) => <tr key={index}><td>{row.locator}</td><td>{row.rule_id}</td><td>{row.path}</td><td>{row.code}</td><td>{row.field ?? '—'}</td><td>{row.message}</td>
+      <Table caption="Rejected records" headers={[...(multi ? ['File'] : []), 'Locator', 'Rule', 'Path', 'Code', 'Field', 'Message', 'Payload']}>
+        {resource.data.map((row, index) => <tr key={index}>{multi && <td>{nameOf(row.file_sha256)}</td>}<td>{row.locator}</td><td>{row.rule_id}</td><td>{row.path}</td><td>{row.code}</td><td>{row.field ?? '—'}</td><td>{row.message}</td>
           <td><details><summary>Payload</summary><JsonView value={row.payload} /></details></td></tr>)}
       </Table>
       {resource.data.length === 0 && <p>No rejects on this page.</p>}
@@ -61,11 +64,13 @@ export function ReportPage() {
       <Counts title="Source records" counts={report.records} />
       <Counts title="Entity observations" counts={entityCounts(report.entities)} />
       <Counts title="Warnings" counts={report.warnings} />
-      <Table caption="Imported files" headers={['Filename', 'SHA-256', 'Size (bytes)', 'Format', 'Records']}>
-        {report.files.map((file, index) => <tr key={index}><td>{file.filename}</td><td className="hash">{file.sha256}</td><td>{file.size_bytes}</td><td>{file.format}</td><td>{file.record_count}</td></tr>)}
+      <Table caption="Imported files" headers={['Filename', 'SHA-256', 'Size (bytes)', 'Format', 'Records', 'Mapping', 'Status', 'Outcome']}>
+        {report.files.map((file, index) => <tr key={index}><td>{file.filename}</td><td className="hash">{file.sha256}</td><td>{file.size_bytes}</td><td>{file.format}</td><td>{file.record_count}</td>
+          <td>{file.mapping ? `${file.mapping.name} · revision ${file.mapping.revision}` : '—'}</td><td>{file.status}</td>
+          <td>{Object.entries(file.records).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`).join(', ') || '—'}</td></tr>)}
       </Table>
       <div className="actions"><a href="#rejects">View rejects ({report.reject_count})</a><Link to="/dashboard">Open dashboard</Link><Link to="/imports">Imports history</Link></div>
-      <Rejects key={id} id={id} />
+      <Rejects key={id} id={id} files={report.files} />
     </>}
   </>
 }
