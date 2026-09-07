@@ -24,7 +24,7 @@ async function uploadFixtureAndPreview(page: Page) {
   await page.getByLabel(/Trace file|Add another trace file/).setInputFiles(FIXTURE)
   await expect(page.getByRole('heading', { name: 'Uploaded file' })).toBeVisible()
   await expect(page.getByText('4,770').first()).toBeVisible()
-  const mapping = page.getByLabel('Mapping')
+  const mapping = page.getByLabel('Mapping', { exact: true })
   const label = await mapping.getByRole('option', { name: /tracelab-v1 · revision 1/ }).textContent()
   await mapping.selectOption({ label: label!.trim() })
   await page.getByRole('button', { name: 'Preview' }).click()

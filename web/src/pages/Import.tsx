@@ -10,6 +10,23 @@ import { useFileBar } from '../shellHooks'
 /** One previewed (file, mapping) pair waiting in the batch. */
 interface Pair { upload: Upload; mapping: Mapping; preview: ImportPreview }
 
+// The page's batch survives a detour to the assistant (same tab) but not a new tab.
+const STORAGE_KEY = 'agentscope-import-page'
+interface Stored { batch: Pair[]; upload?: Upload; mappingId: string }
+function loadStored(): Stored {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    if (raw) return JSON.parse(raw) as Stored
+  } catch { /* unavailable or corrupt storage: start empty */ }
+  return { batch: [], mappingId: '' }
+}
+function store(value: Stored | null) {
+  try {
+    if (value === null) sessionStorage.removeItem(STORAGE_KEY)
+    else sessionStorage.setItem(STORAGE_KEY, JSON.stringify(value))
+  } catch { /* storage is a convenience */ }
+}
+
 function requestFor(pairs: Pair[], source: string): ImportRequest {
   if (pairs.length === 1) return { upload_id: pairs[0].upload.upload_id, mapping_id: pairs[0].mapping.id, source }
   return { source, files: pairs.map(pair => ({ upload_id: pair.upload.upload_id, mapping_id: pair.mapping.id })) }
@@ -18,10 +35,12 @@ function requestFor(pairs: Pair[], source: string): ImportRequest {
 export default function ImportPage() {
   const navigate = useNavigate()
   const mappings = useResource(useCallback(() => listMappings({ limit: 500 }), []))
-  const [upload, setUpload] = useState<Upload>()
-  const [mappingId, setMappingId] = useState('')
+  const [stored] = useState(loadStored)
+  const [upload, setUpload] = useState<Upload | undefined>(stored.upload)
+  const [mappingId, setMappingId] = useState(stored.mappingId)
   const [preview, setPreview] = useState<ImportPreview>()
-  const [batch, setBatch] = useState<Pair[]>([])
+  const [batch, setBatch] = useState<Pair[]>(stored.batch)
+  useEffect(() => { store({ batch, upload, mappingId }) }, [batch, upload, mappingId])
   const [busy, setBusy] = useState('')
   const [error, setError] = useState<unknown>()
   const inFlight = useRef(false)
@@ -74,6 +93,7 @@ export default function ImportPage() {
         <p>Import {batch.length} {batch.length === 1 ? 'file' : 'files'} ({batch.reduce((total, pair) => total + pair.upload.record_count, 0)} records) into source <strong>{batch[0].mapping.source}</strong>, each with its own mapping, or add another file below.</p>
         <button className="btn primary" disabled={!!busy || batchMixed} onClick={() => void run('Importing…', async () => {
           const report = await commitImport(requestFor(batch, batch[0].mapping.source))
+          store(null)
           if (mounted.current) navigate(`/imports/${encodeURIComponent(report.import_id)}`)
         })}><Icon name="upload" />{batch.length === 1 ? 'Import' : `Import ${batch.length} files`}</button>
       </>}
@@ -111,6 +131,11 @@ export default function ImportPage() {
       </select>
       {mappings.data && !mappings.data.some(item => item.input_format === upload.format) &&
         <p>No mappings available for {upload.format}.</p>}
+      <p className="row">
+        <IconButton name="braces" label="Draft a mapping with the assistant" className="btn has-tip" data-tip="Draft a mapping with the assistant" disabled={!!busy}
+          onClick={() => navigate(`/import/assist/${encodeURIComponent(upload.upload_id)}`, { state: { upload } })} />
+        <span className="muted">No mapping fits? Let the assistant propose one from this file's profile.</span>
+      </p>
       <button className="btn" disabled={!!busy || !mapping} onClick={() => {
         setPreview(undefined)
         void run('Previewing…', async () => setPreview(await previewImport({ upload_id: upload.upload_id, mapping_id: mappingId, sample: 200 })))
@@ -139,6 +164,7 @@ export default function ImportPage() {
         <div className="actions">
           <button className="btn primary" disabled={!!busy || duplicateInBatch || mixedSources || !source} onClick={() => void run('Importing…', async () => {
             const report = await commitImport(requestFor(pairs, source!))
+            store(null)
             if (mounted.current) navigate(`/imports/${encodeURIComponent(report.import_id)}`)
           })}><Icon name="upload" />{pairs.length === 1 ? 'Import' : `Import ${pairs.length} files`}</button>
           <button type="button" className="btn" disabled={!!busy || duplicateInBatch} onClick={() => { if (current) { setBatch([...batch, current]); resetCurrent() } }}><Icon name="plus" />Add to batch and choose another file</button>

@@ -15,6 +15,7 @@
     "e2e:ui": "pnpm build && playwright test --ui"
   },
   "dependencies": {
+    "@assistant-ui/react": "0.15.18",
     "@fontsource-variable/geist": "5.3.0",
     "@fontsource-variable/geist-mono": "5.3.0",
     "react": "^19.2.8",

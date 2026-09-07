@@ -1,9 +1,11 @@
 import type {
-  ErrorDetail, ImportPreview, ImportReject, ImportReport, ImportRequest, ImportSummary,
-  Mapping, MappingDetail, MetricsSummary, Page, PreviewRequest, RawRecord, RecordRow, RejectSummary,
-  RawReference, Scope, Session, SessionDetail, Upload,
+  AssistantOutcome, AssistantRequest, ErrorDetail, ImportPreview, ImportReject, ImportReport, ImportRequest,
+  ImportSummary, Json, Mapping, MappingDetail, MetricsSummary, Page, PreparedContext, PreviewRequest,
+  ProfileReport, RawRecord, RecordRow, RejectSummary, RawReference, SavedMapping, Scope, Session,
+  SessionDetail, Upload, ValidationResult,
 } from './types'
 export type * from './types'
+import { envelopeWithRawJson } from '../assist/jsonText'
 
 export class ApiError extends Error {
   readonly status: number
@@ -63,3 +65,57 @@ export const listSessions = (params?: Page & Scope) => request<Session[]>(`/sess
 export const getSession = (id: string) => request<SessionDetail>(`/sessions/${encodeURIComponent(id)}`)
 export const getRawRecord = (reference: RawReference) => request<RawRecord>(`/raw-records${query(reference)}`)
 export const getMetricsSummary = (scope?: Scope) => request<MetricsSummary>(`/metrics/summary${query(scope)}`)
+
+// --- mapping assistant -----------------------------------------------------------------------
+export const profileUpload = (uploadId: string) =>
+  request<ProfileReport>(`/uploads/${encodeURIComponent(uploadId)}/profile`, { method: 'POST' })
+/**
+ * Assistant requests: `current_mapping` is the editor's text embedded verbatim (never parsed and
+ * re-serialised by the browser), so the server sees exactly the numbers the user wrote.
+ */
+export interface AssistantRequestText extends Omit<AssistantRequest, 'current_mapping'> { current_mapping_text?: string | null }
+function assistantBody(body: AssistantRequestText, extra: Record<string, unknown> = {}): RequestInit {
+  const { current_mapping_text, ...fields } = body
+  if (current_mapping_text) assertOneJsonObject(current_mapping_text)
+  const json = current_mapping_text
+    ? envelopeWithRawJson({ ...fields, ...extra }, 'current_mapping', current_mapping_text)
+    : JSON.stringify({ ...fields, ...extra })
+  return { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: json }
+}
+export const prepareContext = async (body: AssistantRequestText) => request<PreparedContext>('/assistant/prepare', assistantBody(body))
+/** The parsed outcome plus the raw response text, from which the proposal's mapping is taken verbatim. */
+export async function runAssistant(body: AssistantRequestText, contextSha256: string): Promise<{ outcome: AssistantOutcome; rawText: string }> {
+  const response = await fetch('/api/assistant/run', assistantBody(body, { context_sha256: contextSha256 }))
+  const rawText = await response.text()
+  if (!response.ok) {
+    let error: ErrorDetail = { code: 'http_error', message: `Request failed (${response.status})`, details: [] }
+    try {
+      const parsed = JSON.parse(rawText)
+      if (typeof parsed?.error?.code === 'string' && typeof parsed.error.message === 'string') {
+        error = { ...parsed.error, details: Array.isArray(parsed.error.details) ? parsed.error.details : [] }
+      }
+    } catch { /* non-JSON error page */ }
+    throw new ApiError(response.status, error)
+  }
+  return { outcome: JSON.parse(rawText) as AssistantOutcome, rawText }
+}
+export const getMappingSchema = () => request<{ [key: string]: Json }>('/mappings/schema')
+/**
+ * The editor's text is embedded as-is inside the request envelope, so numbers travel exactly as the
+ * user typed them (no browser parse/re-serialise between the editor and the server).
+ */
+function assertOneJsonObject(text: string): void {
+  // JSON.parse rejects trailing content, so `}, "notes": …` after a document cannot leak into the
+  // envelope as a sibling property; the parsed value is discarded (the text is what travels)
+  let parsed: unknown
+  try { parsed = JSON.parse(text) } catch (error) { throw new Error(`The document is not valid JSON: ${(error as Error).message}`) }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('The document must be a single JSON object')
+}
+const rawDocumentBody = (documentText: string): RequestInit => {
+  assertOneJsonObject(documentText)
+  return { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: `{"document":${documentText}}` }
+}
+// async so a malformed document rejects instead of throwing synchronously
+export const validateMappingText = async (documentText: string) =>
+  request<ValidationResult>('/mappings/validate', rawDocumentBody(documentText))
+export const saveMappingText = async (documentText: string) => request<SavedMapping>('/mappings', rawDocumentBody(documentText))

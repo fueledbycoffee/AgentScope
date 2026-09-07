@@ -287,3 +287,20 @@ def test_saved_literals_keep_their_json_type_so_execution_does_not_change(
     assert fetched == document
     again = client.post("/api/mappings", json={"document": fetched})
     assert again.status_code == 200 and again.json()["id"] == created.json()["id"]
+
+
+def test_schema_and_validate_routes_serve_the_ui_without_saving(client: TestClient) -> None:
+    schema = client.get("/api/mappings/schema")
+    assert schema.status_code == 200 and schema.json()["title"]
+    assert "rules" in schema.json()["properties"]
+    before = len(client.get("/api/mappings").json())
+    invalid = client.post("/api/mappings/validate", json={"document": {"dsl_version": 1}})
+    assert invalid.status_code == 200 and invalid.json()["executable"] is False
+    assert {i["code"] for i in invalid.json()["issues"]} >= {"no_rules"}
+    document = client.get(f"/api/mappings/{client.get('/api/mappings').json()[0]['id']}").json()[
+        "document"
+    ]
+    valid = client.post("/api/mappings/validate", json={"document": document})
+    assert valid.json() == {"issues": [], "executable": True}
+    assert len(client.get("/api/mappings").json()) == before  # nothing was saved
+    envelope(client.post("/api/mappings/validate", json={"nope": 1}), 400, "invalid_input")

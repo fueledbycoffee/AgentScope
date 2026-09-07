@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AppShell } from './AppShell'
 import { FileBar, ScopeBar, ScopeReceipt } from './components'
 import { ShellProvider } from './shellContext'
@@ -14,6 +14,14 @@ import SessionsPage from './pages/Sessions'
 
 // The component gallery exists in development only; the production bundle never includes it.
 const GalleryPage = import.meta.env.DEV ? lazy(() => import('./pages/Gallery')) : null
+// The assistant page carries the chat library: loaded only when someone opens it.
+const AssistPage = lazy(() => import('./pages/Assist'))
+
+/** One page instance per upload: switching uploads must never carry another file's state along. */
+function AssistRoute() {
+  const { uploadId = '' } = useParams()
+  return <Suspense fallback={<p>Loading the assistant…</p>}><AssistPage key={uploadId} /></Suspense>
+}
 
 function RedirectKeepingSearch({ to }: { to: string }) {
   const { search } = useLocation()
@@ -37,6 +45,7 @@ export default function App() {
       <Route path="/sessions" element={<SessionsPage />} />
       <Route path="/sessions/:id" element={<SessionPage />} />
       <Route path="/import" element={<ImportPage />} />
+      <Route path="/import/assist/:uploadId" element={<AssistRoute />} />
       <Route path="/imports" element={<ImportsPage />} />
       <Route path="/imports/:id" element={<ReportPage />} />
       <Route path="/mappings" element={<MappingsPage />} />

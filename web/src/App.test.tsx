@@ -269,7 +269,7 @@ describe('Scope in the shell', () => {
     await screen.findAllByRole('region', { name: 'Sessions' })
     expect(screen.getByRole('link', { name: 'Sessions' })).toHaveAttribute('href', '/sessions?source=tracelab&agent=claude-code')
     expect(screen.getByRole('link', { name: 'Imports' })).toHaveAttribute('href', '/imports')
-    fireEvent.click(screen.getByRole('link', { name: 'claude:native_1' }))
+    fireEvent.click(await screen.findByRole('link', { name: 'claude:native_1' })) // the table renders after the regions
     await screen.findByRole('heading', { name: 'Session detail' })
     expect(fetchMock).toHaveBeenCalledWith('/api/metrics/summary?source=tracelab&agent=claude-code', undefined)
     fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'codex' } })

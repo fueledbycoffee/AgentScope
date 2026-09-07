@@ -26,6 +26,9 @@ const child = spawn('uv', ['run', 'uvicorn', 'agentscope_app.interfaces.api.main
     ...process.env,
     AGENTSCOPE_DATABASE_URL: `sqlite:///${join(root, 'agentscope.sqlite3')}`,
     AGENTSCOPE_RAW_FILE_DIR: join(root, 'raw'),
+    // the assistant flow runs against the deterministic fake: never a provider, never a key
+    AGENTSCOPE_LLM_PROVIDER: 'fake',
+    AGENTSCOPE_LLM_API_KEY: '',
   },
 })
 const stop = () => {
