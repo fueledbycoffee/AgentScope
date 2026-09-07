@@ -113,8 +113,20 @@ only write on this path is the profile cache; a proposal becomes a mapping
 revision only through `SaveMappingRevision`, the same use case the bundled
 loader uses, and then imports through the commit path above.
 
+In the browser (#15) the same boundary holds: `web/src/assist/assistRuntime.ts`
+is a pure state machine that owns the conversation turns, the prepared context
+and the gates. Every context change bumps a generation and drops the prepared
+digest; a run sends only the exact request that was prepared; with a sample
+included, nothing is sent until the user acknowledged the payload text of
+that very digest in the drawer; results for an older generation are ignored.
+The document is edited as text and sent as-is (validate, save), so what is on
+screen is what the server receives. Save needs a current executable
+validation, preview needs the saved text on screen, import needs a preview of
+that revision; the chat can trigger none of them. The field table, the lossless
+numeric codec and the report entry point are issue #39.
+
 ## Not yet
 
 Record and entity outcome browsing in the UI (#9), the
-metric definition module (#10), the dashboard (#11), the compatible adapter
-(#14) and the assistant UI (#15).
+metric definition module (#10), the dashboard (#11), the assistant field table
+and report entry point (#39).
