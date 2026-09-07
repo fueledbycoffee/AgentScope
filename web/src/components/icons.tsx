@@ -45,5 +45,7 @@ export function Icon({ name, size = 16, ...rest }: { name: IconName; size?: numb
 
 /** An icon-only button that keeps its name for assistive technology and shows it as a tooltip. */
 export function IconButton({ name, label, className = 'icon-btn', ...rest }: { name: IconName; label: string; className?: string } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'>) {
-  return <button type="button" className={className} aria-label={label} title={label} {...rest}><Icon name={name} /></button>
+  // The name is also a visible tooltip on hover and keyboard focus (CSS, from data-tip),
+  // so a sighted keyboard user sees what a screen reader hears.
+  return <button type="button" className={`${className} has-tip`} aria-label={label} data-tip={label} {...rest}><Icon name={name} /></button>
 }

@@ -23,7 +23,7 @@ export function AppShell({ bar, children }: { bar: ReactNode; children: ReactNod
       <nav aria-label="Main navigation">{ROUTES.map(([to, label, scoped, icon]) => <NavLink key={to} to={scoped ? link(to) : to}><Icon name={icon} /><span>{label}</span></NavLink>)}</nav>
       <div className="end">
         <div className="theme-toggle" role="group" aria-label="Theme">
-          {THEMES.map(([option, icon, label]) => <button key={option} type="button" aria-label={label} title={label} aria-pressed={theme === option} onClick={() => setTheme(option)}><Icon name={icon} /></button>)}
+          {THEMES.map(([option, icon, label]) => <button key={option} type="button" className="has-tip" aria-label={label} data-tip={label} aria-pressed={theme === option} onClick={() => setTheme(option)}><Icon name={icon} /></button>)}
         </div>
         <Link className="btn primary small" to="/import" title="Import traces"><Icon name="upload" /><span>Import</span></Link>
       </div>
