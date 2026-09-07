@@ -352,3 +352,45 @@ def test_condition_values_nested_too_deeply_are_rejected() -> None:
         lambda d: d["rules"][1].__setitem__("where", [{"path": "$.k", "op": "eq", "value": deep}])
     )
     assert ("rules[1].where[0].value", "invalid_condition_value") in codes(parsed)
+
+
+def _bounds_on_non_timestamp(d: dict[str, Any]) -> None:
+    d["rules"][1]["fields"]["model"] = {"path": "$.m[*]", "bounds": "min"}
+
+
+def _bounds_without_wildcard(d: dict[str, Any]) -> None:
+    d["rules"][1]["fields"]["started_at"] = {"path": "$.ts", "bounds": "max"}
+
+
+def _bounds_with_paths(d: dict[str, Any]) -> None:
+    d["rules"][1]["fields"]["started_at"] = {"paths": ["$.a[*]"], "bounds": "min"}
+
+
+def _bounds_unknown(d: dict[str, Any]) -> None:
+    d["rules"][1]["fields"]["started_at"] = {"path": "$.a[*]", "bounds": "median"}
+
+
+def test_bounds_validation() -> None:
+    for mutate, path, code in [
+        (_bounds_on_non_timestamp, "rules[1].fields.model.bounds", "bounds_not_applicable"),
+        (
+            _bounds_without_wildcard,
+            "rules[1].fields.started_at.bounds",
+            "bounds_requires_wildcard_path",
+        ),
+        (_bounds_with_paths, "rules[1].fields.started_at.bounds", "bounds_requires_wildcard_path"),
+        (_bounds_unknown, "rules[1].fields.started_at.bounds", "unknown_policy"),
+    ]:
+        parsed = variant(mutate)
+        assert (path, code) in codes(parsed), (mutate.__name__, parsed.issues)
+
+    def valid(d: dict[str, Any]) -> None:
+        d["rules"][1]["fields"]["started_at"] = {
+            "path": "$.events[*].ts",
+            "timestamp_format": "epoch_ms",
+            "bounds": "min",
+        }
+
+    parsed = variant(valid)
+    assert parsed.is_executable and parsed.spec is not None
+    assert parsed.spec.rules[1].fields["started_at"].bounds == "min"

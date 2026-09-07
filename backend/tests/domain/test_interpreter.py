@@ -573,3 +573,51 @@ def test_deeply_nested_predicate_values_become_rejects_not_exceptions() -> None:
     with pytest.raises(_FieldRejectError, match="nested deeper") as caught:
         _json_equal(deep, deep)
     assert caught.value.code == "predicate_too_deep"
+
+
+def test_bounds_take_chronological_extrema_not_positions() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "model_call",
+                "entity": "model_call",
+                "select": "$",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "started_at": {"path": "$.events[*].ts", "bounds": "min"},
+                    "ended_at": {
+                        "path": "$.events[*].ts",
+                        "bounds": "max",
+                        "on_invalid": "null",
+                    },
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    events = [
+        {"ts": "2026-05-29T06:06:06.047Z"},
+        {"ts": "2026-05-29T06:06:05.813Z"},
+        {"ts": None},
+        {"ts": "2026-05-29T06:07:00Z"},
+    ]
+    result = apply_mapping(spec, {"sid": "s", "events": events}, file_sha256="f", locator="line:1")
+    assert result.rejects == ()
+    call = result.emissions[0]
+    assert call.fields["started_at"] == datetime(2026, 5, 29, 6, 6, 5, 813000, tzinfo=UTC)
+    assert call.fields["ended_at"] == datetime(2026, 5, 29, 6, 7, tzinfo=UTC)
+
+    empty = apply_mapping(spec, {"sid": "s", "events": []}, file_sha256="f", locator="line:2")
+    assert empty.emissions[0].fields["started_at"] is None
+    assert ("started_at", "absent") in {(w.field, w.code) for w in empty.warnings}
+
+    bad = apply_mapping(
+        spec, {"sid": "s", "events": [{"ts": "soon"}]}, file_sha256="f", locator="line:3"
+    )
+    assert [(r.code, r.field) for r in bad.rejects] == [("invalid_value", "started_at")]

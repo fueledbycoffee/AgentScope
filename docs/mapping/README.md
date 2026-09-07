@@ -28,7 +28,7 @@ the worked example is [`backend/mappings/tracelab-v1.json`](../../backend/mappin
       "fields": {
         "session_external_id": {"path": "$.session_id"},
         "external_id": {"path": "$.trace_key"},
-        "started_at": {"path": "$.timing_events[0].timestamp", "timestamp_format": "iso8601"},
+        "started_at": {"path": "$.timing_events[*].timestamp", "timestamp_format": "iso8601", "bounds": "min"},
         "input_tokens": {"paths": ["$.usage.input", "$.input_tokens"], "on_missing": "null"}
       }
     },
@@ -131,6 +131,7 @@ Grammar: `("$" | "@root") ("." name | "[" n "]" | "[*]")*`, at most 16 segments.
 | `on_missing` | `null` | `null` (store null, warn), `default` (use `default`), `reject` (reject the whole emission) |
 | `default` | | Required when `on_missing` is `default` |
 | `on_invalid` | `reject` | What to do when a transform or conversion fails: `null` (store null, warn) or `reject` |
+| `bounds` | none | `min` or `max`: timestamp fields only, with a `path` containing `[*]`; takes the earliest or latest of the selected timestamps (null entries ignored). This is the only extraction over a nested collection the DSL allows, because event arrays are not guaranteed to be chronological |
 
 Conversions are strict: booleans never become numbers, `12.5` never becomes
 an integer, unknown enum values are not silently kept unless the mapping says

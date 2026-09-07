@@ -14,6 +14,7 @@ from typing import Any
 
 from agentscope_app.domain.errors import Severity, ValidationIssue
 from agentscope_app.domain.mapping.contract import (
+    BOUNDS,
     CONDITION_OPERATORS,
     DSL_VERSION,
     INPUT_FORMATS,
@@ -66,6 +67,7 @@ _FIELD_KEYS = frozenset(
         "on_missing",
         "default",
         "on_invalid",
+        "bounds",
     }
 )
 _CONDITION_KEYS = frozenset({"path", "op", "value"})
@@ -402,10 +404,41 @@ def _parse_field(raw: Any, target: TargetField, path: str, issues: _Issues) -> F
             "A field mapping needs exactly one of path, paths or literal",
         )
         return None
+    bounds = raw.get("bounds")
+    if bounds is not None:
+        if bounds not in BOUNDS:
+            issues.error(
+                "semantic", f"{path}.bounds", "unknown_policy", f"bounds must be one of {BOUNDS}"
+            )
+            return None
+        if target.type is not FieldType.TIMESTAMP:
+            issues.error(
+                "semantic",
+                f"{path}.bounds",
+                "bounds_not_applicable",
+                "bounds only applies to timestamp fields",
+            )
+            return None
+        if "path" not in raw:
+            issues.error(
+                "semantic",
+                f"{path}.bounds",
+                "bounds_requires_wildcard_path",
+                "bounds needs a single path containing '[*]'",
+            )
+            return None
     paths: list[Path] = []
     if "path" in raw:
-        single = _path(raw["path"], f"{path}.path", issues, allow_wildcard=False)
+        single = _path(raw["path"], f"{path}.path", issues, allow_wildcard=bounds is not None)
         if single is None:
+            return None
+        if bounds is not None and not single.has_wildcard:
+            issues.error(
+                "semantic",
+                f"{path}.bounds",
+                "bounds_requires_wildcard_path",
+                "bounds needs a path containing '[*]' to select several timestamps",
+            )
             return None
         paths.append(single)
     elif "paths" in raw:
@@ -537,6 +570,7 @@ def _parse_field(raw: Any, target: TargetField, path: str, issues: _Issues) -> F
         on_missing=str(on_missing),
         default=raw.get("default"),
         on_invalid=str(on_invalid),
+        bounds=bounds,
     )
 
 

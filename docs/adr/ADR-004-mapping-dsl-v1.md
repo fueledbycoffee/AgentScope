@@ -47,6 +47,10 @@ The complete allowed capability set is:
   (bounded JSON decoding of a string field).
 - Per-field `type` coercion: `string`, `integer`, `number`, `boolean`, `timestamp`,
   with `timestamp_format: iso8601 | epoch_s | epoch_ms` for timestamps.
+- A fixed timestamp-bounds extraction (`bounds: min | max` over a wildcard
+  path) for call start and end, because event arrays are not always
+  chronological. It is the only operation over a nested collection and is not
+  general aggregation.
 - `unit: {from, to}` for millisecond fields.
 - Ordered coalescing with `paths: [...]` (first present wins), constants with
   `literal`, and composite keys with `native_key: [fields]`.

@@ -39,6 +39,10 @@ class FieldMapping:
     on_missing: str = "null"
     default: Any = None
     on_invalid: str = "reject"
+    bounds: str | None = None  # "min" | "max" over a wildcard path of timestamps
+
+
+BOUNDS: Final = ("min", "max")
 
 
 @dataclass(frozen=True)

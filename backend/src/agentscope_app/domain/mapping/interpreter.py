@@ -15,7 +15,7 @@ from agentscope_app.domain.identity import SourceOccurrence
 from agentscope_app.domain.mapping.contract import Condition, FieldMapping, MappingSpec, Rule
 from agentscope_app.domain.mapping.paths import MISSING, resolve_many, resolve_one
 from agentscope_app.domain.mapping.transforms import apply_transform
-from agentscope_app.domain.schema import TARGET_SCHEMA
+from agentscope_app.domain.schema import TARGET_SCHEMA, FieldType
 from agentscope_app.domain.units import coerce, convert_duration
 
 
@@ -126,6 +126,47 @@ def _holds(cond: Condition, item: Any, root: Any) -> bool:
 
 
 MAX_PREDICATE_DEPTH = 32
+MAX_BOUNDS_ITEMS = 10_000
+
+
+def _on_invalid(
+    fm: FieldMapping,
+    exc: ConversionError,
+    rule: Rule,
+    occurrence: SourceOccurrence,
+    warnings: list[Diagnostic],
+) -> None:
+    """Apply the field's ``on_invalid`` policy: null with a warning, or a reject."""
+    if fm.on_invalid == "null":
+        warnings.append(
+            Diagnostic(
+                rule.id,
+                occurrence,
+                "invalid_value",
+                f"{fm.target}: {exc}; stored as null",
+                fm.target,
+            )
+        )
+        return None
+    raise _FieldRejectError("invalid_value", f"{fm.target}: {exc}") from exc
+
+
+def _bounds(fm: FieldMapping, item: Any, root: Any) -> tuple[Any, str]:
+    """Earliest or latest timestamp among the values a wildcard path selects.
+
+    This is the one fixed extraction over a nested collection the DSL allows:
+    it exists because event arrays are not guaranteed to be chronological.
+    Null entries are ignored; an unparsable entry follows ``on_invalid``.
+    """
+    try:
+        candidates = resolve_many(fm.paths[0], item, root, limit=MAX_BOUNDS_ITEMS)
+    except ValueError as exc:
+        raise ConversionError("selector_limit", str(exc)) from exc
+    present = [c for c in candidates if c is not None]
+    if not present:
+        return MISSING, "absent"
+    parsed = [coerce(c, FieldType.TIMESTAMP, timestamp_format=fm.timestamp_format) for c in present]
+    return (min(parsed) if fm.bounds == "min" else max(parsed)), "present"
 
 
 def _json_equal(a: Any, b: Any, depth: int = 0) -> bool:
@@ -226,6 +267,11 @@ def _evaluate(
     if fm.has_literal:
         value: Any = fm.literal
         state = "null" if value is None else "present"
+    elif fm.bounds is not None:
+        try:
+            value, state = _bounds(fm, item, root)
+        except ConversionError as exc:
+            return _on_invalid(fm, exc, rule, occurrence, warnings)
     else:
         value, state = MISSING, "absent"
         for path in fm.paths:
@@ -265,20 +311,10 @@ def _evaluate(
             # Exact unit conversion first (ints, floats and numeric strings); the strict
             # coercion below then rejects anything not integral instead of rounding.
             value = convert_duration(value, fm.unit_from, fm.unit_to)
-        value = coerce(value, fm.type, timestamp_format=fm.timestamp_format)
+        if fm.bounds is None:
+            value = coerce(value, fm.type, timestamp_format=fm.timestamp_format)
     except ConversionError as exc:
-        if fm.on_invalid == "null":
-            warnings.append(
-                Diagnostic(
-                    rule.id,
-                    occurrence,
-                    "invalid_value",
-                    f"{fm.target}: {exc}; stored as null",
-                    fm.target,
-                )
-            )
-            return None
-        raise _FieldRejectError("invalid_value", f"{fm.target}: {exc}") from exc
+        return _on_invalid(fm, exc, rule, occurrence, warnings)
     target_unit = TARGET_SCHEMA[rule.entity].fields[fm.target].unit
     if target_unit in ("ms", "tokens") and isinstance(value, int | float) and value < 0:
         raise _FieldRejectError(

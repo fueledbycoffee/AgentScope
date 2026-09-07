@@ -67,3 +67,20 @@ def test_reference_mapping_normalises_the_whole_fixture() -> None:
         assert s.conflicts == ()
     assert sum(s.model_call_count for s in sessions.values()) == 4770
     assert sum(s.tool_call_count for s in sessions.values()) == 5723
+
+
+def test_call_bounds_are_chronological_extrema_of_timing_events() -> None:
+    spec = parse_mapping(json.loads(MAPPING_PATH.read_text(encoding="utf-8"))).spec
+    assert spec is not None
+    non_chronological = 0
+    for line_no, row in load_rows():
+        stamps = [e["timestamp"] for e in row["timing_events"] if e.get("timestamp")]
+        result = apply_mapping(spec, row, file_sha256="fixture", locator=f"line:{line_no}")
+        call = next(e for e in result.emissions if e.entity == "model_call")
+        expected_start = min(datetime.fromisoformat(s.replace("Z", "+00:00")) for s in stamps)
+        expected_end = max(datetime.fromisoformat(s.replace("Z", "+00:00")) for s in stamps)
+        assert call.fields["started_at"] == expected_start, line_no
+        assert call.fields["ended_at"] == expected_end, line_no
+        if stamps != sorted(stamps):
+            non_chronological += 1
+    assert non_chronological > 0  # the fixture really has unsorted event arrays
