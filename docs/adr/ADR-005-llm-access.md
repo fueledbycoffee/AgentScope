@@ -118,6 +118,10 @@ Only recorded live runs count (`scripts/llm_smoke.py`; see
   `backend/tests/llm_recordings/captured_openrouter_dots3_2026-09-07.json`).
   Final adapter: 78 s, two generation calls, executable proposal with session,
   model_call and tool_call rules, 26 explanations, 5 ambiguities, 4 questions.
+- 2026-09-07, OpenRouter, `liquid/lfm-2.5-2.6b:free` (Liquid AI, a second
+  vendor): same context, 38 s, two generation calls, editable non-executable
+  draft (`native_key_unmapped`, `no_fields`). Two distinct vendors have thus
+  completed the workflow; only one produced an executable proposal so far.
 - The owner's earlier choice `minimax/minimax-m3:free` left OpenRouter's free
   tier on or before 2026-09-07 (404 "unavailable for free"); a paid slug
   exists but was not used.

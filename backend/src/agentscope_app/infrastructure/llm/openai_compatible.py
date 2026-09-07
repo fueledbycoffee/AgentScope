@@ -296,10 +296,12 @@ class OpenAICompatibleAssistant:
         status = response.status_code
         host = self._host
         if status in (401, 403):
+            # 401 is the key; 403 can also be a model this key may not use (seen on OpenRouter)
             raise AssistantError(
                 "unavailable",
-                f"The assistant endpoint at {host} refused the credentials ({status}); "
-                "check AGENTSCOPE_LLM_API_KEY",
+                f"The assistant endpoint at {host} refused the request ({status}): "
+                f"{self._quote(response)}; check AGENTSCOPE_LLM_API_KEY and, for 403, whether "
+                "AGENTSCOPE_LLM_MODEL is available to this key",
             )
         if status == 402:
             raise AssistantError(

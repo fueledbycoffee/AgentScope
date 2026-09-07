@@ -146,6 +146,9 @@ called tested):
 | --- | --- | --- | --- |
 | 2026-09-07 | OpenRouter | `dots-studio/dots-3-note-preview:free` (rewritten adapter) | 78 s, 2 attempts, **executable** proposal: session, model_call, tool_call rules; 26 explanations, 5 ambiguities, 4 questions |
 | 2026-09-07 | OpenRouter | `dots-studio/dots-3-note-preview:free` (first adapter build) | 113 s, 2 attempts, editable draft (`invalid_type`, `unknown_key`, `unknown_policy`); reply captured |
+| 2026-09-07 | OpenRouter | `liquid/lfm-2.5-2.6b:free` (second vendor) | 38 s, 2 attempts, editable draft (`native_key_unmapped`, `no_fields`), 3 explanations, 2 ambiguities, 2 questions |
+| 2026-09-07 | OpenRouter | `google/gemma-4-26b-a4b-it:free` | 429 rate-limited upstream (second try, later in the evening) |
+| 2026-09-07 | OpenRouter | `thinkingmachines/inkling:free` | 403: the model is not available to this key |
 | 2026-09-07 | OpenRouter | `minimax/minimax-m3:free` | 404 "unavailable for free" (model retired from the free tier) |
 | 2026-09-07 | OpenRouter | `nvidia/nemotron-3-super-120b-a12b:free` | provider error inside a 200: upstream overloaded |
 | 2026-09-07 | OpenRouter | `google/gemma-4-31b-it:free` | 429 rate-limited upstream |
@@ -158,7 +161,7 @@ The two-distinct-model verification report is issue #16.
 ## Troubleshooting
 
 - `503 … AGENTSCOPE_LLM_MODEL is empty`: set the model.
-- `503 … refused the credentials (401)`: the key is wrong or missing for a hosted endpoint.
+- `503 … refused the request (401)`: the key is wrong or missing for a hosted endpoint; `(403)` with a provider message usually means this model is not available to this key or plan.
 - `503 … answered 404`: the root is wrong (needs `/v1` once) or the model id does not exist on this endpoint; the message quotes the endpoint's own explanation.
 - `502 … kind: timeout`: raise `AGENTSCOPE_LLM_TIMEOUT_S` or pick a faster model; local models on CPU often need more than 60 s.
 - `502 … kind: truncated`: raise `AGENTSCOPE_LLM_MAX_TOKENS` or pick a model that writes compact JSON.
