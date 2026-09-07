@@ -60,7 +60,8 @@ def apply_transform(transform: Transform, value: Any) -> Any:
             # Fractions decode as exact decimals so strict integer coercion can
             # still see them; ints stay ints.
             return json.loads(text, parse_float=Decimal)
-        except ValueError as exc:
+        except (ValueError, ArithmeticError) as exc:
+            # ArithmeticError covers decimal.InvalidOperation on absurd exponents.
             raise ConversionError("invalid_json", f"json_decode failed: {exc}") from exc
         except RecursionError as exc:
             raise ConversionError(

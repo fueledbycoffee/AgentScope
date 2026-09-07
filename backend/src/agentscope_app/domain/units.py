@@ -31,18 +31,19 @@ TIMESTAMP_FORMATS: Final = ("iso8601", "epoch_s", "epoch_ms")
 # Converted durations must stay below 10^19 target units (about 300 million years
 # in ms); anything larger is out of range rather than a multi-megabyte integer.
 MAX_DURATION_MAGNITUDE: Final = Decimal(10) ** 19
-# Same bound for every integer measure: fits a signed 64-bit column and keeps
-# a decimal exponent from expanding into a huge int.
-MAX_INTEGER_MAGNITUDE: Final = 10**19
-MAX_INTEGER_DIGITS: Final = 19  # Decimal.adjusted() >= 19 means |value| >= 10**19
+# Every integer measure must fit a signed 64-bit column. The digit bound is a
+# cheap pre-check on Decimal.adjusted() (no arithmetic) before the exact one.
+INT64_MIN: Final = -(2**63)
+INT64_MAX: Final = 2**63 - 1
+MAX_INTEGER_DIGITS: Final = 19  # Decimal.adjusted() >= 19 means |value| >= 10**19 > INT64_MAX
 _TRUE: Final = frozenset({"true", "1", "yes", "y", "t"})
 _FALSE: Final = frozenset({"false", "0", "no", "n", "f"})
-_INT_STRING: Final = re.compile(r"-?\d{1,18}")
+_INT_STRING: Final = re.compile(r"-?\d{1,19}")  # 19 digits reach the exact int64 check
 
 
 def _bounded_int(value: int) -> int:
-    if abs(value) >= MAX_INTEGER_MAGNITUDE:
-        raise ConversionError("out_of_range", f"{value} exceeds the supported integer range")
+    if not INT64_MIN <= value <= INT64_MAX:
+        raise ConversionError("out_of_range", f"{value} does not fit a signed 64-bit integer")
     return value
 
 
@@ -94,7 +95,7 @@ def convert_duration(value: Any, from_unit: str, to_unit: str) -> int | Decimal:
             "out_of_range", f"Duration {value!r} {from_unit} exceeds the supported range"
         )
     if result == result.to_integral_value():
-        return int(result)
+        return _bounded_int(int(result))
     return result
 
 

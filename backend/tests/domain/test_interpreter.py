@@ -830,3 +830,37 @@ def test_json_decoded_numbers_are_bounded_and_convert_units() -> None:
     assert [(w.code, w.field) for w in result.warnings] == [("invalid_value", "input_tokens")]
     tools = [e.fields["wall_latency_ms"] for e in result.emissions if e.entity == "tool_call"]
     assert tools == [1500, 1000, 1000]
+
+
+def test_int64_overflow_and_absurd_decimals_follow_on_invalid() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "model_call",
+                "entity": "model_call",
+                "select": "$",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "input_tokens": {"path": "$.tokens", "on_invalid": "null"},
+                    "output_tokens": {
+                        "path": "$.out",
+                        "transforms": ["json_decode"],
+                        "on_invalid": "null",
+                    },
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    record = {"sid": "s", "tokens": 9223372036854775808, "out": "1e9999999999999999999"}
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    assert result.rejects == ()
+    fields = result.emissions[0].fields
+    assert fields["input_tokens"] is None and fields["output_tokens"] is None
+    assert sorted(w.field or "" for w in result.warnings) == ["input_tokens", "output_tokens"]

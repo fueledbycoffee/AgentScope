@@ -107,7 +107,7 @@ def test_coerce_timestamp_uses_format() -> None:
     )
 
 
-@pytest.mark.parametrize("value", ["--1", "+1", "1_000", "9" * 19, " - 1"])
+@pytest.mark.parametrize("value", ["--1", "+1", "1_000", "9" * 20, " - 1"])
 def test_coerce_integer_rejects_malformed_strings(value: str) -> None:
     with pytest.raises(ConversionError):
         coerce(value, FieldType.INTEGER)
@@ -145,7 +145,7 @@ def test_coerce_handles_exact_decimals() -> None:
 
 def test_integer_coercion_is_bounded_before_expansion() -> None:
     for huge in (Decimal("1e10000000"), Decimal("1e50000"), Decimal("1e19"), 10**19):
-        with pytest.raises(ConversionError, match="range"):
+        with pytest.raises(ConversionError, match="range|64-bit"):
             coerce(huge, FieldType.INTEGER)
     assert coerce("9" * 18, FieldType.INTEGER) == int("9" * 18)
     assert coerce(Decimal("1e18"), FieldType.INTEGER) == 10**18
@@ -157,3 +157,13 @@ def test_integer_coercion_is_bounded_before_expansion() -> None:
 def test_convert_duration_accepts_exact_decimals() -> None:
     assert convert_duration(Decimal("1.5"), "s", "ms") == 1500
     assert convert_duration(Decimal("1.0"), "s", "ms") == 1000
+
+
+def test_integers_must_fit_signed_64_bits() -> None:
+    assert coerce(2**63 - 1, FieldType.INTEGER) == 2**63 - 1
+    assert coerce(-(2**63), FieldType.INTEGER) == -(2**63)
+    for out in (2**63, -(2**63) - 1, Decimal(2**63), str(2**63), float(2**63)):
+        with pytest.raises(ConversionError, match="64-bit"):
+            coerce(out, FieldType.INTEGER)
+    with pytest.raises(ConversionError, match="64-bit"):
+        convert_duration(2**63, "ms", "ms")

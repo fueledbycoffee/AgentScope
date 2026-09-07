@@ -57,3 +57,8 @@ def test_json_decode_keeps_fractions_exact() -> None:
     assert apply_transform(t, "1e-400") == Decimal("1e-400")
     assert apply_transform(t, "12") == 12 and isinstance(apply_transform(t, "12"), int)
     assert apply_transform(t, '{"a": [1.5]}') == {"a": [Decimal("1.5")]}
+
+
+def test_json_decode_absurd_exponent_is_a_conversion_error() -> None:
+    with pytest.raises(ConversionError, match="json_decode failed"):
+        apply_transform(Transform("json_decode", {}), "1e9999999999999999999")
