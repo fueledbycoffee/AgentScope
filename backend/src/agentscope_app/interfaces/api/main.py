@@ -53,7 +53,8 @@ class SpaFiles(StaticFiles):
         try:
             return await super().get_response(path, scope)
         except StarletteHTTPException as exc:
-            if exc.status_code == 404 and "." not in path.rsplit("/", 1)[-1]:
+            is_api = path == "api" or path.startswith("api/")
+            if exc.status_code == 404 and not is_api and "." not in path.rsplit("/", 1)[-1]:
                 return await super().get_response("index.html", scope)
             raise
 
@@ -88,6 +89,13 @@ def create_app(
             "error": {"code": exc.code, "message": exc.message, "details": list(exc.details)}
         }
         return JSONResponse(status_code=status, content=body)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        # Unknown API paths (and any other framework-level HTTP error) keep the envelope.
+        code = "not_found" if exc.status_code == 404 else "http_error"
+        body = {"error": {"code": code, "message": str(exc.detail), "details": []}}
+        return JSONResponse(status_code=exc.status_code, content=body)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:

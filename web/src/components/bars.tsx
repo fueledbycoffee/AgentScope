@@ -13,6 +13,11 @@ export interface Dimension { key: ScopeKey; label: string; options: string[] }
  */
 function ScopeInput({ dimension, value, onChange }: { dimension: Dimension; value: string; onChange: (value: string) => void }) {
   const [draft, setDraft] = useState(value)
+  const [seen, setSeen] = useState(value)
+  if (seen !== value) { // the URL changed under us (Back, Clear): adopt it without remounting
+    setSeen(value)
+    setDraft(value)
+  }
   const listId = useId()
   const commit = () => { if (draft.trim() !== value) onChange(draft) }
   return <label className="dim">
@@ -29,7 +34,7 @@ export function ScopeBar({ dimensions, receipt, loading }: { dimensions: Dimensi
   const active = dimensions.some(dimension => scope[dimension.key])
   return <div className="bar" role="group" aria-label="Scope">
     <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>Scope</span>
-    {dimensions.map(dimension => <ScopeInput key={`${dimension.key}:${scope[dimension.key] ?? ''}`} dimension={dimension} value={scope[dimension.key] ?? ''} onChange={value => set({ [dimension.key]: value })} />)}
+    {dimensions.map(dimension => <ScopeInput key={dimension.key} dimension={dimension} value={scope[dimension.key] ?? ''} onChange={value => set({ [dimension.key]: value })} />)}
     {active && <button type="button" className="btn quiet small" onClick={clear}>Clear</button>}
     <div className="receipt" aria-live="polite">{loading ? <span className="skeleton" style={{ display: 'inline-block', width: 180, height: 12 }} /> : receipt}</div>
   </div>

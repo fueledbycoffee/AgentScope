@@ -106,9 +106,12 @@ describe('ScopeBar', () => {
   it('writes the scope to the URL on commit, clears it, and resets the offset', () => {
     render(<MemoryRouter initialEntries={['/sessions?offset=50']}><Routes><Route path="/sessions" element={<><ScopeBar dimensions={[{ key: 'source', label: 'Source', options: ['tracelab'] }, { key: 'agent', label: 'Agent', options: [] }]} receipt="80 sessions" /><Location /></>} /></Routes></MemoryRouter>)
     const source = screen.getByLabelText('Source')
+    source.focus()
     fireEvent.change(source, { target: { value: 'trace & lab' } })
     fireEvent.keyDown(source, { key: 'Enter' })
     expect(screen.getByRole('status')).toHaveTextContent('?source=trace+%26+lab')
+    expect(screen.getByLabelText('Source')).toBe(source) // same element, still focused
+    expect(source).toHaveFocus()
     expect(screen.getByRole('status')).not.toHaveTextContent('offset')
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
     expect(screen.getByRole('status')).toHaveTextContent('')
@@ -118,17 +121,19 @@ describe('ScopeBar', () => {
 
 
 describe('theme', () => {
-  it('keeps the choice in memory when storage throws', async () => {
+  it('keeps the choice in memory when storage throws, even over a stale saved value', async () => {
     const { setTheme, applyTheme } = await import('../theme')
     const original = Storage.prototype.setItem
-    Storage.prototype.setItem = () => { throw new Error('quota') }
     try {
+      localStorage.setItem('agentscope-theme', 'light') // saved earlier; can no longer be replaced
+      Storage.prototype.setItem = () => { throw new Error('quota') }
       setTheme('dark')
       expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
       applyTheme()
       expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
     } finally {
       Storage.prototype.setItem = original
+      localStorage.removeItem('agentscope-theme')
       setTheme('system')
     }
   })

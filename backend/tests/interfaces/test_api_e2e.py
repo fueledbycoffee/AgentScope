@@ -169,3 +169,5 @@ def test_client_routes_are_served_by_the_index_page(tmp_path: Path) -> None:
         assert client.get("/assets/missing.js").status_code == 404  # real files keep real 404s
         assert client.get("/api/sessions/nope").status_code == 404  # the API is untouched
         assert client.get("/api/sessions/nope").json()["error"]["code"] == "not_found"
+        typo = client.get("/api/metrics/sumary")  # an unknown API path is never the page
+        assert typo.status_code == 404 and typo.json()["error"]["code"] == "not_found"

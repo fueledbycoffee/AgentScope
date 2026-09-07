@@ -7,10 +7,11 @@ const listeners = new Set<() => void>()
 let chosen: Theme | undefined // the last choice made in this page, for when storage is unavailable
 
 function read(): Theme {
+  if (chosen) return chosen // a choice made on this page wins over what storage may still hold
   try {
     const value = localStorage.getItem(KEY)
-    return value === 'light' || value === 'dark' ? value : chosen ?? 'system'
-  } catch { return chosen ?? 'system' }
+    return value === 'light' || value === 'dark' ? value : 'system'
+  } catch { return 'system' }
 }
 
 /** Stamp the root element; "system" removes the attribute so the OS decides. */
