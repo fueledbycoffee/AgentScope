@@ -78,8 +78,10 @@ was included in the pre-checks.
 | B-sessions | B | sessions | off | — | harness v1 timed out the same way; rerun below | | | | | |
 | B-sessions-2 | B | sessions | off | 2 | executable after the built-in repair, `$.created_at.iso`, no `ended_at` | none needed | rev 1 `map_88c1…` | 12 accepted / 0 rejected (warnings: `precision_reduced` 10, `null` 3) | committed 12/12 (session 12) | snapshot restored, `AGENTSCOPE_LLM_PROVIDER=none`: control prepare 200 then run **503 assistant_unavailable**; Import page import committed, 12 sessions under `source=swe-chat`, zero assistant run requests (`replay-B-sessions-2`) |
 | B-conversations | B | conversations | off | 1 | executable | 1: `"$.timestamp"` → `"$.timestamp.iso"` (base `df02f6fa…`, target `cf4124b1…`) | rev 1 `map_622e…` | 200 sampled: 74 accepted, 126 partial, 0 rejected; 50 reject rows in the sample (tool_call rule) | committed 518/518 records: 9 sessions, **149 model calls (= assistant rows), 132 tool calls (88 tool_use + 44 tool_result rows with a name)**, 386 `missing_required tool_name` emission rejects: the rule's `where tool_name exists` is true for Parquet nulls and for result rows | pending (rerun with the predicate fixed below) |
-| B-conversations-2 | B | conversations | off | | | + `where` of the tool_call rule → `role == "tool_use"` | | | | |
-| A-conversations-2 | A | conversations | off | | | same corrections prepared | | | | |
+| B-conversations-2 | B | conversations | off | 1 | executable; this reply used `$.timestamp.iso` itself but left the **model_call rule without a `where`** | 1: tool_call `where` → `role == "tool_use"` | rev 1 `map_74da…` | accepted 518/518, 0 rejects | committed: 9 sessions, **518 model calls (every row), 88 tool calls** | not replayed: semantically wrong (a model call per row); superseded by B-conversations-3 |
+| B-conversations-3 | B | conversations | off | | | tool_call `where` → `role == "tool_use"`; model_call `where` → `role == "assistant"` | | | | |
+| A-conversations-2 | A | conversations | off | 1 | draft: the only issue is `notes` (an object instead of a string); rules were right (session `where is_first_turn == true`, model_call `role == assistant`) | tool_call `where` applied; harness v2 did not watch the issue list and timed out at validation | — | — | — | — |
+| A-conversations-3 | A | conversations | off | | | + `notes` replaced by a reviewer string | | | | |
 
 ## Findings so far
 
@@ -101,7 +103,11 @@ was included in the pre-checks.
    rejects 386 emissions as `missing_required` and double-counts 44 results as
    calls. The correction is `where role == "tool_use"` (the audit predicted
    it; the built-in fake already uses it).
-5. Both models' `model_call` rule (`role == "assistant"`) counts
+5. Model variance is large between identical requests: config B once wrote a
+   `model_call` rule with no `where` at all, which imports "successfully" with
+   a model call per row (518). Executable and accepted are not the same as
+   right; the preview's entity counts are what a reviewer must read.
+6. Both models' `model_call` rule (`role == "assistant"`) counts
    `assistant_thinking` rows as calls (22 of 149 in the excerpt); whether that
    is right depends on what the source means by a turn, which the audit shows
    is not "one API call" (assistant rows equal the declared call count in 4 of
