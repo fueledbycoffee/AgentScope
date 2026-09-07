@@ -30,13 +30,15 @@ jobs:
       - name: Install (locked)
         run: uv sync --locked --all-groups
       - name: Lint
-        run: uv run ruff check . && uv run ruff format --check .
+        run: uv run ruff check . ../scripts && uv run ruff format --check . ../scripts
       - name: Type check
         run: uv run mypy
       - name: Architecture boundaries
         run: uv run lint-imports
       - name: Tests
         run: uv run pytest
+      - name: Scripts
+        run: uv run python -m unittest discover -s ../scripts -p 'test_*.py'
 
   web:
     name: web

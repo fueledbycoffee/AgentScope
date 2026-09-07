@@ -1,12 +1,12 @@
 """Offline contract checks: python3 -m unittest discover -s scripts -p 'test_*.py'."""
 
-from contextlib import redirect_stdout
 import gzip
 import io
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
 import sample_tracelab as sampler
@@ -22,38 +22,69 @@ class SamplerTests(unittest.TestCase):
         self.lines = []
         # Interleaved sessions; duplicate native IDs; varying project/session_file
         # for the same session; CRLF, whitespace and a final unterminated row.
-        for i, (provider, sid) in enumerate([
-                ("claude", "a"), ("codex", "x"), ("claude", "b"), ("codex", "y"),
-                ("claude", "a"), ("codex", "x"), ("claude", "b"), ("codex", "y")]):
-            row = {"session_id": sid, "provider": provider, "round_id": "duplicate",
-                   "project": "p%d" % (i // 4), "session_file": "f%d" % i,
-                   "tools": [{"name": "test", "value": "accent: é"}]}
-            self.lines.append(("  " + json.dumps(row, ensure_ascii=False) +
-                               ("\r\n" if i < 7 else "")).encode("utf-8"))
+        for i, (provider, sid) in enumerate(
+            [
+                ("claude", "a"),
+                ("codex", "x"),
+                ("claude", "b"),
+                ("codex", "y"),
+                ("claude", "a"),
+                ("codex", "x"),
+                ("claude", "b"),
+                ("codex", "y"),
+            ]
+        ):
+            row = {
+                "session_id": sid,
+                "provider": provider,
+                "round_id": "duplicate",
+                "project": f"p{i // 4}",
+                "session_file": f"f{i}",
+                "tools": [{"name": "test", "value": "accent: é"}],
+            }
+            self.lines.append(
+                ("  " + json.dumps(row, ensure_ascii=False) + ("\r\n" if i < 7 else "")).encode(
+                    "utf-8"
+                )
+            )
         self.source.write_bytes(gzip.compress(b"".join(self.lines)))
 
     def run_sample(self, name, count=1):
         output = self.root / (name + ".gz")
         digest, size = sampler.file_digest(self.source)
         with redirect_stdout(io.StringIO()):
-            manifest = sampler.sample(self.source, output, self.root / (name + ".json"),
-                                      {"sha256": digest, "bytes": size, "retrieved_at": None},
-                                      42, count)
+            manifest = sampler.sample(
+                self.source,
+                output,
+                self.root / (name + ".json"),
+                {"sha256": digest, "bytes": size, "retrieved_at": None},
+                42,
+                count,
+            )
         return output, manifest
 
     def test_whole_sessions_exact_bytes_locators_and_deterministic_gzip(self):
         first, manifest = self.run_sample("first")
         second, _ = self.run_sample("second")
         self.assertEqual(first.read_bytes(), second.read_bytes())
-        ids = {sid for values in manifest["selected_session_ids_per_provider"].values()
-               for sid in values}
+        ids = {
+            sid
+            for values in manifest["selected_session_ids_per_provider"].values()
+            for sid in values
+        }
         expected = b"".join(line for line in self.lines if json.loads(line)["session_id"] in ids)
         self.assertEqual(gzip.decompress(first.read_bytes()), expected)
         self.assertEqual(manifest["output"]["rows_per_provider"], {"claude": 2, "codex": 2})
         for info in manifest["sessions"]:
             ordinal_list = [n for lo, hi in info["source_line_ranges"] for n in range(lo, hi + 1)]
-            self.assertEqual(ordinal_list, [n for n, line in enumerate(self.lines, 1)
-                                           if json.loads(line)["session_id"] == info["session_id"]])
+            self.assertEqual(
+                ordinal_list,
+                [
+                    n
+                    for n, line in enumerate(self.lines, 1)
+                    if json.loads(line)["session_id"] == info["session_id"]
+                ],
+            )
             self.assertEqual(len(info["source_files"]), 2)
 
     def test_all_sessions_keep_final_line_and_order(self):
@@ -66,8 +97,9 @@ class SamplerTests(unittest.TestCase):
         for row in rows:
             del row["session_file"]
             del row["project"]
-        self.source.write_bytes(gzip.compress(b"".join(
-            json.dumps(row).encode() + b"\n" for row in rows)))
+        self.source.write_bytes(
+            gzip.compress(b"".join(json.dumps(row).encode() + b"\n" for row in rows))
+        )
         _, manifest = self.run_sample("absent")
         for info in manifest["sessions"]:
             for entry in info["source_files"]:
@@ -80,7 +112,9 @@ class SamplerTests(unittest.TestCase):
         sessions, _ = sampler.index_sessions(self.source)
         expected = {"claude": ["a"], "codex": ["y"]}
         self.assertEqual(sampler.select_sessions(sessions, 42, 1), expected)
-        self.assertEqual(sampler.select_sessions(dict(reversed(list(sessions.items()))), 42, 1), expected)
+        self.assertEqual(
+            sampler.select_sessions(dict(reversed(list(sessions.items()))), 42, 1), expected
+        )
         selections = {json.dumps(sampler.select_sessions(sessions, seed, 1)) for seed in range(10)}
         self.assertGreater(len(selections), 1)
 
@@ -118,9 +152,13 @@ class SamplerTests(unittest.TestCase):
         payload = self.source.read_bytes()
         digest, size = sampler.file_digest(self.source)
         cache = self.root / "download.gz"
-        with patch.object(sampler, "UPSTREAM_SHA256", digest), patch.object(
-                sampler, "UPSTREAM_BYTES", size), patch.object(
-                    sampler.urllib.request, "urlopen", return_value=io.BytesIO(payload)) as request:
+        with (
+            patch.object(sampler, "UPSTREAM_SHA256", digest),
+            patch.object(sampler, "UPSTREAM_BYTES", size),
+            patch.object(
+                sampler.urllib.request, "urlopen", return_value=io.BytesIO(payload)
+            ) as request,
+        ):
             with redirect_stdout(io.StringIO()):
                 first = sampler.ensure_source(cache)
                 second = sampler.ensure_source(cache)
@@ -129,23 +167,44 @@ class SamplerTests(unittest.TestCase):
             self.assertEqual(request.call_count, 1)
         bad_cache = self.root / "bad.gz"
         before = set(self.root.iterdir())
-        with patch.object(sampler.urllib.request, "urlopen", return_value=io.BytesIO(b"bad")):
-            with self.assertRaises(ValueError), redirect_stdout(io.StringIO()):
-                sampler.ensure_source(bad_cache)
+        with (
+            patch.object(sampler.urllib.request, "urlopen", return_value=io.BytesIO(b"bad")),
+            self.assertRaises(ValueError),
+            redirect_stdout(io.StringIO()),
+        ):
+            sampler.ensure_source(bad_cache)
         self.assertEqual(before, set(self.root.iterdir()))
 
     def test_existing_cache_does_not_invent_retrieval_time(self):
         digest, size = sampler.file_digest(self.source)
-        with patch.object(sampler, "UPSTREAM_SHA256", digest), patch.object(sampler, "UPSTREAM_BYTES", size):
+        with (
+            patch.object(sampler, "UPSTREAM_SHA256", digest),
+            patch.object(sampler, "UPSTREAM_BYTES", size),
+        ):
             self.assertIsNone(sampler.ensure_source(self.source)["retrieved_at"])
 
     def test_scanner_checks_nested_decoded_strings_without_printing_values(self):
-        row = {"tools": [{"email": "person@example.org", "path": "/home/synthetic/file",
-                          "windows": "C:\\Users\\synthetic\\file", "api_key": "synthetic-only",
-                          "url": "https://user:pass@example.org", "key": "sk-" + "x" * 30}]}
+        row = {
+            "tools": [
+                {
+                    "email": "person@example.org",
+                    "path": "/home/synthetic/file",
+                    "windows": "C:\\Users\\synthetic\\file",
+                    "api_key": "synthetic-only",
+                    "url": "https://user:pass@example.org",
+                    "key": "sk-" + "x" * 30,
+                }
+            ]
+        }
         self.source.write_bytes(gzip.compress(json.dumps(row).encode()))
         report = scanner.scan(self.source)
-        for category in ("email", "absolute_home_path", "secret_field", "credential_url", "known_token"):
+        for category in (
+            "email",
+            "absolute_home_path",
+            "secret_field",
+            "credential_url",
+            "known_token",
+        ):
             self.assertGreater(report["candidate_counts"][category], 0)
         self.assertNotIn("person@example.org", json.dumps(report))
 

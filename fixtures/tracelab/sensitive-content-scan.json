@@ -15,7 +15,7 @@
   "file": "fixtures/tracelab/tracelab-sample.jsonl.gz",
   "findings": [],
   "result": "no_candidates",
-  "rows_scanned": 77,
-  "scanned_at": "2026-09-07T08:30:14.410001Z",
-  "sha256": "1c183ad956a81f3695dc5317bd02b3948acc0d496d7e878e81399083aff27e51"
+  "rows_scanned": 4770,
+  "scanned_at": "2026-09-07T08:39:35.689446Z",
+  "sha256": "d044a766e12c7eceae2eb1ed71e42d95cf0aec2f10c8d61a06cecc0381fb9897"
 }

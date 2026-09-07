@@ -19,10 +19,9 @@ and the reserved native file remain under gitignored `data/`.
 Exact retrieval and selection commands used (Python **3.9.6**, standard library only):
 
 ```sh
-python3 scripts/sample_tracelab.py --seed 42 --sessions-per-provider 1 \
-  --manifest docs/datasets/tracelab-sample.manifest.json
+python3 scripts/sample_tracelab.py --seed 42 --sessions-per-provider 40
 python3 scripts/scan_tracelab.py data/samples/tracelab/tracelab-sample.jsonl.gz
-python3 scripts/sample_tracelab.py --seed 42 --sessions-per-provider 1 \
+python3 scripts/sample_tracelab.py --seed 42 --sessions-per-provider 40 \
   --output-dir fixtures/tracelab
 python3 scripts/scan_tracelab.py fixtures/tracelab/tracelab-sample.jsonl.gz \
   > fixtures/tracelab/sensitive-content-scan.json
@@ -38,9 +37,10 @@ CRC checks. Malformed records and insufficient provider populations fail.
 
 Default local output is `data/samples/tracelab/tracelab-sample.jsonl.gz` with an
 adjacent manifest unless `--manifest` is supplied. The committed
-[local-extract manifest](tracelab-sample.manifest.json) and
-[fixture manifest](../../fixtures/tracelab/tracelab-sample.manifest.json) record the
-same selected bytes, with separate generation timestamps.
+[fixture manifest](../../fixtures/tracelab/tracelab-sample.manifest.json) is the
+single source of truth for the shipped selection. The local `data/samples/` extract
+is the same selection regenerated with the command above; its ignored manifest
+only differs in generation timestamp on the tested runtime.
 
 Selection groups **all occurrences of each `session_id`**, then ranks sessions
 separately for `claude` and `codex` by SHA-256 of compact ASCII-escaped JSON
@@ -54,17 +54,17 @@ identify every selected occurrence independently of native IDs.
 
 | Extract | Whole sessions | Model invocation rows | Nested tools | Gzip bytes | Uncompressed bytes |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Claude | 1 | 7 | 22 | — | — |
-| Codex | 1 | 70 | 83 | — | — |
-| Total (local and fixture) | 2 | 77 | 105 | 13,135 | 153,429 |
+| Claude | 40 | 1,583 | 1,797 | — | — |
+| Codex | 40 | 3,187 | 3,926 | — | — |
+| Total (local and fixture) | 80 | 4,770 | 5,723 | 681,057 | 8,597,668 |
 
 The source has 357,161 rows and 4,265 grouped session IDs: 2,676 Claude sessions
-(140,338 rows) and 1,589 Codex sessions (216,823 rows). N=1 gives a small smoke-test
-fixture well below the 1.5 MB gzip target; it is not statistically representative.
-Increase `--sessions-per-provider` for local exploration and scan any proposed
+(140,338 rows) and 1,589 Codex sessions (216,823 rows). N=40 gives an integration
+fixture of approximately 0.68 MB gzipped, within the 0.5–1 MB review target and
+below the 1.5 MB limit; it is not statistically representative. Scan any proposed
 replacement fixture before committing it.
 
-Extract SHA-256: `1c183ad956a81f3695dc5317bd02b3948acc0d496d7e878e81399083aff27e51`.
+Extract SHA-256: `d044a766e12c7eceae2eb1ed71e42d95cf0aec2f10c8d61a06cecc0381fb9897`.
 Gzip uses level 9, mtime 0 and no filename. Repeated runs on the tested runtime
 produce identical compressed bytes; a different zlib version may compress the
 same selected JSONL bytes differently. Manifest generation timestamps intentionally
@@ -94,7 +94,7 @@ and keys, including nested tools, for emails, Unix/macOS/Windows absolute home
 paths, credential-bearing URLs and query parameters, known token/key formats,
 private keys, JWTs, bearer credentials, secret assignments and secret fields.
 It reports locations rather than matching values. Both the local candidate and
-the fixture returned **zero candidates across 77 rows**; the committed
+the fixture returned **zero candidates across 4,770 rows**; the committed
 [report](../../fixtures/tracelab/sensitive-content-scan.json) records the checks.
 This is a pattern-based review aid, not proof that all possible sensitive content
 is absent. Any future positive candidate blocks fixture publication pending review;
@@ -221,6 +221,9 @@ Offline tests cover interleaved whole sessions, duplicate native IDs, multiple
 source-file claims, absent metadata, exact CRLF/whitespace/final-line bytes,
 deterministic selection/compression, invalid counts/records, corrupt caches,
 download verification/receipt reuse and scanner detections. An independent pass
-over all 357,161 source rows also confirmed that the selected 77 rows match the
+over all 357,161 source rows also confirmed that the selected 4,770 rows match the
 local extract byte for byte, in source order, with complete session membership
-and exact manifest locators. No application code or CI files are part of this change.
+and exact manifest locators. The backend CI job also runs the script tests and
+includes `scripts/` in its Ruff lint and format checks. Local verification includes
+backend Ruff, mypy, architecture contracts and pytest, plus the script tests on
+Python 3.9.6 and the backend Python 3.12.13 environment.

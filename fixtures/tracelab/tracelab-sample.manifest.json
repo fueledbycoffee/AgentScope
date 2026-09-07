@@ -1,29 +1,107 @@
 {
-  "generated_at": "2026-09-07T08:26:53.832861Z",
+  "generated_at": "2026-09-07T08:37:12.678078Z",
   "manifest_version": 1,
   "output": {
-    "bytes": 13135,
+    "bytes": 681057,
     "file": "tracelab-sample.jsonl.gz",
     "gzip": {
       "compresslevel": 9,
       "filename": "",
       "mtime": 0
     },
-    "rows": 77,
+    "rows": 4770,
     "rows_per_provider": {
-      "claude": 7,
-      "codex": 70
+      "claude": 1583,
+      "codex": 3187
     },
-    "sessions": 2,
-    "sha256": "1c183ad956a81f3695dc5317bd02b3948acc0d496d7e878e81399083aff27e51",
-    "uncompressed_bytes": 153429
+    "sessions": 80,
+    "sha256": "d044a766e12c7eceae2eb1ed71e42d95cf0aec2f10c8d61a06cecc0381fb9897",
+    "uncompressed_bytes": 8597668
   },
   "selected_session_ids_per_provider": {
     "claude": [
-      "claude:9d7b9da8-4371-3b98-c832-9f1ae3b10f7a"
+      "claude:0075642a-b289-253e-6f8a-401997fcd66d",
+      "claude:0b285b31-285d-39d0-5bfe-03806906bb0d",
+      "claude:18a6b3ad-23cc-8b98-5f7e-59bd01e85d0d",
+      "claude:19a9fa00-494f-ae26-4e3b-9eb0539b6272",
+      "claude:3a49d68e-bafc-bc51-136e-b79c7fc14b1d",
+      "claude:407832f4-d130-e24e-4705-f3aa96a6af76",
+      "claude:423f8641-fc3e-ad03-6f5d-0d3cb81456fd",
+      "claude:444959aa-300d-0fa9-795a-82acbdb07d08",
+      "claude:47a10dbe-6698-c682-0e16-629bf564cba2",
+      "claude:64e863ba-3b4a-09c0-355d-55c7006bb16a",
+      "claude:67902ef4-50a7-adad-d1be-b8e3b3b70d5d",
+      "claude:6ba2513d-387d-0bdc-47cf-39c29175b367",
+      "claude:781a3b4c-a1a5-9325-16d3-4029ecc3fe43",
+      "claude:7b8f2d78-83a5-fb9e-ed68-d14004768a0e",
+      "claude:7eae080e-6a82-babf-8de0-8389ec0eede0",
+      "claude:7edcda92-206e-c632-a6ae-ec5367ea5b5b",
+      "claude:81815856-621c-0979-34fc-b6bf25e97590",
+      "claude:897551fa-e389-2968-af50-c0ef01860b13",
+      "claude:91619813-7c8b-eaf6-212d-4c9de42df0b2",
+      "claude:99387ee3-6bfe-1ead-78fa-7468a4d3a6ea",
+      "claude:9d7b9da8-4371-3b98-c832-9f1ae3b10f7a",
+      "claude:a3e662f9-5d9d-b819-d18a-e2d1402e90f7",
+      "claude:a6a17c80-a371-023f-5f86-319167c770ea",
+      "claude:b2dcaaab-114b-36d5-d103-a8b7dc686c93",
+      "claude:b3c9bc82-39ce-b2fa-683f-039391106b51",
+      "claude:b4bb1039-baf6-0bd6-4fc0-81b91ad9af50",
+      "claude:b739f066-5367-a438-e880-2ef71cc07020",
+      "claude:b9bbff58-424c-8f69-b635-460bda2fcc44",
+      "claude:ba3a9c8f-66a9-9aaf-882c-8f4398d53279",
+      "claude:bdb582f4-92ca-39cc-8068-bc55e6d1aeec",
+      "claude:c48c5f33-0d20-1b85-f836-01631009ceeb",
+      "claude:c770e6cb-9d9e-a811-9192-eb1ec9d3358d",
+      "claude:c87587f4-7278-dd2e-5119-c8f59caf7596",
+      "claude:d60a0143-4293-c790-7503-0c037379549f",
+      "claude:e4006603-57d8-251c-5739-3330007ecfb7",
+      "claude:e41b69fb-19da-2502-0d9d-47f1a9854f52",
+      "claude:f6bc8f38-8eff-7a96-5828-36dd6a57e52c",
+      "claude:f9e909a2-87ef-d000-e403-df5d975b173f",
+      "claude:fea0a969-de3a-fce9-6a6e-29b970943627",
+      "claude:fee9cf8a-d7e9-8129-8f6d-5a30a6679ee5"
     ],
     "codex": [
-      "codex:0a7cbc1e-7a74-86e3-bea4-d2613162e6a8"
+      "codex:05b7bdc0-9aab-1889-bf09-2de576242ae8",
+      "codex:081ceed8-ccd2-bf87-8cd4-80128a46dd3d",
+      "codex:0a7cbc1e-7a74-86e3-bea4-d2613162e6a8",
+      "codex:114eb0f3-efe8-12b2-1ca0-c2c33ccbe09e",
+      "codex:176b6357-c4d3-17f1-00cd-4f3ca4e16d31",
+      "codex:29e4a40a-716e-bb76-8385-a797243a1a57",
+      "codex:340b0053-15c6-d489-9c53-fc3082be14fd",
+      "codex:362639e1-f680-4bda-bd1e-8f149f7717ab",
+      "codex:3dc4eef1-6c06-28fc-7951-e819efcd5002",
+      "codex:4365ab6a-8388-147a-6446-2e2209bb0cae",
+      "codex:4861e8f4-3e13-971f-9861-feeebc404dba",
+      "codex:4cac6a16-9b82-b782-67d8-a4806c00dc98",
+      "codex:541fe6d3-7003-64a3-f185-ba81901feab4",
+      "codex:5977f989-4abd-5fc8-b4fe-a79cf2b1f41e",
+      "codex:61a47cb4-e3cc-b433-89fa-07d270b7d864",
+      "codex:627bc3ff-9fa3-de23-54ca-f3f20a36128a",
+      "codex:69760350-802f-017e-4c10-d29375495396",
+      "codex:7a35225c-7d70-cd30-949c-eec4fd90ecaf",
+      "codex:8026edb0-c9c8-912e-b1d9-ab2434d8af10",
+      "codex:87b15f6a-8344-dc1e-7d4a-81cb0e7f8497",
+      "codex:8954070a-d349-2249-a0af-ed7b60538776",
+      "codex:926df3d3-d06b-3862-6f0f-12954d3e91aa",
+      "codex:a154fc28-9314-ed21-3326-4e8ef190f812",
+      "codex:a2467d76-6730-d31a-0484-70e22db2bf8e",
+      "codex:b02f0af7-e197-6a6b-9f9c-4c3dbcbda0dc",
+      "codex:b9f79ca4-0944-9d12-8d29-22d8de02fc01",
+      "codex:c7b83932-9874-b457-f576-a1e907d1754f",
+      "codex:c847d289-20be-a571-ad73-cf2d7e29e075",
+      "codex:c9da1a24-0822-9a82-9824-6d8eb60798e7",
+      "codex:ce076712-92ad-e5a9-0aff-1e9230701b85",
+      "codex:cf41039f-3ef1-f307-5bac-a6d7b4d98a18",
+      "codex:d7d19833-719a-44ce-bb64-96112a5b9cf9",
+      "codex:ec720ff9-98f0-4728-c677-31730924f528",
+      "codex:f58ceb5c-6ba6-d303-6c23-f0abfd33e4d6",
+      "codex:f6dbc002-6235-62f3-d4bf-935dca3b9ee9",
+      "codex:f75ca3b8-7e64-761e-476e-9383547258ba",
+      "codex:fad39e6c-f6bd-3164-9b82-03e6ce89af40",
+      "codex:fd6c1557-9d16-4596-663b-e15db6fc9409",
+      "codex:fdc0dfb1-a4a1-c0ca-5fee-4d86a9cc3380",
+      "codex:ff1cb0c9-57f2-d7dc-61fc-2148e819d0bc"
     ]
   },
   "selection": {
@@ -38,9 +116,389 @@
     ],
     "rank_input": "UTF-8 JSON [seed,provider,session_id], ensure_ascii=true, compact separators",
     "seed": 42,
-    "sessions_per_provider": 1
+    "sessions_per_provider": 40
   },
   "sessions": [
+    {
+      "provider": "claude",
+      "row_count": 2,
+      "session_id": "claude:0075642a-b289-253e-6f8a-401997fcd66d",
+      "source_files": [
+        {
+          "project": "project_8496140a",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          207500,
+          207501
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 14,
+      "session_id": "claude:0b285b31-285d-39d0-5bfe-03806906bb0d",
+      "source_files": [
+        {
+          "project": "project_e7938f21",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          191201,
+          191214
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 1,
+      "session_id": "claude:18a6b3ad-23cc-8b98-5f7e-59bd01e85d0d",
+      "source_files": [
+        {
+          "project": "project_658c43da",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          188002,
+          188002
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 1,
+      "session_id": "claude:19a9fa00-494f-ae26-4e3b-9eb0539b6272",
+      "source_files": [
+        {
+          "project": "project_3cfba292",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          33407,
+          33407
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 76,
+      "session_id": "claude:3a49d68e-bafc-bc51-136e-b79c7fc14b1d",
+      "source_files": [
+        {
+          "project": "project_e7938f21",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          191306,
+          191381
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 24,
+      "session_id": "claude:407832f4-d130-e24e-4705-f3aa96a6af76",
+      "source_files": [
+        {
+          "project": "project_6783b1ee",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          261960,
+          261983
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 2,
+      "session_id": "claude:423f8641-fc3e-ad03-6f5d-0d3cb81456fd",
+      "source_files": [
+        {
+          "project": "project_8496140a",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          207304,
+          207305
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 109,
+      "session_id": "claude:444959aa-300d-0fa9-795a-82acbdb07d08",
+      "source_files": [
+        {
+          "project": "project_9d48941f",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          247537,
+          247645
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 1,
+      "session_id": "claude:47a10dbe-6698-c682-0e16-629bf564cba2",
+      "source_files": [
+        {
+          "project": "project_658c43da",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          187985,
+          187985
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 173,
+      "session_id": "claude:64e863ba-3b4a-09c0-355d-55c7006bb16a",
+      "source_files": [
+        {
+          "project": "project_fd312614",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          201516,
+          201688
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 243,
+      "session_id": "claude:67902ef4-50a7-adad-d1be-b8e3b3b70d5d",
+      "source_files": [
+        {
+          "project": "project_0407a58e",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          14316,
+          14558
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 3,
+      "session_id": "claude:6ba2513d-387d-0bdc-47cf-39c29175b367",
+      "source_files": [
+        {
+          "project": "project_8496140a",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          207475,
+          207477
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 2,
+      "session_id": "claude:781a3b4c-a1a5-9325-16d3-4029ecc3fe43",
+      "source_files": [
+        {
+          "project": "project_8f998460",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          39314,
+          39315
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 64,
+      "session_id": "claude:7b8f2d78-83a5-fb9e-ed68-d14004768a0e",
+      "source_files": [
+        {
+          "project": "project_e55dc718",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          237349,
+          237412
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 127,
+      "session_id": "claude:7eae080e-6a82-babf-8de0-8389ec0eede0",
+      "source_files": [
+        {
+          "project": "project_6783b1ee",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          272257,
+          272383
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 33,
+      "session_id": "claude:7edcda92-206e-c632-a6ae-ec5367ea5b5b",
+      "source_files": [
+        {
+          "project": "project_7472e973",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          280425,
+          280457
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 15,
+      "session_id": "claude:81815856-621c-0979-34fc-b6bf25e97590",
+      "source_files": [
+        {
+          "project": "project_d8495583",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          1020,
+          1034
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 8,
+      "session_id": "claude:897551fa-e389-2968-af50-c0ef01860b13",
+      "source_files": [
+        {
+          "project": "project_a24efcc5",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          46290,
+          46297
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 1,
+      "session_id": "claude:91619813-7c8b-eaf6-212d-4c9de42df0b2",
+      "source_files": [
+        {
+          "project": "project_658c43da",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          188133,
+          188133
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 60,
+      "session_id": "claude:99387ee3-6bfe-1ead-78fa-7468a4d3a6ea",
+      "source_files": [
+        {
+          "project": "project_c1a5435f",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          251662,
+          251721
+        ]
+      ]
+    },
     {
       "provider": "claude",
       "row_count": 7,
@@ -61,6 +519,405 @@
       ]
     },
     {
+      "provider": "claude",
+      "row_count": 112,
+      "session_id": "claude:a3e662f9-5d9d-b819-d18a-e2d1402e90f7",
+      "source_files": [
+        {
+          "project": "project_e82be58a",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          29139,
+          29250
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 10,
+      "session_id": "claude:a6a17c80-a371-023f-5f86-319167c770ea",
+      "source_files": [
+        {
+          "project": "project_5e007c1b",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          280319,
+          280328
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 19,
+      "session_id": "claude:b2dcaaab-114b-36d5-d103-a8b7dc686c93",
+      "source_files": [
+        {
+          "project": "project_e82be58a",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          17214,
+          17232
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 2,
+      "session_id": "claude:b3c9bc82-39ce-b2fa-683f-039391106b51",
+      "source_files": [
+        {
+          "project": "project_0407a58e",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          14314,
+          14315
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 19,
+      "session_id": "claude:b4bb1039-baf6-0bd6-4fc0-81b91ad9af50",
+      "source_files": [
+        {
+          "project": "project_af6d6b24",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          235174,
+          235192
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 27,
+      "session_id": "claude:b739f066-5367-a438-e880-2ef71cc07020",
+      "source_files": [
+        {
+          "project": "project_e55dc718",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          237079,
+          237105
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 1,
+      "session_id": "claude:b9bbff58-424c-8f69-b635-460bda2fcc44",
+      "source_files": [
+        {
+          "project": "project_3d30e054",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          186497,
+          186497
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 37,
+      "session_id": "claude:ba3a9c8f-66a9-9aaf-882c-8f4398d53279",
+      "source_files": [
+        {
+          "project": "project_a24efcc5",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          42722,
+          42758
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 139,
+      "session_id": "claude:bdb582f4-92ca-39cc-8068-bc55e6d1aeec",
+      "source_files": [
+        {
+          "project": "project_1337698f",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          235681,
+          235819
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 5,
+      "session_id": "claude:c48c5f33-0d20-1b85-f836-01631009ceeb",
+      "source_files": [
+        {
+          "project": "project_05775cd2",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          277493,
+          277497
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 1,
+      "session_id": "claude:c770e6cb-9d9e-a811-9192-eb1ec9d3358d",
+      "source_files": [
+        {
+          "project": "project_2c4a0cb1",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          188239,
+          188239
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 72,
+      "session_id": "claude:c87587f4-7278-dd2e-5119-c8f59caf7596",
+      "source_files": [
+        {
+          "project": "project_6783b1ee",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          262135,
+          262206
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 2,
+      "session_id": "claude:d60a0143-4293-c790-7503-0c037379549f",
+      "source_files": [
+        {
+          "project": "project_8496140a",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          207317,
+          207318
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 69,
+      "session_id": "claude:e4006603-57d8-251c-5739-3330007ecfb7",
+      "source_files": [
+        {
+          "project": "project_6783b1ee",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          266652,
+          266720
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 1,
+      "session_id": "claude:e41b69fb-19da-2502-0d9d-47f1a9854f52",
+      "source_files": [
+        {
+          "project": "project_3d30e054",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          187732,
+          187732
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 5,
+      "session_id": "claude:f6bc8f38-8eff-7a96-5828-36dd6a57e52c",
+      "source_files": [
+        {
+          "project": "project_e82be58a",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          27660,
+          27664
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 5,
+      "session_id": "claude:f9e909a2-87ef-d000-e403-df5d975b173f",
+      "source_files": [
+        {
+          "project": "project_706df82c",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          47564,
+          47568
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 89,
+      "session_id": "claude:fea0a969-de3a-fce9-6a6e-29b970943627",
+      "source_files": [
+        {
+          "project": "project_e82be58a",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          20658,
+          20746
+        ]
+      ]
+    },
+    {
+      "provider": "claude",
+      "row_count": 2,
+      "session_id": "claude:fee9cf8a-d7e9-8129-8f6d-5a30a6679ee5",
+      "source_files": [
+        {
+          "project": "project_8496140a",
+          "project_present": true,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          207615,
+          207616
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 131,
+      "session_id": "codex:05b7bdc0-9aab-1889-bf09-2de576242ae8",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          179173,
+          179303
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 26,
+      "session_id": "codex:081ceed8-ccd2-bf87-8cd4-80128a46dd3d",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          214031,
+          214056
+        ]
+      ]
+    },
+    {
       "provider": "codex",
       "row_count": 70,
       "session_id": "codex:0a7cbc1e-7a74-86e3-bea4-d2613162e6a8",
@@ -76,6 +933,709 @@
         [
           231463,
           231532
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 13,
+      "session_id": "codex:114eb0f3-efe8-12b2-1ca0-c2c33ccbe09e",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          217143,
+          217155
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 18,
+      "session_id": "codex:176b6357-c4d3-17f1-00cd-4f3ca4e16d31",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          146283,
+          146300
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 4,
+      "session_id": "codex:29e4a40a-716e-bb76-8385-a797243a1a57",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          182334,
+          182337
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 18,
+      "session_id": "codex:340b0053-15c6-d489-9c53-fc3082be14fd",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          160819,
+          160836
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 6,
+      "session_id": "codex:362639e1-f680-4bda-bd1e-8f149f7717ab",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          214551,
+          214556
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 717,
+      "session_id": "codex:3dc4eef1-6c06-28fc-7951-e819efcd5002",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          297504,
+          298220
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 70,
+      "session_id": "codex:4365ab6a-8388-147a-6446-2e2209bb0cae",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          217365,
+          217434
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 207,
+      "session_id": "codex:4861e8f4-3e13-971f-9861-feeebc404dba",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          290196,
+          290402
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 26,
+      "session_id": "codex:4cac6a16-9b82-b782-67d8-a4806c00dc98",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          211255,
+          211280
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 17,
+      "session_id": "codex:541fe6d3-7003-64a3-f185-ba81901feab4",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          133664,
+          133680
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 31,
+      "session_id": "codex:5977f989-4abd-5fc8-b4fe-a79cf2b1f41e",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          211972,
+          212002
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 43,
+      "session_id": "codex:61a47cb4-e3cc-b433-89fa-07d270b7d864",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          292366,
+          292408
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 50,
+      "session_id": "codex:627bc3ff-9fa3-de23-54ca-f3f20a36128a",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          134914,
+          134963
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 73,
+      "session_id": "codex:69760350-802f-017e-4c10-d29375495396",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          132296,
+          132368
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 11,
+      "session_id": "codex:7a35225c-7d70-cd30-949c-eec4fd90ecaf",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          287454,
+          287464
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 12,
+      "session_id": "codex:8026edb0-c9c8-912e-b1d9-ab2434d8af10",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          228019,
+          228030
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 115,
+      "session_id": "codex:87b15f6a-8344-dc1e-7d4a-81cb0e7f8497",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          213251,
+          213365
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 11,
+      "session_id": "codex:8954070a-d349-2249-a0af-ed7b60538776",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          284627,
+          284637
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 2,
+      "session_id": "codex:926df3d3-d06b-3862-6f0f-12954d3e91aa",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          212713,
+          212714
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 22,
+      "session_id": "codex:a154fc28-9314-ed21-3326-4e8ef190f812",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          211518,
+          211539
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 635,
+      "session_id": "codex:a2467d76-6730-d31a-0484-70e22db2bf8e",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          89627,
+          90261
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 18,
+      "session_id": "codex:b02f0af7-e197-6a6b-9f9c-4c3dbcbda0dc",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          130369,
+          130386
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 3,
+      "session_id": "codex:b9f79ca4-0944-9d12-8d29-22d8de02fc01",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          130343,
+          130345
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 9,
+      "session_id": "codex:c7b83932-9874-b457-f576-a1e907d1754f",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          143092,
+          143100
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 41,
+      "session_id": "codex:c847d289-20be-a571-ad73-cf2d7e29e075",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          227245,
+          227285
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 155,
+      "session_id": "codex:c9da1a24-0822-9a82-9824-6d8eb60798e7",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          163546,
+          163700
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 60,
+      "session_id": "codex:ce076712-92ad-e5a9-0aff-1e9230701b85",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          54104,
+          54163
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 88,
+      "session_id": "codex:cf41039f-3ef1-f307-5bac-a6d7b4d98a18",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          226892,
+          226979
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 1,
+      "session_id": "codex:d7d19833-719a-44ce-bb64-96112a5b9cf9",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          304712,
+          304712
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 3,
+      "session_id": "codex:ec720ff9-98f0-4728-c677-31730924f528",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          285511,
+          285513
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 21,
+      "session_id": "codex:f58ceb5c-6ba6-d303-6c23-f0abfd33e4d6",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          231816,
+          231836
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 67,
+      "session_id": "codex:f6dbc002-6235-62f3-d4bf-935dca3b9ee9",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          126124,
+          126190
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 145,
+      "session_id": "codex:f75ca3b8-7e64-761e-476e-9383547258ba",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          156431,
+          156575
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 8,
+      "session_id": "codex:fad39e6c-f6bd-3164-9b82-03e6ce89af40",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          74701,
+          74708
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 195,
+      "session_id": "codex:fd6c1557-9d16-4596-663b-e15db6fc9409",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          321899,
+          322093
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 4,
+      "session_id": "codex:fdc0dfb1-a4a1-c0ca-5fee-4d86a9cc3380",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          214608,
+          214611
+        ]
+      ]
+    },
+    {
+      "provider": "codex",
+      "row_count": 41,
+      "session_id": "codex:ff1cb0c9-57f2-d7dc-61fc-2148e819d0bc",
+      "source_files": [
+        {
+          "project": null,
+          "project_present": false,
+          "session_file": null,
+          "session_file_present": false
+        }
+      ],
+      "source_line_ranges": [
+        [
+          211827,
+          211867
         ]
       ]
     }

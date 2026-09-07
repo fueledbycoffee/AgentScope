@@ -7,36 +7,42 @@ Never run this against the reserved Trace Commons native session.
 """
 
 import argparse
-from collections import Counter
-from datetime import datetime, timezone
 import gzip
 import hashlib
 import json
-from pathlib import Path
 import re
-
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
 
 PATTERNS = {
     "email": r"[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+",
-    "absolute_home_path": (r"/(?:Users|home|var/home)/[^/\s]+|/root(?:/|$)|"
-                           r"[A-Z]:[\\/](?:Users|Documents and Settings)[\\/][^\\/\s]+"),
+    "absolute_home_path": (
+        r"/(?:Users|home|var/home)/[^/\s]+|/root(?:/|$)|"
+        r"[A-Z]:[\\/](?:Users|Documents and Settings)[\\/][^\\/\s]+"
+    ),
     "credential_url": r"[A-Z][A-Z0-9+.-]*://[^\s/<>]+@",
     "credential_query": r"[?&](?:access_token|api_key|apikey|token|password|secret)=[^&\s]+",
-    "known_token": (r"\b(?:sk-(?:proj-|ant-)?[A-Z0-9_-]{16,}|"
-                    r"gh[pousr]_[A-Z0-9]{20,}|github_pat_[A-Z0-9_]{20,}|"
-                    r"hf_[A-Z0-9]{20,}|(?:AKIA|ASIA)[A-Z0-9]{16}|"
-                    r"xox[baprs]-[A-Z0-9-]{10,}|AIza[A-Z0-9_-]{30,}|"
-                    r"glpat-[A-Z0-9_-]{16,}|npm_[A-Z0-9]{20,})\b"),
+    "known_token": (
+        r"\b(?:sk-(?:proj-|ant-)?[A-Z0-9_-]{16,}|"
+        r"gh[pousr]_[A-Z0-9]{20,}|github_pat_[A-Z0-9_]{20,}|"
+        r"hf_[A-Z0-9]{20,}|(?:AKIA|ASIA)[A-Z0-9]{16}|"
+        r"xox[baprs]-[A-Z0-9-]{10,}|AIza[A-Z0-9_-]{30,}|"
+        r"glpat-[A-Z0-9_-]{16,}|npm_[A-Z0-9]{20,})\b"
+    ),
     "private_key": r"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----",
     "jwt": r"\beyJ[A-Z0-9_-]+\.eyJ[A-Z0-9_-]+\.[A-Z0-9_-]+",
     "bearer": r"\bBearer\s+[A-Z0-9._~+/-]{8,}",
-    "secret_assignment": (r"\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|"
-                          r"secret|password|passwd|client_secret)\b"
-                          r"[\"'\s]*[:=][\"'\s]*[^\s\"',;}]{8,}"),
+    "secret_assignment": (
+        r"\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|"
+        r"secret|password|passwd|client_secret)\b"
+        r"[\"'\s]*[:=][\"'\s]*[^\s\"',;}]{8,}"
+    ),
 }
 REGEXES = {key: re.compile(pattern, re.IGNORECASE) for key, pattern in PATTERNS.items()}
 SECRET_KEY = re.compile(
-    r"(?:api_?key|access_?token|auth_?token|secret|password|passwd|private_?key)", re.I)
+    r"(?:api_?key|access_?token|auth_?token|secret|password|passwd|private_?key)", re.I
+)
 
 
 def strings(value, path="$", secret_field=False):
@@ -48,7 +54,7 @@ def strings(value, path="$", secret_field=False):
             yield from strings(child, path + "." + key, bool(SECRET_KEY.fullmatch(key)))
     elif isinstance(value, list):
         for index, child in enumerate(value):
-            yield from strings(child, "%s[%d]" % (path, index), secret_field)
+            yield from strings(child, f"{path}[{index}]", secret_field)
 
 
 def scan(path):
@@ -70,12 +76,17 @@ def scan(path):
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
-    return {"file": str(path), "sha256": digest.hexdigest(),
-            "scanned_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "rows_scanned": rows,
-            "checks": list(REGEXES) + ["secret_field"],
-            "candidate_counts": dict(counts), "findings": findings,
-            "result": "review_required" if findings else "no_candidates"}
+    scanned_at = datetime.now(timezone.utc)  # noqa: UP017 - Python 3.9+
+    return {
+        "file": str(path),
+        "sha256": digest.hexdigest(),
+        "scanned_at": scanned_at.isoformat().replace("+00:00", "Z"),
+        "rows_scanned": rows,
+        "checks": list(REGEXES) + ["secret_field"],
+        "candidate_counts": dict(counts),
+        "findings": findings,
+        "result": "review_required" if findings else "no_candidates",
+    }
 
 
 if __name__ == "__main__":
