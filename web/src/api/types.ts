@@ -12,6 +12,14 @@ export interface FileInfo {
   format: InputFormat
   record_count: number
 }
+export type FileStatus = 'pending' | 'committed' | 'duplicate' | 'failed'
+export interface ImportedFile extends FileInfo {
+  mapping: { id: string; name: string; revision: number } | null
+  status: FileStatus
+  records: Partial<RecordCounts>
+}
+export type RecordCounts = { accepted: number; partial: number; duplicate: number; rejected: number; ignored: number }
+export interface FileBinding { upload_id: string; mapping_id: string }
 export interface Upload extends FileInfo {
   upload_id: string
   preview: { locator: string; payload: Json; error?: string | null }[]
@@ -30,9 +38,10 @@ export interface MappingIssue {
 }
 export interface MappingDetail extends Mapping { document: { [key: string]: Json }; issues: MappingIssue[] }
 export interface PreviewRequest { upload_id: string; mapping_id: string; sample: number }
-export interface ImportRequest { upload_id: string; mapping_id: string; source: string }
+export type ImportRequest = { upload_id: string; mapping_id: string; source: string } | { source: string; files: FileBinding[] }
 export interface Reject {
   locator: string; rule_id: string; path: string; code: string; field: string | null; message: string
+  file_sha256?: string
 }
 export interface ImportReject extends Reject { payload: Json }
 export type EntityCounts = Partial<Record<'session' | 'model_call' | 'tool_call', number>>
@@ -50,8 +59,8 @@ export interface ImportSummary {
   mapping: { id: string; name: string; revision: number }
   started_at: string
   finished_at: string
-  files: FileInfo[]
-  records: { accepted: number; partial: number; duplicate: number; rejected: number; ignored: number }
+  files: ImportedFile[]
+  records: RecordCounts
   entities: EntityCounts
   reject_count: number
   error: string | null
@@ -60,7 +69,7 @@ export interface ImportReport extends ImportSummary { warnings: Record<string, n
 export interface Coverage { known: number; total: number }
 export interface CoveredValue { value: number | null; coverage: Coverage }
 export interface RawReference { file_sha256: string; locator: string }
-export interface RawRecord extends RawReference { payload: Json; payload_text: string }
+export interface RawRecord extends RawReference { payload: Json; payload_text: string; derived?: 'parquet-row' | null }
 export interface Session {
   id: string
   source: string

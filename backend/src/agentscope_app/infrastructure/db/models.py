@@ -127,6 +127,11 @@ class ImportFile(Base):
     size_bytes: Mapped[int]
     format: Mapped[str] = mapped_column(String(20))
     record_count: Mapped[int]
+    # Per-file binding and outcome: the attempt-level mapping columns on ``imports``
+    # only echo the first file for display.
+    mapping_id: Mapped[str | None] = mapped_column(ForeignKey("mappings.id"))
+    status: Mapped[str] = mapped_column(String(20), default="committed", server_default="committed")
+    records: Mapped[dict[str, Any] | None]
     __table_args__ = (
         Index("ix_import_files_sha256", "sha256"),
         # Exact-file idempotency is a database guarantee, not only a pre-check:
@@ -153,8 +158,8 @@ class RawRecord(Base):
 class RecordResult(Base):
     __tablename__ = "record_results"
     import_id: Mapped[str] = mapped_column(ForeignKey("imports.id"), primary_key=True)
+    file_sha256: Mapped[str] = mapped_column(ForeignKey("raw_files.sha256"), primary_key=True)
     locator: Mapped[str] = mapped_column(String(64), primary_key=True)
-    file_sha256: Mapped[str] = mapped_column(ForeignKey("raw_files.sha256"))
     outcome: Mapped[str] = mapped_column(String(20))
     entity_counts: Mapped[dict[str, Any]]
     warning_counts: Mapped[dict[str, Any]]
@@ -164,6 +169,7 @@ class Reject(Base):
     __tablename__ = "rejects"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     import_id: Mapped[str] = mapped_column(ForeignKey("imports.id"))
+    file_sha256: Mapped[str] = mapped_column(String(64), default="", server_default="")
     locator: Mapped[str] = mapped_column(String(64))
     rule_id: Mapped[str] = mapped_column(String(100))
     path: Mapped[str] = mapped_column(String(200))

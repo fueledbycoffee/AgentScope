@@ -18,7 +18,7 @@ from agentscope_app.domain.mapping.contract import Condition, FieldMapping, Mapp
 from agentscope_app.domain.mapping.paths import MISSING, resolve_many, resolve_one
 from agentscope_app.domain.mapping.transforms import apply_transform
 from agentscope_app.domain.schema import TARGET_SCHEMA, FieldType
-from agentscope_app.domain.units import coerce, convert_duration
+from agentscope_app.domain.units import coerce, convert_duration, timestamp_notes
 
 
 @dataclass(frozen=True)
@@ -152,6 +152,12 @@ def _missing_outcome(
     return MISSING
 
 
+_NOTE_MESSAGES = {
+    "naive_timestamp": "{} has no timezone; taken as UTC",
+    "precision_reduced": "{} carries more than microsecond precision; canonical value is truncated",
+}
+
+
 def _on_invalid(
     fm: FieldMapping,
     exc: ConversionError,
@@ -174,7 +180,9 @@ def _on_invalid(
     raise _FieldRejectError("invalid_value", f"{fm.target}: {exc}") from exc
 
 
-def _bounds(fm: FieldMapping, item: Any, root: Any) -> tuple[Any, str]:
+def _bounds(
+    fm: FieldMapping, item: Any, root: Any, notes: set[str] | None = None
+) -> tuple[Any, str]:
     """Earliest or latest timestamp among the values a wildcard path selects.
 
     This is the one fixed extraction over a nested collection the DSL allows:
@@ -203,6 +211,8 @@ def _bounds(fm: FieldMapping, item: Any, root: Any) -> tuple[Any, str]:
             seen_states.add("empty")
             continue
         parsed.append(coerce(value, FieldType.TIMESTAMP, timestamp_format=fm.timestamp_format))
+        if notes is not None:
+            notes.update(timestamp_notes(value, fm.timestamp_format or "iso8601"))
     if not parsed:
         # Keep the missingness distinction: nothing selected, only nulls, or only empties.
         if not seen_states:
@@ -322,10 +332,17 @@ def _evaluate(
         value: Any = fm.literal
         state = "null" if value is None else "present"
     elif fm.bounds is not None:
+        notes: set[str] = set()
         try:
-            value, state = _bounds(fm, item, root)
+            value, state = _bounds(fm, item, root, notes)
         except ConversionError as exc:
             return _on_invalid(fm, exc, rule, occurrence, warnings)
+        for code in sorted(notes):
+            warnings.append(
+                Diagnostic(
+                    rule.id, occurrence, code, _NOTE_MESSAGES[code].format(fm.target), fm.target
+                )
+            )
         if state == "present":
             return value  # already transformed and parsed per candidate
     else:
@@ -380,7 +397,15 @@ def _evaluate(
         # A default is canonical, so a timestamp default is always ISO-8601 regardless
         # of the source's timestamp_format.
         fmt = "iso8601" if from_default else fm.timestamp_format
+        raw = value
         value = coerce(value, fm.type, timestamp_format=fmt)
+        if fm.type is FieldType.TIMESTAMP and not from_default:
+            for code in timestamp_notes(raw, fmt or "iso8601"):
+                warnings.append(
+                    Diagnostic(
+                        rule.id, occurrence, code, _NOTE_MESSAGES[code].format(fm.target), fm.target
+                    )
+                )
     except ConversionError as exc:
         return _on_invalid(fm, exc, rule, occurrence, warnings)
     target_unit = TARGET_SCHEMA[rule.entity].fields[fm.target].unit

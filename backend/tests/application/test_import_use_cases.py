@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from agentscope_app.application.dto import MappingRecord
+from agentscope_app.application.dto import FileBinding, MappingRecord
 from agentscope_app.application.errors import InvalidInputError, LimitExceededError, NotFoundError
 from agentscope_app.application.use_cases.imports import CommitImport, PreviewImport
 from agentscope_app.application.use_cases.uploads import StoreUpload
@@ -178,7 +178,7 @@ def test_preview_refuses_non_executable_mapping_with_issues() -> None:
 def test_commit_import_persists_everything_once_and_reports_counts() -> None:
     h = Harness()
     info = h.upload(JSONL_WITH_BAD_LINE)
-    report = h.commit_uc.execute(info.upload_id, "map_tracelab", source="tracelab")
+    report = h.commit_uc.execute("tracelab", [FileBinding(info.upload_id, "map_tracelab")])
     assert report.status == "committed" and report.import_id == "imp_0002"
     assert report.records == {
         "accepted": 4,
@@ -197,17 +197,17 @@ def test_commit_import_persists_everything_once_and_reports_counts() -> None:
         "rejected",
         "accepted",
     ]
-    assert h.uow.imports.rejects("imp_0002", None, 10, 0)[0].code == "invalid_json"
+    assert h.uow.imports.rejects("imp_0002", None, None, 10, 0)[0].code == "invalid_json"
     assert h.uow.commits == 2 and h.uow.rollbacks == 0  # one for the upload, one for the import
 
 
 def test_reimporting_the_same_bytes_inserts_nothing() -> None:
     h = Harness()
     info = h.upload()
-    first = h.commit_uc.execute(info.upload_id, "map_tracelab", source="tracelab")
+    first = h.commit_uc.execute("tracelab", [FileBinding(info.upload_id, "map_tracelab")])
     again = h.upload()  # same bytes, new upload id
     assert [ref.import_id for ref in again.already_imported] == [first.import_id]
-    second = h.commit_uc.execute(again.upload_id, "map_tracelab", source="tracelab")
+    second = h.commit_uc.execute("tracelab", [FileBinding(again.upload_id, "map_tracelab")])
     assert second.status == "duplicate"
     assert second.records == {
         "accepted": 0,
@@ -218,14 +218,14 @@ def test_reimporting_the_same_bytes_inserts_nothing() -> None:
     }
     assert second.entities == {}
     assert len(h.uow.traces.stored) == 1
-    other_source = h.commit_uc.execute(again.upload_id, "map_tracelab", source="other")
+    other_source = h.commit_uc.execute("other", [FileBinding(again.upload_id, "map_tracelab")])
     assert other_source.status == "committed"  # idempotency is scoped by source
 
 
 def test_failed_commit_leaves_nothing_and_records_a_failed_report() -> None:
     h = Harness(traces=FakeTraces(fail=True))
     info = h.upload()
-    report = h.commit_uc.execute(info.upload_id, "map_tracelab", source="tracelab")
+    report = h.commit_uc.execute("tracelab", [FileBinding(info.upload_id, "map_tracelab")])
     assert report.status == "failed" and "database exploded" in (report.error or "")
     assert report.entities == {} and h.uow.rollbacks >= 1
     assert h.uow.imports.get(report.import_id) == report
@@ -235,7 +235,7 @@ def test_failed_commit_leaves_nothing_and_records_a_failed_report() -> None:
 def test_already_imported_covers_custom_sources() -> None:
     h = Harness()
     info = h.upload()
-    report = h.commit_uc.execute(info.upload_id, "map_tracelab", source="custom")
+    report = h.commit_uc.execute("custom", [FileBinding(info.upload_id, "map_tracelab")])
     again = h.upload()
     assert [ref.import_id for ref in again.already_imported] == [report.import_id]
 
@@ -247,6 +247,6 @@ def test_concurrent_commit_conflict_propagates_instead_of_failing() -> None:
     info = h.upload()
     h.uow.imports.conflict_on_commit = True
     with pytest.raises(ConflictError):
-        h.commit_uc.execute(info.upload_id, "map_tracelab", source="tracelab")
+        h.commit_uc.execute("tracelab", [FileBinding(info.upload_id, "map_tracelab")])
     assert h.uow.traces.stored == [] or h.uow.rollbacks >= 1
     assert h.uow.imports.find_committed(info.sha256, "tracelab") == []

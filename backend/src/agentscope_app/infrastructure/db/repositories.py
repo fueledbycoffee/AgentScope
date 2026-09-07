@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -152,13 +152,15 @@ class SqlAlchemyImports:
         self._s = session
 
     def find_committed(self, file_sha256: str, source: str) -> Sequence[ImportRef]:
+        # The file row's own flag decides: an attempt can commit one file and skip
+        # another as a duplicate.
         stmt = (
             select(m.Import)
             .join(m.ImportFile, m.ImportFile.import_id == m.Import.id)
             .where(
                 m.ImportFile.sha256 == file_sha256,
-                m.Import.source == source,
-                m.Import.status == "committed",
+                m.ImportFile.source == source,
+                m.ImportFile.committed.is_(True),
             )
             .order_by(m.Import.started_at)
         )
@@ -168,7 +170,7 @@ class SqlAlchemyImports:
         stmt = (
             select(m.Import)
             .join(m.ImportFile, m.ImportFile.import_id == m.Import.id)
-            .where(m.ImportFile.sha256 == file_sha256, m.Import.status == "committed")
+            .where(m.ImportFile.sha256 == file_sha256, m.ImportFile.committed.is_(True))
             .order_by(m.Import.started_at)
         )
         return [ImportRef(r.id, r.started_at) for r in self._s.scalars(stmt)]
@@ -206,14 +208,22 @@ class SqlAlchemyImports:
                     import_id=report.import_id,
                     sha256=f.sha256,
                     source=report.source,
-                    committed=report.status == "committed",
+                    committed=f.status == "committed",
                     filename=f.filename,
                     size_bytes=f.size_bytes,
                     format=f.format,
                     record_count=f.record_count,
+                    mapping_id=f.mapping.id if f.mapping else report.mapping.id,
+                    status=f.status,
+                    records=dict(f.records),
                 )
             )
-        self._s.flush()
+        try:
+            self._s.flush()
+        except IntegrityError as exc:
+            raise ConflictError(
+                "Another import of the same bytes for this source was committed concurrently"
+            ) from exc
 
     def update_report(self, report: ImportReport) -> None:
         row = self._s.get(m.Import, report.import_id)
@@ -226,11 +236,16 @@ class SqlAlchemyImports:
         row.warnings = dict(report.warnings)
         row.reject_count = report.reject_count
         row.error = report.error
-        if report.status == "committed":
-            for f in self._s.scalars(
-                select(m.ImportFile).where(m.ImportFile.import_id == report.import_id)
-            ):
-                f.committed = True
+        by_sha = {f.sha256: f for f in report.files}
+        for f in self._s.scalars(
+            select(m.ImportFile).where(m.ImportFile.import_id == report.import_id)
+        ):
+            info = by_sha.get(f.sha256)
+            if info is None:
+                continue
+            f.status = info.status
+            f.committed = info.status == "committed"
+            f.records = dict(info.records)
         try:
             self._s.flush()
         except IntegrityError as exc:
@@ -239,11 +254,7 @@ class SqlAlchemyImports:
             ) from exc
 
     def add_results(
-        self,
-        import_id: str,
-        file_sha256: str,
-        outcomes: Sequence[RecordOutcome],
-        rejects: Sequence[RejectRow],
+        self, import_id: str, outcomes: Sequence[RecordOutcome], rejects: Sequence[RejectRow]
     ) -> None:
         raw_stmt = sqlite_insert(m.RawRecord).on_conflict_do_nothing(
             index_elements=["file_sha256", "locator"]
@@ -252,7 +263,7 @@ class SqlAlchemyImports:
             self._s.execute(
                 raw_stmt,
                 [
-                    {"file_sha256": file_sha256, "locator": o.locator, "payload": o.payload}
+                    {"file_sha256": o.file_sha256, "locator": o.locator, "payload": o.payload}
                     for o in chunk
                 ],
             )
@@ -262,7 +273,7 @@ class SqlAlchemyImports:
                     {
                         "import_id": import_id,
                         "locator": o.locator,
-                        "file_sha256": file_sha256,
+                        "file_sha256": o.file_sha256,
                         "outcome": o.outcome,
                         "entity_counts": o.entity_counts,
                         "warning_counts": o.warning_counts,
@@ -276,6 +287,7 @@ class SqlAlchemyImports:
                 [
                     {
                         "import_id": import_id,
+                        "file_sha256": r.file_sha256,
                         "locator": r.locator,
                         "rule_id": r.rule_id,
                         "path": r.path,
@@ -298,7 +310,16 @@ class SqlAlchemyImports:
             started_at=row.started_at,
             finished_at=row.finished_at,
             files=tuple(
-                FileInfo(f.filename, f.sha256, f.size_bytes, f.format, f.record_count)
+                FileInfo(
+                    f.filename,
+                    f.sha256,
+                    f.size_bytes,
+                    f.format,
+                    f.record_count,
+                    mapping=self._mapping_ref(f.mapping_id or row.mapping_id),
+                    status=f.status,
+                    records={k: int(v) for k, v in (f.records or {}).items()},
+                )
                 for f in files
             ),
             records={k: int(v) for k, v in row.records.items()},
@@ -307,6 +328,12 @@ class SqlAlchemyImports:
             reject_count=row.reject_count,
             error=row.error,
         )
+
+    def _mapping_ref(self, mapping_id: str) -> MappingRef:
+        row = self._s.get(m.Mapping, mapping_id)
+        if row is None:
+            return MappingRef(mapping_id, mapping_id, 0)
+        return MappingRef(row.id, row.name, row.revision)
 
     def get(self, import_id: str) -> ImportReport | None:
         row = self._s.get(m.Import, import_id)
@@ -317,14 +344,30 @@ class SqlAlchemyImports:
         return [self._to_dto(r) for r in self._s.scalars(stmt)]
 
     def rejects(
-        self, import_id: str, code: str | None, limit: int, offset: int
+        self,
+        import_id: str,
+        code: str | None,
+        file_sha256: str | None,
+        limit: int,
+        offset: int,
     ) -> Sequence[RejectRow]:
         stmt = select(m.Reject).where(m.Reject.import_id == import_id)
         if code:
             stmt = stmt.where(m.Reject.code == code)
+        if file_sha256:
+            stmt = stmt.where(m.Reject.file_sha256 == file_sha256)
         stmt = stmt.order_by(m.Reject.id).limit(limit).offset(offset)
         return [
-            RejectRow(r.locator, r.rule_id, r.path, r.code, r.field, r.message, r.payload)
+            RejectRow(
+                r.locator,
+                r.rule_id,
+                r.path,
+                r.code,
+                r.field,
+                r.message,
+                r.payload,
+                file_sha256=r.file_sha256,
+            )
             for r in self._s.scalars(stmt)
         ]
 
@@ -363,14 +406,13 @@ class SqlAlchemyTraces:
         self,
         *,
         import_id: str,
-        file_sha256: str,
         source: str,
-        mapping_id: str,
+        bindings: Mapping[str, str],
         emissions: Sequence[Emission],
         sessions: dict[str, SessionAggregate],
     ) -> dict[str, int]:
         try:
-            return self._store(import_id, file_sha256, source, mapping_id, emissions, sessions)
+            return self._store(import_id, source, bindings, emissions, sessions)
         except IntegrityError as exc:
             # The pre-check passed, so an occurrence-key collision means another import
             # of the same bytes for this source is racing us.
@@ -381,9 +423,8 @@ class SqlAlchemyTraces:
     def _store(
         self,
         import_id: str,
-        file_sha256: str,
         source: str,
-        mapping_id: str,
+        bindings: Mapping[str, str],
         emissions: Sequence[Emission],
         sessions: dict[str, SessionAggregate],
     ) -> dict[str, int]:
@@ -399,7 +440,9 @@ class SqlAlchemyTraces:
                 sid = session_ids.get(str(f.get("external_id")))
                 if sid is not None:
                     contributions.append(
-                        self._contribution(e, import_id, mapping_id, session_id=sid)
+                        self._contribution(
+                            e, import_id, bindings[e.occurrence.file_sha256], session_id=sid
+                        )
                     )
                 continue
             sid = session_ids.get(str(f.get("session_external_id")))
@@ -435,7 +478,9 @@ class SqlAlchemyTraces:
                     }
                 )
                 contributions.append(
-                    self._contribution(e, import_id, mapping_id, model_call_id=row_id)
+                    self._contribution(
+                        e, import_id, bindings[e.occurrence.file_sha256], model_call_id=row_id
+                    )
                 )
             elif e.entity == "tool_call":
                 row_id = _new_id("tc")
@@ -464,7 +509,9 @@ class SqlAlchemyTraces:
                     }
                 )
                 contributions.append(
-                    self._contribution(e, import_id, mapping_id, tool_call_id=row_id)
+                    self._contribution(
+                        e, import_id, bindings[e.occurrence.file_sha256], tool_call_id=row_id
+                    )
                 )
         for chunk in _chunks(model_rows):
             self._s.execute(insert(m.ModelCall), chunk)

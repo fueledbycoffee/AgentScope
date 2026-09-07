@@ -6,7 +6,7 @@ disk or HTTP.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from datetime import datetime
 from typing import Any, BinaryIO, Protocol
 
@@ -84,13 +84,10 @@ class ImportRepository(Protocol):
         ...
 
     def add_results(
-        self,
-        import_id: str,
-        file_sha256: str,
-        outcomes: Sequence[RecordOutcome],
-        rejects: Sequence[RejectRow],
+        self, import_id: str, outcomes: Sequence[RecordOutcome], rejects: Sequence[RejectRow]
     ) -> None:
-        """Persist per-record outcomes (and their raw payloads) and rejects."""
+        """Persist per-record outcomes (and their raw payloads) and rejects; rows carry
+        their file hash, so one call covers every file of the attempt."""
         ...
 
     def get(self, import_id: str) -> ImportReport | None: ...
@@ -98,7 +95,12 @@ class ImportRepository(Protocol):
     def list(self, limit: int, offset: int) -> Sequence[ImportReport]: ...
 
     def rejects(
-        self, import_id: str, code: str | None, limit: int, offset: int
+        self,
+        import_id: str,
+        code: str | None,
+        file_sha256: str | None,
+        limit: int,
+        offset: int,
     ) -> Sequence[RejectRow]: ...
 
 
@@ -115,15 +117,16 @@ class TraceRepository(Protocol):
         self,
         *,
         import_id: str,
-        file_sha256: str,
         source: str,
-        mapping_id: str,
+        bindings: Mapping[str, str],
         emissions: Sequence[Emission],
         sessions: dict[str, SessionAggregate],
     ) -> dict[str, int]:
-        """Persist accepted emissions; ``sessions`` is the full new state of each
-        session (seeded from ``existing_sessions``). Returns counts per entity
-        actually inserted; raises ConflictError on an occurrence-key collision."""
+        """Persist accepted emissions; ``bindings`` maps each file hash of the attempt
+        to the mapping id it ran under (every contribution records its own);
+        ``sessions`` is the full new state of each session (seeded from
+        ``existing_sessions``). Returns counts per entity actually inserted; raises
+        ConflictError on an occurrence-key collision."""
         ...
 
     def list_sessions(

@@ -75,13 +75,18 @@ class ListRejects:
         self._uow_factory = uow_factory
 
     def execute(
-        self, import_id: str, code: str | None = None, limit: int = 50, offset: int = 0
+        self,
+        import_id: str,
+        code: str | None = None,
+        file_sha256: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
     ) -> Sequence[RejectRow]:
         limit, offset = _page(limit, offset)
         with self._uow_factory() as uow:
             if uow.imports.get(import_id) is None:
                 raise NotFoundError(f"Import {import_id!r} does not exist")
-            return list(uow.imports.rejects(import_id, code, limit, offset))
+            return list(uow.imports.rejects(import_id, code, file_sha256, limit, offset))
 
 
 class ListSessions:

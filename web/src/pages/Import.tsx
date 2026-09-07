@@ -3,8 +3,16 @@ import { useResource } from '../useResource'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { commitImport, listMappings, previewImport, uploadFile } from '../api'
-import type { ImportPreview, Upload } from '../api'
+import type { ImportPreview, ImportRequest, Mapping, Upload } from '../api'
 import { Counts, ErrorNotice, JsonView, ResourceState, Table } from '../components'
+
+/** One previewed (file, mapping) pair waiting in the batch. */
+interface Pair { upload: Upload; mapping: Mapping; preview: ImportPreview }
+
+function requestFor(pairs: Pair[], source: string): ImportRequest {
+  if (pairs.length === 1) return { upload_id: pairs[0].upload.upload_id, mapping_id: pairs[0].mapping.id, source }
+  return { source, files: pairs.map(pair => ({ upload_id: pair.upload.upload_id, mapping_id: pair.mapping.id })) }
+}
 
 export default function ImportPage() {
   const navigate = useNavigate()
@@ -12,6 +20,7 @@ export default function ImportPage() {
   const [upload, setUpload] = useState<Upload>()
   const [mappingId, setMappingId] = useState('')
   const [preview, setPreview] = useState<ImportPreview>()
+  const [batch, setBatch] = useState<Pair[]>([])
   const [busy, setBusy] = useState('')
   const [error, setError] = useState<unknown>()
   const inFlight = useRef(false)
@@ -21,6 +30,11 @@ export default function ImportPage() {
     return () => { mounted.current = false }
   }, [])
   const mapping = mappings.data?.find(item => item.id === mappingId)
+  const current: Pair | undefined = upload && mapping && preview ? { upload, mapping, preview } : undefined
+  const pairs = current ? [...batch, current] : batch
+  const source = pairs[0]?.mapping.source
+  const mixedSources = new Set(pairs.map(pair => pair.mapping.source)).size > 1
+  const duplicateInBatch = !!current && batch.some(pair => pair.upload.sha256 === current.upload.sha256)
 
   async function run(label: string, action: () => Promise<void>) {
     if (inFlight.current) return
@@ -31,15 +45,27 @@ export default function ImportPage() {
     finally { inFlight.current = false; setBusy('') }
   }
 
+  function resetCurrent() {
+    setUpload(undefined); setPreview(undefined); setMappingId(''); setError(undefined)
+  }
+
   return <>
     <h1>Import traces</h1>
-    <p>Upload JSONL, JSONL.gz, or Parquet, inspect the mapping preview, then confirm the import.</p>
+    <p>Upload JSONL, JSONL.gz, or Parquet, inspect the mapping preview, then confirm the import. Several files can go into one import, each with its own mapping.</p>
     <ResourceState {...mappings} />
-    <label htmlFor="trace-file">Trace file</label>
+    {batch.length > 0 && <section aria-label="Files in this import"><h2>Files in this import</h2>
+      <Table caption="Batch" headers={['Filename', 'SHA-256', 'Records', 'Mapping', 'Source', 'Preview', '']}>
+        {batch.map(pair => <tr key={pair.upload.upload_id}><td>{pair.upload.filename}</td><td className="hash">{pair.upload.sha256}</td><td>{pair.upload.record_count}</td>
+          <td>{pair.mapping.name} · revision {pair.mapping.revision}</td><td>{pair.mapping.source}</td>
+          <td>{pair.preview.records.sampled} sampled · {pair.preview.rejects.length} rejects</td>
+          <td><button type="button" disabled={!!busy} onClick={() => setBatch(batch.filter(item => item !== pair))}>Remove {pair.upload.filename}</button></td></tr>)}
+      </Table>
+    </section>}
+    <label htmlFor="trace-file">{batch.length > 0 ? 'Add another trace file' : 'Trace file'}</label>
     <input id="trace-file" type="file" accept=".jsonl,.jsonl.gz,.gz,.parquet" disabled={!!busy}
       onChange={event => {
         const file = event.target.files?.[0]
-        setUpload(undefined); setPreview(undefined); setMappingId(''); setError(undefined)
+        resetCurrent()
         if (file) void run('Uploading…', async () => setUpload(await uploadFile(file)))
         event.target.value = ''
       }} />
@@ -86,13 +112,20 @@ export default function ImportPage() {
           {preview.emissions.map((row, index) => <tr key={index}><td>{row.entity}</td><td>{row.path}</td><td>{row.locator}</td><td><JsonView value={row.fields} /></td></tr>)}
         </Table>
         <h3>Confirm import</h3>
-        <p>Import all {upload.record_count} records from <strong>{upload.filename}</strong> into source <strong>{mapping.source}</strong> using {mapping.name}, revision {mapping.revision}.</p>
+        {pairs.length === 1
+          ? <p>Import all {upload.record_count} records from <strong>{upload.filename}</strong> into source <strong>{mapping.source}</strong> using {mapping.name}, revision {mapping.revision}.</p>
+          : <p>Import {pairs.length} files ({pairs.reduce((total, pair) => total + pair.upload.record_count, 0)} records) into source <strong>{source}</strong>, each with the mapping shown above; this file uses {mapping.name}, revision {mapping.revision}.</p>}
         <p className="hash">SHA-256: {upload.sha256}</p>
         <p>The preview covers {preview.records.sampled} records. The full import may have additional warnings or rejects.</p>
-        <button disabled={!!busy} onClick={() => void run('Importing…', async () => {
-          const report = await commitImport({ upload_id: upload.upload_id, mapping_id: mapping.id, source: mapping.source })
-          if (mounted.current) navigate(`/imports/${encodeURIComponent(report.import_id)}`)
-        })}>Import</button>
+        {duplicateInBatch && <p className="error" role="alert">This file has the same bytes as one already in the batch. Remove one of them.</p>}
+        {mixedSources && <p className="error" role="alert">The mappings in this batch declare different sources. One import writes to one source.</p>}
+        <div className="actions">
+          <button disabled={!!busy || duplicateInBatch || mixedSources || !source} onClick={() => void run('Importing…', async () => {
+            const report = await commitImport(requestFor(pairs, source!))
+            if (mounted.current) navigate(`/imports/${encodeURIComponent(report.import_id)}`)
+          })}>{pairs.length === 1 ? 'Import' : `Import ${pairs.length} files`}</button>
+          <button type="button" disabled={!!busy || duplicateInBatch} onClick={() => { if (current) { setBatch([...batch, current]); resetCurrent() } }}>Add to batch and choose another file</button>
+        </div>
       </section>}
     </>}
   </>

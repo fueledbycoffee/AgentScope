@@ -27,7 +27,7 @@ flowchart LR
     end
     subgraph infrastructure["infrastructure"]
         FS[FilesystemRawFileStore]
-        JR[JsonlRecordReader]
+        JR[FormatRouter: JSONL + Parquet readers]
         DB[(SQLite via SQLAlchemy + Alembic)]
         UOW[SqlAlchemyUnitOfWork + repositories]
         BM[bundled mappings loader]
@@ -55,14 +55,20 @@ infrastructure library, or if `infrastructure` imports `interfaces`.
 2. `POST /api/imports/preview` runs the mapping (parsed by the domain,
    refused with located issues if not executable) over the first N records
    without writing anything.
-3. `POST /api/imports` checks exact-file idempotency for the source; if the
-   bytes were committed before, it records a `duplicate` attempt and inserts
-   nothing. Otherwise it applies the mapping to every record, folds session
-   contributions with the domain reducer, and in one transaction writes the
-   import row (first as `running`, then finalised), the entities with their
-   occurrence keys, the entity contributions (provenance), the per-record
-   outcomes with raw payloads, the rejects and the session diagnostics. Any
-   failure rolls the transaction back and records a `failed` attempt.
+3. `POST /api/imports` takes one file or a batch of up to 20, each bound to
+   its own mapping revision. Bindings are grouped by bytes; a file already
+   committed for the source is skipped as `duplicate` (its records counted as
+   such) and an all-duplicate batch is a `duplicate` attempt that inserts
+   nothing but stays in the ledger. The remaining files are read with their
+   own mappings, all session contributions are folded once by the domain
+   reducer (seeded from the database), and one transaction writes the import
+   row with every file row (`running`, duplicates never marked committed),
+   the entities with their occurrence keys, the entity contributions carrying
+   each file's mapping, then finalises the pending files as `committed` with
+   their counts, and writes the per-record outcomes, raw payloads and rejects
+   (all keyed by file hash and locator). Any failure rolls the transaction
+   back and records a `failed` attempt with every file `failed`; a race lost
+   to a concurrent import is recorded as `duplicate` and answered `409`.
 4. Reads go through the same unit of work: sessions with per-session token
    coverage, the session detail with links to raw records, the import
    history and rejects, and the day-1 metrics summary.
@@ -79,12 +85,17 @@ infrastructure library, or if `infrastructure` imports `interfaces`.
 - A race between two imports of the same bytes for one source is caught by the
   occurrence-key uniqueness inside the transaction and reported as `409`, not
   as a `failed` import.
-- `raw_records` are unique on `(file_sha256, locator)` and written once.
+- `raw_records` are unique on `(file_sha256, locator)` and written once;
+  `record_results` are keyed by `(import_id, file_sha256, locator)` so two
+  files of one attempt may both have a `line:1`.
+- `import_files` rows carry the file's mapping, status and counts; the
+  partial unique index on `(sha256, source) WHERE committed = 1` is the race
+  guard and only rows finalised as `committed` claim it.
 - `entity_contributions` link every accepted emission back to its record,
   mapping revision and rule; exactly one entity foreign key is set.
 
 ## Not yet
 
-Parquet reading (#8), record and entity outcome browsing in the UI (#9), the
+Record and entity outcome browsing in the UI (#9), the
 metric definition module (#10), the dashboard (#11), mapping revisions from
 the UI and the assistant (#13 to #15).

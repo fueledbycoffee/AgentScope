@@ -116,6 +116,42 @@ def parse_timestamp(value: Any, fmt: str) -> datetime:
         raise ConversionError("invalid_timestamp", f"Cannot parse {value!r} as {fmt}") from exc
 
 
+def timestamp_notes(value: Any, fmt: str) -> tuple[str, ...]:
+    """Codes describing what ``parse_timestamp`` had to give up on ``value``.
+
+    ``precision_reduced``: more than six fractional digits (the canonical
+    datetime is microsecond). ``naive_timestamp``: no offset or ``Z``, so the
+    instant was taken as UTC. Both are warnings, never rejections.
+    """
+    if fmt != "iso8601" or not isinstance(value, str):
+        return ()
+    text = value.strip()
+    notes: list[str] = []
+    time_part = (
+        text.split("T", 1)[1] if "T" in text else text.split(" ", 1)[1] if " " in text else ""
+    )
+    aware = time_part.endswith("Z") or time_part.endswith("z") or _has_offset(time_part)
+    if not aware:
+        notes.append("naive_timestamp")
+    if "." in time_part:
+        fraction = time_part.split(".", 1)[1]
+        digits = 0
+        while digits < len(fraction) and fraction[digits].isdigit():
+            digits += 1
+        if digits > 6:
+            notes.append("precision_reduced")
+    return tuple(notes)
+
+
+def _has_offset(time_part: str) -> bool:
+    body = time_part.rstrip("Zz")
+    for sign in ("+", "-"):
+        cut = body.rfind(sign)
+        if cut > 0 and body[cut + 1 :].replace(":", "").isdigit():
+            return True
+    return False
+
+
 def coerce(value: Any, field_type: FieldType, *, timestamp_format: str | None = None) -> Any:
     """Convert ``value`` to ``field_type`` without guessing.
 

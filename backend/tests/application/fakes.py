@@ -6,7 +6,7 @@ import gzip
 import hashlib
 import io
 import json
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, BinaryIO
 
@@ -123,16 +123,15 @@ class FakeImports:
         return [
             ImportRef(r.import_id, r.started_at)
             for r in self.reports.values()
-            if r.status == "committed"
-            and r.source == source
-            and any(f.sha256 == file_sha256 for f in r.files)
+            if r.source == source
+            and any(f.sha256 == file_sha256 and f.status == "committed" for f in r.files)
         ]
 
     def find_committed_any(self, file_sha256: str) -> Sequence[ImportRef]:
         return [
             ImportRef(r.import_id, r.started_at)
             for r in self.reports.values()
-            if r.status == "committed" and any(f.sha256 == file_sha256 for f in r.files)
+            if any(f.sha256 == file_sha256 and f.status == "committed" for f in r.files)
         ]
 
     def add_report(self, report: ImportReport) -> None:
@@ -145,11 +144,7 @@ class FakeImports:
         self.reports[report.import_id] = report
 
     def add_results(
-        self,
-        import_id: str,
-        file_sha256: str,
-        outcomes: Sequence[RecordOutcome],
-        rejects: Sequence[RejectRow],
+        self, import_id: str, outcomes: Sequence[RecordOutcome], rejects: Sequence[RejectRow]
     ) -> None:
         self.results[import_id] = list(outcomes)
         self.reject_rows[import_id] = list(rejects)
@@ -162,9 +157,19 @@ class FakeImports:
         return ordered[offset : offset + limit]
 
     def rejects(
-        self, import_id: str, code: str | None, limit: int, offset: int
+        self,
+        import_id: str,
+        code: str | None,
+        file_sha256: str | None,
+        limit: int,
+        offset: int,
     ) -> Sequence[RejectRow]:
-        rows = [r for r in self.reject_rows.get(import_id, []) if code is None or r.code == code]
+        rows = [
+            r
+            for r in self.reject_rows.get(import_id, [])
+            if (code is None or r.code == code)
+            and (file_sha256 is None or r.file_sha256 == file_sha256)
+        ]
         return rows[offset : offset + limit]
 
 
@@ -182,9 +187,8 @@ class FakeTraces:
         self,
         *,
         import_id: str,
-        file_sha256: str,
         source: str,
-        mapping_id: str,
+        bindings: Mapping[str, str],
         emissions: Sequence[Emission],
         sessions: dict[str, SessionAggregate],
     ) -> dict[str, int]:
@@ -193,7 +197,7 @@ class FakeTraces:
         self.stored.append(
             {
                 "import_id": import_id,
-                "file_sha256": file_sha256,
+                "bindings": dict(bindings),
                 "source": source,
                 "emissions": list(emissions),
                 "sessions": dict(sessions),
