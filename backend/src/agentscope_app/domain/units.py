@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import (
+    Decimal,
+    DecimalException,
+    Inexact,
+    InvalidOperation,
+    Overflow,
+    Subnormal,
+    Underflow,
+    localcontext,
+)
 from typing import Any, Final
 
 from agentscope_app.domain.errors import ConversionError
@@ -24,12 +33,14 @@ _FALSE: Final = frozenset({"false", "0", "no", "n", "f"})
 _INT_STRING: Final = re.compile(r"-?\d{1,18}")
 
 
-def convert_duration(value: Any, from_unit: str, to_unit: str) -> int | float:
+def convert_duration(value: Any, from_unit: str, to_unit: str) -> int | Decimal:
     """Convert a duration exactly. Accepts ints, floats and numeric strings.
 
-    Strings are parsed as decimals directly (never through a binary float), so
-    ``"1.0000000000000001"`` seconds stays fractional and is reported invalid
-    downstream instead of silently rounding to 1000 ms.
+    Strings are parsed as decimals directly (never through a binary float).
+    The arithmetic runs in a context that traps any inexact, overflowing or
+    underflowing result, so a value is either converted exactly or refused;
+    it is never rounded. Integral results come back as ``int``, others as
+    ``Decimal`` so that a later integer coercion still sees the fraction.
     """
     if from_unit not in DURATION_UNITS or to_unit not in DURATION_UNITS:
         raise ConversionError(
@@ -38,29 +49,33 @@ def convert_duration(value: Any, from_unit: str, to_unit: str) -> int | float:
     if isinstance(value, bool) or not isinstance(value, int | float | str):
         raise ConversionError("invalid_type", f"Cannot convert {value!r} to a duration")
     try:
-        if isinstance(value, int):
-            exact = Decimal(value)
-        elif isinstance(value, float):
-            exact = Decimal(repr(value))
-        else:
-            exact = Decimal(value.strip())
+        with localcontext() as ctx:
+            ctx.prec = 60
+            ctx.traps[Inexact] = True
+            ctx.traps[Overflow] = True
+            ctx.traps[Underflow] = True
+            ctx.traps[Subnormal] = True
+            if isinstance(value, int):
+                exact = Decimal(value)
+            elif isinstance(value, float):
+                exact = Decimal(repr(value))
+            else:
+                exact = Decimal(value.strip())
+            if not exact.is_finite():
+                raise ConversionError(
+                    "nonfinite_value", f"Duration {value!r} is not a finite number"
+                )
+            result = exact * DURATION_UNITS[from_unit] / DURATION_UNITS[to_unit]
     except (InvalidOperation, ValueError) as exc:
         raise ConversionError("invalid_type", f"Cannot convert {value!r} to a duration") from exc
-    if not exact.is_finite():
-        raise ConversionError("nonfinite_value", f"Duration {value!r} is not a finite number")
-    result = exact * DURATION_UNITS[from_unit] / DURATION_UNITS[to_unit]
+    except DecimalException as exc:
+        raise ConversionError(
+            "precision_loss",
+            f"Duration {value!r} {from_unit} cannot be converted to {to_unit} exactly",
+        ) from exc
     if result == result.to_integral_value():
         return int(result)
-    try:
-        approx = float(result)
-    except OverflowError as exc:
-        raise ConversionError("nonfinite_value", f"Duration {value!r} overflows") from exc
-    if approx == 0.0 or approx in (float("inf"), float("-inf")):
-        # A non-zero exact value that a float cannot hold: never let it become 0 or inf.
-        raise ConversionError(
-            "precision_loss", f"Duration {value!r} {from_unit} cannot be represented in {to_unit}"
-        )
-    return approx
+    return result
 
 
 def parse_timestamp(value: Any, fmt: str) -> datetime:
@@ -103,6 +118,10 @@ def coerce(value: Any, field_type: FieldType, *, timestamp_format: str | None = 
     elif field_type is FieldType.INTEGER:
         if isinstance(value, int):
             return value
+        if isinstance(value, Decimal):
+            if value.is_finite() and value == value.to_integral_value():
+                return int(value)
+            raise ConversionError("invalid_type", f"Cannot convert {value} to integer exactly")
         if isinstance(value, float) and value.is_integer():
             return int(value)
         if isinstance(value, str) and _INT_STRING.fullmatch(value.strip()):
@@ -110,6 +129,8 @@ def coerce(value: Any, field_type: FieldType, *, timestamp_format: str | None = 
     elif field_type is FieldType.NUMBER:
         if isinstance(value, int | float):
             return value
+        if isinstance(value, Decimal) and value.is_finite():
+            return float(value)
         if isinstance(value, str):
             try:
                 return float(value)

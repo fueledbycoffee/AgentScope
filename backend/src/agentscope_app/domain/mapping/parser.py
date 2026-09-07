@@ -130,10 +130,12 @@ def parse_mapping(raw: Any) -> ParsedMapping:
         issues.error("schema", "rules", "no_rules", "A mapping needs at least one rule")
     else:
         seen: set[str] = set()
+        indexed: list[tuple[int, Rule]] = []  # document index kept for locations
         for index, raw_rule in enumerate(raw_rules):
             rule = _parse_rule(raw_rule, f"rules[{index}]", issues)
             if rule is None:
                 continue
+            indexed.append((index, rule))
             if rule.id in seen:
                 issues.error(
                     "semantic",
@@ -143,7 +145,7 @@ def parse_mapping(raw: Any) -> ParsedMapping:
                 )
             seen.add(rule.id)
             rules.append(rule)
-        _check_parents(rules, issues)
+        _check_parents(indexed, issues)
 
     unmapped = _parse_unmapped(raw.get("unmapped", []), issues)
     spec = MappingSpec(
@@ -275,10 +277,10 @@ def _parse_rule(raw_rule: Any, path: str, issues: _Issues) -> Rule | None:
     return Rule(rule_id, entity_name, select, fields, tuple(where), parent, native_key)
 
 
-def _check_parents(rules: list[Rule], issues: _Issues) -> None:
-    by_id = {r.id: r for r in rules}
-    position = {r.id: i for i, r in enumerate(rules)}
-    for index, rule in enumerate(rules):
+def _check_parents(indexed: list[tuple[int, Rule]], issues: _Issues) -> None:
+    by_id = {r.id: r for _, r in indexed}
+    position = {r.id: i for i, r in indexed}
+    for index, rule in indexed:
         if rule.parent is None:
             continue
         path = f"rules[{index}].parent"

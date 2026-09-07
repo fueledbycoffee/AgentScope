@@ -318,3 +318,20 @@ def test_review_findings_are_rejected_with_explanations() -> None:
 def test_huge_path_index_is_a_located_issue_not_a_crash() -> None:
     parsed = variant(lambda d: d["rules"][0].__setitem__("select", "$[" + "9" * 5000 + "]"))
     assert ("rules[0].select", "invalid_path") in codes(parsed)
+
+
+def test_parent_issues_use_document_indexes_even_after_invalid_rules() -> None:
+    doc: dict[str, Any] = copy.deepcopy(VALID)
+    doc["rules"] = [
+        None,
+        {
+            "id": "t",
+            "entity": "tool_call",
+            "select": "$.tools[*]",
+            "parent": "missing",
+            "fields": {"tool_name": {"literal": "t"}},
+        },
+    ]
+    parsed = parse_mapping(doc)
+    assert ("rules[1].parent", "unknown_parent") in codes(parsed)
+    assert ("rules[0]", "not_an_object") in codes(parsed)

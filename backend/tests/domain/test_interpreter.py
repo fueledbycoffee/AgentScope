@@ -438,3 +438,39 @@ def test_string_durations_keep_decimal_precision_and_nonfinite_follows_policy() 
         ("invalid_value", "tool_call[1]"),
         ("invalid_value", "tool_call[2]"),
     ]
+
+
+def test_tiny_fractions_and_decimal_overflow_follow_the_field_policy() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "tool_call",
+                "entity": "tool_call",
+                "select": "$.tools[*]",
+                "fields": {
+                    "session_external_id": {"path": "@root.sid"},
+                    "tool_name": {"literal": "t"},
+                    "wall_latency_ms": {
+                        "path": "$.secs",
+                        "unit": {"from": "s", "to": "ms"},
+                        "on_invalid": "null",
+                    },
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    record = {
+        "sid": "s",
+        "tools": [{"secs": "1.00000000000000001"}, {"secs": "1e-9999999"}, {"secs": "1e9999999"}],
+    }
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    assert result.rejects == ()
+    assert [e.fields["wall_latency_ms"] for e in result.emissions] == [None, None, None]
+    assert [w.code for w in result.warnings] == ["invalid_value"] * 3

@@ -135,7 +135,9 @@ Grammar: `("$" | "@root") ("." name | "[" n "]" | "[*]")*`, at most 16 segments.
 Conversions are strict: booleans never become numbers, `12.5` never becomes
 an integer, unknown enum values are not silently kept unless the mapping says
 so. Negative token or latency values are rejected. Duration arithmetic is done
-in exact decimals, so `1.001 s` is `1001 ms`. A `literal` of `null` counts as a
+in exact decimals (numeric strings are parsed as decimals, never through a
+binary float), so `1.001 s` is `1001 ms`; a value that cannot be converted
+exactly, overflows or underflows is `invalid_value` (`precision_loss`). A `literal` of `null` counts as a
 missing value and follows `on_missing`.
 
 ## Validation stages

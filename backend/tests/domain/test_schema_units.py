@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 
@@ -42,10 +43,10 @@ def test_parse_timestamp_formats() -> None:
 
 def test_convert_duration_between_units() -> None:
     assert convert_duration(1.5, "s", "ms") == 1500
-    assert convert_duration(1500, "ms", "s") == 1.5
+    assert convert_duration(1500, "ms", "s") == Decimal("1.5")
     assert convert_duration(2, "min", "ms") == 120000
     assert convert_duration(3, "ms", "ms") == 3
-    assert convert_duration(2500, "us", "ms") == 2.5
+    assert convert_duration(2500, "us", "ms") == Decimal("2.5")
     with pytest.raises(ConversionError):
         convert_duration(1, "furlong", "ms")
 
@@ -116,15 +117,24 @@ def test_convert_duration_is_exact() -> None:
     assert convert_duration(1.001, "s", "ms") == 1001
     assert convert_duration(0.1, "s", "ms") == 100
     assert convert_duration(9007199254740993, "ms", "ms") == 9007199254740993
-    assert convert_duration(1, "ns", "ms") == 0.000001
+    assert convert_duration(1, "ns", "ms") == Decimal("0.000001")
     with pytest.raises(ConversionError):
         convert_duration(True, "ms", "ms")
 
 
 def test_convert_duration_parses_numeric_strings_exactly() -> None:
     assert convert_duration("1.001", "s", "ms") == 1001
-    assert convert_duration("1.0000000000000001", "s", "ms") == 1000.0000000000001
-    for bad in ("1e-400", "inf", "nan", "1e309x", "", "abc", float("inf"), float("nan"), None):
+    assert convert_duration("1.0000000000000001", "s", "ms") == Decimal("1000.0000000000001")
+    assert convert_duration("1.00000000000000001", "s", "ms") == Decimal("1000.00000000000001")
+    assert convert_duration("1e-400", "s", "ms") == Decimal("1e-397")
+    for bad in ("1e-9999999", "1e9999999", "inf", "nan", "", "abc", float("inf"), None):
         with pytest.raises(ConversionError):
             convert_duration(bad, "s", "ms")
     assert convert_duration("1e309", "ms", "ms") == 10**309
+
+
+def test_coerce_handles_exact_decimals() -> None:
+    assert coerce(Decimal("1500"), FieldType.INTEGER) == 1500
+    assert coerce(Decimal("2.5"), FieldType.NUMBER) == 2.5
+    with pytest.raises(ConversionError):
+        coerce(Decimal("1000.00000000000001"), FieldType.INTEGER)
