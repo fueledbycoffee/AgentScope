@@ -1,0 +1,47 @@
+{
+  "table": "conversations",
+  "accepted": 6,
+  "rejected": 0,
+  "entities": {
+    "session": 1,
+    "model_call": 2,
+    "tool_call": 1
+  },
+  "provenance": {
+    "run": "B-conversations-5",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "date": "2026-09-07",
+    "human_corrections": 4,
+    "generation_calls": 1,
+    "corrections": [
+      "$.timestamp -> $.timestamp.iso",
+      "tool_call where role == tool_use",
+      "model_call where role == assistant",
+      "notes set by the reviewer"
+    ],
+    "post_run_reviewer_corrections": [
+      "session.ended_at removed",
+      "is_error literals removed",
+      "tool_call.status <- $.category removed",
+      "tool_call.ended_at and model_call.ended_at <- $.timestamp.iso removed"
+    ]
+  },
+  "distinct_sessions": 1,
+  "session_fields": {
+    "sess-0": {
+      "agent": "claude-code"
+    }
+  },
+  "tool_call_fields": {
+    "row:3": {
+      "started_at": "2026-06-01T12:00:03Z",
+      "ended_at": null
+    }
+  },
+  "model_call_fields": {
+    "row:1": {
+      "started_at": "2026-06-01T12:00:01Z",
+      "ended_at": null
+    }
+  }
+}

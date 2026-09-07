@@ -1,0 +1,29 @@
+{
+  "table": "sessions",
+  "accepted": 3,
+  "rejected": 0,
+  "entities": {
+    "session": 3,
+    "model_call": 0,
+    "tool_call": 0
+  },
+  "provenance": {
+    "run": "A-sessions-3",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "date": "2026-09-07",
+    "human_corrections": 0,
+    "generation_calls": 2
+  },
+  "distinct_sessions": 3,
+  "session_fields": {
+    "sess-0": {
+      "agent": "claude-code"
+    },
+    "sess-1": {
+      "agent": "codex"
+    },
+    "sess-2": {
+      "agent": "cursor"
+    }
+  }
+}

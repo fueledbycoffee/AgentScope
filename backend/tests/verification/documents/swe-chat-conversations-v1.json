@@ -1,0 +1,192 @@
+{
+  "dsl_version": 1,
+  "target_schema_version": 1,
+  "name": "swe-chat-conversations-v1",
+  "source": "swe-chat",
+  "input_format": "parquet",
+  "rules": [
+    {
+      "id": "session_rule",
+      "entity": "session",
+      "select": "$",
+      "fields": {
+        "external_id": {
+          "path": "$.session_id"
+        },
+        "user": {
+          "path": "$.user_id"
+        },
+        "repo": {
+          "path": "$.repo_id"
+        },
+        "agent": {
+          "path": "$.agent"
+        },
+        "started_at": {
+          "path": "$.timestamp.iso",
+          "timestamp_format": "iso8601"
+        }
+      }
+    },
+    {
+      "id": "model_call_rule",
+      "entity": "model_call",
+      "select": "$",
+      "where": [
+        {
+          "path": "$.role",
+          "op": "eq",
+          "value": "assistant"
+        }
+      ],
+      "fields": {
+        "session_external_id": {
+          "path": "$.session_id"
+        },
+        "external_id": {
+          "path": "$.turn_id"
+        },
+        "started_at": {
+          "path": "$.timestamp.iso",
+          "timestamp_format": "iso8601"
+        },
+        "model": {
+          "path": "$.model"
+        },
+        "provider": {
+          "literal": "unknown"
+        },
+        "input_tokens": {
+          "path": "$.input_tokens"
+        },
+        "output_tokens": {
+          "path": "$.output_tokens"
+        },
+        "cache_creation_tokens": {
+          "path": "$.cache_creation_input_tokens"
+        },
+        "cache_read_tokens": {
+          "path": "$.cache_read_input_tokens"
+        },
+        "reasoning_tokens": {
+          "literal": null
+        },
+        "token_semantics": {
+          "literal": "unknown"
+        },
+        "error_message": {
+          "literal": null
+        },
+        "sequence": {
+          "path": "$.turn_number"
+        }
+      }
+    },
+    {
+      "id": "tool_call_rule",
+      "entity": "tool_call",
+      "select": "$",
+      "where": [
+        {
+          "path": "$.role",
+          "op": "eq",
+          "value": "tool_use"
+        }
+      ],
+      "fields": {
+        "session_external_id": {
+          "path": "$.session_id"
+        },
+        "external_id": {
+          "path": "$.tool_call_id"
+        },
+        "started_at": {
+          "path": "$.timestamp.iso",
+          "timestamp_format": "iso8601"
+        },
+        "tool_name": {
+          "path": "$.tool_name"
+        },
+        "internal_latency_ms": {
+          "literal": null
+        },
+        "wall_latency_ms": {
+          "literal": null
+        },
+        "exit_code": {
+          "literal": null
+        },
+        "sequence": {
+          "path": "$.turn_number"
+        }
+      }
+    }
+  ],
+  "unmapped": [
+    {
+      "path": "$.turn_type",
+      "reason": "Not needed for target entities"
+    },
+    {
+      "path": "$.is_conversational",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.conversation_turn_number",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.is_continuation",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.is_first_turn",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.word_count",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.char_count",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.tool_input_json",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.file_path",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.command",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.pattern",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.bash_category",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.queue_op_subtype",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.language",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.prompt_intent",
+      "reason": "Not needed"
+    },
+    {
+      "path": "$.prompt_pushback",
+      "reason": "Not needed"
+    }
+  ],
+  "notes": "SWE-chat conversations: assistant rows are model calls, tool_use rows are tool calls; token semantics unknown. Reviewed 2026-09-07. Reviewer corrections after the run (2026-09-07 late): session.ended_at removed (a turn's timestamp is not a declared end); model_call.is_error literal removed (unknown stays null); tool_call.is_error literal removed (unknown stays null); tool_call.status <- $.category removed (a category is not an outcome). tool_call.ended_at and model_call.ended_at <- $.timestamp.iso removed (a row's timestamp is one instant, the start; the result arrives on another row the mapping cannot join, so ends stay null)."
+}
