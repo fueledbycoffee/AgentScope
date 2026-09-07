@@ -113,9 +113,11 @@ Only recorded live runs count (`scripts/llm_smoke.py`; see
 `docs/llm/configuration.md` for the full table):
 
 - 2026-09-07, OpenRouter, `dots-studio/dots-3-note-preview:free`: profile-only
-  context of the TraceLab fixture, 113 s, two generation calls, editable
-  non-executable draft; reply captured as
-  `backend/tests/llm_recordings/captured_openrouter_dots3_2026-09-07.json`.
+  context of the TraceLab fixture. First adapter build: 113 s, two generation
+  calls, editable non-executable draft (reply captured as
+  `backend/tests/llm_recordings/captured_openrouter_dots3_2026-09-07.json`).
+  Final adapter: 78 s, two generation calls, executable proposal with session,
+  model_call and tool_call rules, 26 explanations, 5 ambiguities, 4 questions.
 - The owner's earlier choice `minimax/minimax-m3:free` left OpenRouter's free
   tier on or before 2026-09-07 (404 "unavailable for free"); a paid slug
   exists but was not used.

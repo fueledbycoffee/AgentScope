@@ -138,7 +138,8 @@ called tested):
 
 | Date | Endpoint | Model | Result |
 | --- | --- | --- | --- |
-| 2026-09-07 | OpenRouter | `dots-studio/dots-3-note-preview:free` | 113 s, 2 attempts, editable draft (`invalid_type`, `unknown_key`, `unknown_policy`); reply captured |
+| 2026-09-07 | OpenRouter | `dots-studio/dots-3-note-preview:free` (rewritten adapter) | 78 s, 2 attempts, **executable** proposal: session, model_call, tool_call rules; 26 explanations, 5 ambiguities, 4 questions |
+| 2026-09-07 | OpenRouter | `dots-studio/dots-3-note-preview:free` (first adapter build) | 113 s, 2 attempts, editable draft (`invalid_type`, `unknown_key`, `unknown_policy`); reply captured |
 | 2026-09-07 | OpenRouter | `minimax/minimax-m3:free` | 404 "unavailable for free" (model retired from the free tier) |
 | 2026-09-07 | OpenRouter | `nvidia/nemotron-3-super-120b-a12b:free` | provider error inside a 200: upstream overloaded |
 | 2026-09-07 | OpenRouter | `google/gemma-4-31b-it:free` | 429 rate-limited upstream |
