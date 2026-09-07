@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.15"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install (locked)
+        run: uv sync --locked --all-groups
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Type check
+        run: uv run mypy
+      - name: Architecture boundaries
+        run: uv run lint-imports
+      - name: Tests
+        run: uv run pytest
+
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install (locked)
+        run: pnpm install --frozen-lockfile
+      - name: Type check
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Tests
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+
+  # Single required status check for branch protection. Runs even when upstream
+  # jobs fail so the check is always reported, and fails if any of them did.
+  ci-required:
+    name: ci-required
+    runs-on: ubuntu-latest
+    needs: [backend, web]
+    if: always()
+    steps:
+      - name: Verify all required jobs succeeded
+        run: |
+          echo "backend: ${{ needs.backend.result }}"
+          echo "web:     ${{ needs.web.result }}"
+          [ "${{ needs.backend.result }}" = "success" ] && [ "${{ needs.web.result }}" = "success" ]

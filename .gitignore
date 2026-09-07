@@ -1,6 +1,8 @@
 # Local-only material
 _school/
 .claude/settings.local.json
+.claude/worktrees/
+.worktrees/
 .DS_Store
 
 # Secrets and local config
