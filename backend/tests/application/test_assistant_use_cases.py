@@ -556,3 +556,12 @@ def test_redaction_counts_include_profile_examples_and_the_filename() -> None:
     assert prepared.redactions == {"email": 1, "path": 1}
     assert prepared.document["profile"]["redactions"] == {"email": 1}
     assert prepared.document["upload"]["filename"] == "<path>"
+
+
+def test_structured_credentials_never_reach_the_prepared_text() -> None:
+    h = Harness()
+    upload_id = h.upload([{"session": "s1", "password": "hunter22", "api_key": "abcdef123456"}])
+    prepared = h.prepare.execute(h.request(upload_id, include_sample=True))
+    assert "hunter22" not in prepared.text and "abcdef123456" not in prepared.text
+    assert prepared.redactions["token"] >= 2
+    assert prepared.document["sample"][0]["record"]["password"] == "<token>"

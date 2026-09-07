@@ -25,7 +25,8 @@ MAX_TEXT_CHARS: Final = 200
 POLICY: Final = (
     "Values are redacted by shape: private-key blocks, known credential formats "
     "(OpenAI/OpenRouter/Anthropic keys, GitHub, Slack, AWS, Google, JWT, Bearer "
-    "and key=value assignments), URL credentials, e-mail addresses, home-directory "
+    "and key=value assignments, plus any value under a key named like a credential), "
+    "URL credentials, e-mail addresses, home-directory "
     "paths, IP addresses, and any text longer than 200 characters. Keys are never "
     "rewritten: a key that would be redacted is withheld together with its subtree. "
     "Identifiers, UUIDs and digests are kept. This is exposure control, not "
@@ -50,7 +51,13 @@ _ASSIGNMENT = re.compile(
     r"|passwd|token)['\"]?)(\s*[:=]\s*)['\"]?(?!Bearer\b)([^\s'\",;]{6,})['\"]?"
 )
 _URL_CREDENTIALS = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)([^/\s@]+)@")
-_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+# bounded quantifiers keep the scan linear; the caller also skips texts without "@"
+_EMAIL = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}")
+# a key whose *name* says its value is a credential: the value is replaced whatever it looks like
+_CREDENTIAL_KEY = re.compile(
+    r"(?i)^(?:authorization|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token"
+    r"|auth[_-]?token|bearer|secret|client[_-]?secret|password|passwd|token)$"
+)
 _PATH = re.compile(
     r"(?<![\w/])(?:/Users/[^\s\"'`]+|/home/[^\s\"'`]+|/root(?:/[^\s\"'`]*)?"
     r"|~/[^\s\"'`]+|[A-Za-z]:\\Users\\[^\s\"'`]+)"
@@ -93,8 +100,9 @@ def redact_text(text: str, *, long_text: bool = True) -> tuple[str, Counter[str]
         sub(pattern, "token", "<token>")
     sub(_BEARER, "token", "Bearer <token>")
     sub(_ASSIGNMENT, "token", r"\1\2<token>")
-    sub(_URL_CREDENTIALS, "credentials", r"\1<credentials>@")
-    sub(_EMAIL, "email", "<email>")
+    if "@" in text:
+        sub(_URL_CREDENTIALS, "credentials", r"\1<credentials>@")
+        sub(_EMAIL, "email", "<email>")
     sub(_PATH, "path", "<path>")
     for pattern, repl in ((_IPV4, _ipv4), (_IPV6, _ipv6)):
         before = text
@@ -121,6 +129,16 @@ def key_sensitivity(key: Any) -> str | None:
     return next(iter(sorted(counts))) if counts else "redacted"
 
 
+def key_is_credential(key: Any) -> bool:
+    """Whether a key's name marks its value as a credential (``password``, ``api_key``, …)."""
+    return isinstance(key, str) and _CREDENTIAL_KEY.match(key) is not None
+
+
+def credential_value(value: Any) -> Any:
+    """What a credential-named key's value becomes: ``<token>`` for any non-empty string."""
+    return "<token>" if isinstance(value, str) and value else value
+
+
 def sanitize(value: Any) -> tuple[Any, dict[str, int]]:
     """Redact every string inside a JSON value; container shapes are kept.
 
@@ -143,6 +161,10 @@ def _sanitize(value: Any, counts: Counter[str]) -> Any:
         for key, item in value.items():
             if key_sensitivity(key) is not None:
                 counts["key_withheld"] += 1
+                continue
+            if key_is_credential(key) and isinstance(item, str) and item:
+                counts["token"] += 1
+                clean[key] = "<token>"
                 continue
             clean[key] = _sanitize(item, counts)
         return clean

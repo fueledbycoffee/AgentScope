@@ -250,3 +250,18 @@ def test_default_provider_starts_and_only_the_assistant_is_unavailable(tmp_path:
             "assistant_unavailable",
         )
         assert "openai_compatible" in error["message"] and "#14" in error["message"]
+
+
+def test_saved_mapping_documents_round_trip_with_their_number_types(client: TestClient) -> None:
+    import json
+
+    document = json.loads((BUNDLED / "tracelab-v1.json").read_text())
+    document["name"] = "numeric-where"
+    document["rules"][0]["where"] = [{"path": "$.round_index", "op": "eq", "value": 1.5}]
+    created = client.post("/api/mappings", json={"document": document})
+    assert created.status_code == 201, created.text
+    fetched = client.get(f"/api/mappings/{created.json()['id']}").json()["document"]
+    assert fetched["rules"][0]["where"][0]["value"] == 1.5  # a number, not "1.5"
+    assert fetched == document
+    again = client.post("/api/mappings", json={"document": fetched})
+    assert again.status_code == 200 and again.json()["id"] == created.json()["id"]

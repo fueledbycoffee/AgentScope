@@ -275,3 +275,15 @@ def test_profile_never_raises_paths_parse_and_examples_are_clean(records: list[A
     for reported in profile.unaddressable:
         assert redact_text(reported.key)[0] == reported.key
     dumps_exact(profile.to_dict())
+
+
+def test_credential_named_keys_never_show_their_value_in_examples() -> None:
+    records = [
+        {"session": f"s{i}", "password": f"hunter{i}", "api_key": "abcdef123456"} for i in range(3)
+    ]
+    profile = profile_records(records)
+    stats = by_path(profile)
+    assert stats["$.password"].examples == ["<token>"]
+    assert stats["$.api_key"].examples == ["<token>"]
+    assert profile.redactions == {"token": 6}
+    assert "hunter" not in dumps_exact(profile.to_dict())

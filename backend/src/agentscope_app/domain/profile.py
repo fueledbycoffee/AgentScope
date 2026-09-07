@@ -33,7 +33,12 @@ from typing import Any, Final
 
 from agentscope_app.domain.mapping.paths import _NAME as _KEY_NAME
 from agentscope_app.domain.mapping.paths import parse_path
-from agentscope_app.domain.redaction import key_sensitivity, redact_text, sanitize
+from agentscope_app.domain.redaction import (
+    key_is_credential,
+    key_sensitivity,
+    redact_text,
+    sanitize,
+)
 
 PROFILER_VERSION: Final = 1
 WRAPPER_KEY: Final = "_arrow"
@@ -215,6 +220,7 @@ class _Profiler:
         self.truncated: dict[str, int] = {}
         self.budget = _Budget(limits.nodes)
         self.sample: list[int] = []
+        self.credential_values = 0
         self._record_paths: set[str] = set()
         self._new_path_in_record = False
 
@@ -271,6 +277,9 @@ class _Profiler:
                 if reason is not None:
                     self.note_unaddressable(path, str(key), reason)
                     continue
+                if key_is_credential(key) and isinstance(item, str) and item:
+                    item = "<token>"  # the value is a credential by name, whatever it looks like
+                    self.credential_values += 1
                 self.visit(item, f"{path}.{key}", selector, f"{relative}.{key}", depth + 1)
             return
         if isinstance(value, list | tuple):
@@ -401,6 +410,8 @@ class _Profiler:
 
     def finish(self, inspected: int) -> FieldProfile:
         redactions: dict[str, int] = {}
+        if self.credential_values:
+            redactions["token"] = self.credential_values
         for stat in self.stats.values():
             seen = len(stat._seen)
             stat.distinct = min(seen, self.limits.distinct)

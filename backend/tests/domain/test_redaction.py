@@ -134,3 +134,36 @@ def test_no_false_positive_on_the_fixture_ids_and_models() -> None:
                     assert redact_text(value) == (value, {}), (key, value)
                     checked += 1
     assert checked > 10_000
+
+
+def test_credential_named_keys_lose_their_value_whatever_it_looks_like() -> None:
+    value = {"session": "s1", "password": "hunter22", "api_key": "abcdef123456", "input_tokens": 5}
+    cleaned, counts = sanitize(value)
+    assert cleaned == {
+        "session": "s1",
+        "password": "<token>",
+        "api_key": "<token>",
+        "input_tokens": 5,
+    }
+    assert counts == {"token": 2}
+    assert sanitize({"Authorization": "x", "token": "", "tokens": "kept"})[0] == {
+        "Authorization": "<token>",
+        "token": "",
+        "tokens": "kept",
+    }
+
+
+def test_redaction_cost_is_linear_in_the_text_length() -> None:
+    import time
+
+    for size in (10_000, 40_000, 160_000):
+        text = "x" * size
+        started = time.perf_counter()
+        redacted, counts = redact_text(text)
+        elapsed = time.perf_counter() - started
+        assert redacted == f"<text {size} chars>" and dict(counts) == {"long_text": 1}
+        assert elapsed < 0.05, (size, elapsed)
+    with_at = "x" * 40_000 + "@" + "y" * 40_000
+    started = time.perf_counter()
+    redact_text(with_at)
+    assert time.perf_counter() - started < 0.1
