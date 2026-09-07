@@ -32,6 +32,8 @@ export default defineConfig({
     url: `http://127.0.0.1:${port}/api/health`,
     reuseExistingServer: false,
     timeout: 120_000,
+    // SIGTERM first so start-backend.mjs can remove its temp root; SIGKILL only after that.
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
     stdout: 'ignore',
     stderr: 'pipe',
   },
