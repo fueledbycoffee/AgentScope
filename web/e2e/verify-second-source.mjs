@@ -28,10 +28,15 @@ import { chromium } from '@playwright/test'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const repo = resolve(here, '..', '..')
-const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => {
+// repeated flags accumulate into arrays (--replace, --set-where, --delete-field, --revise)
+const args = {}
+for (const [key, value] of process.argv.slice(2).reduce((acc, a, i, all) => {
   if (a.startsWith('--')) acc.push([a.slice(2), all[i + 1]?.startsWith('--') || all[i + 1] === undefined ? true : all[i + 1]])
   return acc
-}, []))
+}, [])) {
+  if (key in args) args[key] = [].concat(args[key], value)
+  else args[key] = value
+}
 const out = resolve(args.out ?? join(repo, 'data', 'verification', 'runs'))
 const runId = args.run ?? (args.replay ? `replay-${Date.now()}` : `run-${Date.now()}`)
 const runDir = join(out, runId)
@@ -89,7 +94,7 @@ async function sendAndWait(page, message, sample) {
 async function waitForReplyOrNotice(page, nth, notices) {
   const bubble = page.getByRole('log', { name: 'Conversation' }).getByText(/proposal applied|did not return a proposal/).nth(nth)
   const notice = page.locator('.notice.bad, .notice.warn').last()
-  const deadline = Date.now() + 420_000
+  const deadline = Date.now() + 600_000
   while (Date.now() < deadline) {
     if (await bubble.count() > 0) return 'reply'
     if (await notice.count() > 0) {
@@ -98,13 +103,13 @@ async function waitForReplyOrNotice(page, nth, notices) {
     }
     await page.waitForTimeout(1000)
   }
-  throw new Error('no reply and no notice within 420 s')
+  throw new Error('no reply and no notice within 600 s')
 }
 
 async function live() {
   const root = join(runDir, 'backend')
   rmSync(root, { recursive: true, force: true })
-  const env = { AGENTSCOPE_LLM_PROVIDER: 'openai_compatible', AGENTSCOPE_LLM_MODEL: args.model, AGENTSCOPE_LLM_TIMEOUT_S: args.timeout ?? '180', AGENTSCOPE_LLM_JSON_MODE: 'auto' }
+  const env = { AGENTSCOPE_LLM_PROVIDER: 'openai_compatible', AGENTSCOPE_LLM_MODEL: args.model, AGENTSCOPE_LLM_TIMEOUT_S: args.timeout ?? '240', AGENTSCOPE_LLM_JSON_MODE: 'auto' }
   const backend = await startBackend(root, env)
   const browser = await chromium.launch()
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
