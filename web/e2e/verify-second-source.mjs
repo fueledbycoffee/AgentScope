@@ -84,6 +84,22 @@ async function sendAndWait(page, message, sample) {
   return null
 }
 
+/** A reply bubble, or an error/warning notice (502, 503, 409 twice, refusal): whichever comes first. */
+async function waitForReplyOrNotice(page, nth, notices) {
+  const bubble = page.getByRole('log', { name: 'Conversation' }).getByText(/proposal applied|did not return a proposal/).nth(nth)
+  const notice = page.locator('.notice.bad, .notice.warn').last()
+  const deadline = Date.now() + 420_000
+  while (Date.now() < deadline) {
+    if (await bubble.count() > 0) return 'reply'
+    if (await notice.count() > 0) {
+      const text = await notice.innerText()
+      if (!/Not sent/.test(text)) { notices.push(text); return 'notice' }
+    }
+    await page.waitForTimeout(1000)
+  }
+  throw new Error('no reply and no notice within 420 s')
+}
+
 async function live() {
   const root = join(runDir, 'backend')
   rmSync(root, { recursive: true, force: true })
@@ -107,13 +123,17 @@ async function live() {
     if (args.sample) await page.getByLabel(/Include a redacted sample/).check()
     log('send', args.message)
     await sendAndWait(page, args.message ?? 'Propose a mapping for this file', !!args.sample)
-    await page.getByRole('log', { name: 'Conversation' }).getByText(/proposal applied|did not return a proposal/).first().waitFor({ timeout: 400_000 })
+    const notices = []
+    let ended = await waitForReplyOrNotice(page, 0, notices)
+    log('first reply:', ended, notices.at(-1) ?? '')
     const revisions = [].concat(args.revise ?? [])
     for (const message of revisions) {
+      if (ended !== 'reply') break
       log('revise', message)
       await sendAndWait(page, message, !!args.sample)
       await page.waitForTimeout(500)
-      await page.getByRole('log', { name: 'Conversation' }).getByText(/proposal applied|did not return a proposal/).nth(revisions.indexOf(message) + 1).waitFor({ timeout: 400_000 })
+      ended = await waitForReplyOrNotice(page, revisions.indexOf(message) + 1, notices)
+      log('revision reply:', ended, notices.at(-1) ?? '')
     }
     let documentText = await page.getByLabel('Mapping document (JSON)').inputValue()
     writeFileSync(join(runDir, 'document.model.json'), documentText)
@@ -172,11 +192,14 @@ async function live() {
         report = await page.locator('main').first().innerText()
       }
     }
-    writeFileSync(join(runDir, 'outcome.json'), JSON.stringify({ runId, model: args.model, file: args.file, uploadId, name: args.name, source: args.source, sample: !!args.sample, message: args.message, revisions, corrections, executable, saved, imported: report !== null, prepared, outcomes }, null, 2))
+    writeFileSync(join(runDir, 'outcome.json'), JSON.stringify({ runId, model: args.model, file: args.file, uploadId, name: args.name, source: args.source, sample: !!args.sample, message: args.message, revisions, notices, corrections, executable, saved, imported: report !== null, prepared, outcomes }, null, 2))
     writeFileSync(join(runDir, 'preview.txt'), preview ?? '')
     writeFileSync(join(runDir, 'import-report.txt'), report ?? '')
     writeFileSync(join(runDir, 'requests.json'), JSON.stringify(counters, null, 2))
     log('done', runId, executable ? 'executable, imported' : 'not executable')
+  } catch (error) {
+    writeFileSync(join(runDir, 'failure.json'), JSON.stringify({ runId, error: String(error), prepared, outcomes, requests: counters }, null, 2))
+    throw error
   } finally {
     await browser.close()
     backend.kill('SIGTERM')
@@ -192,12 +215,17 @@ async function replay() {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
   page.on('response', r => { if (r.url().includes('/api/')) count(r.request(), r.status()) })
   try {
-    // control: the assistant really is unavailable on this backend
-    const probe = await fetch(`${base}/api/assistant/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'propose', upload_id: 'upl_x', identity: { name: 'x', source: 'x' }, context_sha256: '0'.repeat(64) }) })
-    const control = { status: probe.status, code: (await probe.json()).error?.code }
     await page.goto(`${base}/import`)
     await page.getByLabel(/Trace file|Add another trace file/).setInputFiles(resolve(args.file))
     await page.getByRole('heading', { name: 'Uploaded file' }).waitFor()
+    // control: the assistant really is unavailable on this backend (prepare works, run answers 503)
+    const uploads = await (await fetch(`${base}/api/imports?limit=1`)).json().catch(() => [])
+    const uploadId = await page.evaluate(() => JSON.parse(sessionStorage.getItem('agentscope-import-page') ?? '{}').upload?.upload_id)
+    const request = { kind: 'propose', upload_id: uploadId, identity: { name: 'control', source: 'control' }, message: 'control' }
+    const prep = await fetch(`${base}/api/assistant/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
+    const prepared = prep.ok ? await prep.json() : null
+    const probe = prepared ? await fetch(`${base}/api/assistant/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...request, context_sha256: prepared.context_sha256 }) }) : prep
+    const control = { prepare_status: prep.status, run_status: probe.status, code: (await probe.json()).error?.code, uploads_seen: Array.isArray(uploads) ? uploads.length : null }
     const mapping = page.getByLabel('Mapping', { exact: true })
     const label = await mapping.getByRole('option', { name: new RegExp(args.name) }).textContent()
     await mapping.selectOption({ label: label.trim() })

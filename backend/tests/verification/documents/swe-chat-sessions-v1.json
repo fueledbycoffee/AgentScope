@@ -1,0 +1,84 @@
+{
+  "dsl_version": 1,
+  "target_schema_version": 1,
+  "name": "swe-chat-sessions-v1",
+  "source": "swe-chat",
+  "input_format": "parquet",
+  "rules": [
+    {
+      "id": "session_rule",
+      "entity": "session",
+      "select": "$",
+      "fields": {
+        "external_id": {
+          "path": "$.session_id"
+        },
+        "agent": {
+          "path": "$.agent"
+        },
+        "repo": {
+          "path": "$.repo_id"
+        },
+        "user": {
+          "path": "$.user_id",
+          "on_missing": "null"
+        },
+        "started_at": {
+          "path": "$.created_at.iso",
+          "timestamp_format": "iso8601"
+        }
+      }
+    }
+  ],
+  "unmapped": [
+    {
+      "path": "$.branch",
+      "reason": "Not part of target session entity"
+    },
+    {
+      "path": "$.strategy",
+      "reason": "Not part of target session entity"
+    },
+    {
+      "path": "$.cli_version",
+      "reason": "Not part of target session entity"
+    },
+    {
+      "path": "$.files_touched",
+      "reason": "Not part of target session entity"
+    },
+    {
+      "path": "$.input_tokens",
+      "reason": "Aggregate token count; no per-model-call data available"
+    },
+    {
+      "path": "$.output_tokens",
+      "reason": "Aggregate token count; no per-model-call data available"
+    },
+    {
+      "path": "$.api_call_count",
+      "reason": "Aggregate count; no per-model-call data available"
+    },
+    {
+      "path": "$.tool_call_count",
+      "reason": "Aggregate count; no per-tool-call data available"
+    },
+    {
+      "path": "$.duration_seconds",
+      "reason": "Not part of target session entity"
+    },
+    {
+      "path": "$.attribution_calculated_at",
+      "reason": "Unclear if represents session end; not mapped"
+    },
+    {
+      "path": "$.user_persona",
+      "reason": "Not part of target session entity"
+    },
+    {
+      "path": "$.session_success",
+      "reason": "Not part of target session entity"
+    }
+  ],
+  "notes": "Source contains only session-level aggregates; model_call and tool_call entities cannot be populated without per-invocation data."
+}

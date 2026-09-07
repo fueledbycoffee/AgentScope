@@ -13,7 +13,6 @@ import io
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -39,7 +38,11 @@ from agentscope_app.infrastructure.files.raw_store import FilesystemRawFileStore
 from agentscope_app.infrastructure.ids import UtcClock, UuidIdGenerator
 from agentscope_app.infrastructure.readers.router import FormatRouter
 
-DOCUMENTS = sorted((Path(__file__).parent / "documents").glob("*.json"))
+DOCUMENTS = sorted(
+    p
+    for p in (Path(__file__).parent / "documents").glob("*.json")
+    if not p.name.endswith(".expected.json")
+)
 
 
 class RaisingAssistant:
@@ -83,7 +86,14 @@ def sessions_table(rows: int = 3) -> bytes:
 def conversations_table() -> bytes:
     """Assistant response, thinking, tool_use / tool_result pair, user prompt, metadata."""
     roles = ["user", "assistant", "assistant", "tool_use", "tool_result", "metadata"]
-    turn_types = ["user_prompt", "assistant_response", "assistant_thinking", "tool_use", "tool_result", "progress"]
+    turn_types = [
+        "user_prompt",
+        "assistant_response",
+        "assistant_thinking",
+        "tool_use",
+        "tool_result",
+        "progress",
+    ]
     n = len(roles)
     table = pa.table(
         {
@@ -96,7 +106,10 @@ def conversations_table() -> bytes:
             "content": pa.array(["hello"] * n, pa.large_string()),
             "model": pa.array([None, "gpt-5.5", "gpt-5.5", None, None, None], pa.large_string()),
             "timestamp": pa.array(
-                [int(datetime(2026, 6, 1, 12, 0, i, tzinfo=UTC).timestamp()) * 10**6 for i in range(n)],
+                [
+                    int(datetime(2026, 6, 1, 12, 0, i, tzinfo=UTC).timestamp()) * 10**6
+                    for i in range(n)
+                ],
                 pa.timestamp("us", tz="UTC"),
             ),
             "input_tokens": pa.array([None, 10, None, None, None, None], pa.int64()),
@@ -104,7 +117,9 @@ def conversations_table() -> bytes:
             "cache_creation_input_tokens": pa.array([None, 0, None, None, None, None], pa.int64()),
             "cache_read_input_tokens": pa.array([None, 0, None, None, None, None], pa.int64()),
             "tool_name": pa.array([None, None, None, "Bash", "Bash", None], pa.large_string()),
-            "tool_call_id": pa.array([None, None, None, "call_1", "call_1", None], pa.large_string()),
+            "tool_call_id": pa.array(
+                [None, None, None, "call_1", "call_1", None], pa.large_string()
+            ),
             "category": pa.array([None, None, None, "shell", None, None], pa.large_string()),
             "agent": pa.array(["claude-code"] * n, pa.large_string()),
         }
@@ -135,14 +150,20 @@ def test_saved_document_replays_without_the_assistant(document_path: Path, tmp_p
 
     saved = SaveMappingRevision(uow_factory, clock).execute(document, created_by="user")
     data = sessions_table() if expected["table"] == "sessions" else conversations_table()
-    upload = StoreUpload(uow_factory, store, reader, clock, ids).execute(f"{expected['table']}.parquet", data)
-    preview = PreviewImport(uow_factory, store, reader).execute(upload.upload_id, saved.record.id, sample=50)
+    upload = StoreUpload(uow_factory, store, reader, clock, ids).execute(
+        f"{expected['table']}.parquet", data
+    )
+    preview = PreviewImport(uow_factory, store, reader).execute(
+        upload.upload_id, saved.record.id, sample=50
+    )
     assert preview.records.get("rejected", 0) == expected["rejected"], preview.rejects[:3]
     report = CommitImport(uow_factory, store, reader, clock, ids).execute(
         document["source"], [FileBinding(upload.upload_id, saved.record.id)]
     )
     assert report.status == "committed"
-    assert report.records.get("accepted", 0) + report.records.get("partial", 0) == expected["accepted"]
+    assert (
+        report.records.get("accepted", 0) + report.records.get("partial", 0) == expected["accepted"]
+    )
     for entity, count in expected["entities"].items():
         assert report.entities.get(entity, 0) == count, (entity, report.entities)
     assert assistant.calls == 0
