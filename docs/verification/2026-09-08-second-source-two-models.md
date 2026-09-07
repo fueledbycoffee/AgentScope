@@ -81,11 +81,12 @@ was included in the pre-checks.
 | B-conversations-2 | B | conversations | off | 1 | executable; this reply used `$.timestamp.iso` itself but left the **model_call rule without a `where`** | 1: tool_call `where` → `role == "tool_use"` | rev 1 `map_74da…` | accepted 518/518, 0 rejects | committed: 9 sessions, **518 model calls (every row), 88 tool calls** | not replayed: semantically wrong (a model call per row); superseded by B-conversations-3 |
 | B-conversations-3 | B | conversations | off | 1 | executable | both `where` corrections prepared | — | — | — | harness v3 waited on an invalid locator at validation; no outcome (corrected document kept) |
 | B-conversations-4 | B | conversations | off | — | no reply and no error notice within 420 s (two 180 s calls plus preparation can exceed it) | | — | — | — | rerun with a 600 s wait and a 240 s adapter timeout |
-| B-conversations-5 | B | conversations | off | | | tool_call and model_call `where` → role predicates; notes | | | | |
+| B-conversations-5 | B | conversations | off | 1 | executable (this reply used the wrapper path again) | 4: `$.timestamp` → `$.timestamp.iso`; tool_call `where` → `role == "tool_use"`; model_call `where` → `role == "assistant"`; `notes` set by the reviewer (all recorded with base/target hashes) | rev 1 `map_cd22…` | 518 accepted, 0 rejected | committed 518/518: **9 sessions, 149 model calls, 88 tool calls, 0 reject rows** (the audit's expected counts) | see below |
 | A-conversations-2 | A | conversations | off | 1 | draft: the only issue is `notes` (an object instead of a string); rules were right (session `where is_first_turn == true`, model_call `role == assistant`) | tool_call `where` applied; harness v2 did not watch the issue list and timed out at validation | — | — | — | — |
 | A-conversations-3 | A | conversations | off | — | stopped on purpose (same locator defect) | | | | | |
 | A-conversations-4 | A | conversations | off | 2 | executable after the built-in repair (`$.timestamp.iso` by itself) | model_call `where` → `role == "assistant"`, `notes` string; the tool_call `where` correction was **lost by a harness flag-parsing defect** (repeated `--set-where` kept only the last) | rev 1 `map_d1ae…` | 518 accepted | committed 518/518: 9 sessions, **149 model calls (correct)**, 132 tool calls and 386 `missing_required` emission rejects (the presence test again) | superseded by A-conversations-5 |
-| A-conversations-5 | A | conversations | off | | | both `where` predicates; notes | | | | |
+| A-conversations-5 | A | conversations | off | 2 | draft: **every path written as a bare column name** (`session_id`, `timestamp`, …), a new variance of the same model | both `where` predicates and notes applied; not executable (invalid paths) | — | — | — | rerun as A-conversations-6 with a systematic `$.` prefix correction |
+| A-conversations-6 | A | conversations | off | | | + bare paths prefixed (`--fix-bare-paths`) | | | | |
 
 ## Findings so far
 

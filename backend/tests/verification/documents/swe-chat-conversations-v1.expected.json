@@ -1,0 +1,23 @@
+{
+  "table": "conversations",
+  "accepted": 6,
+  "rejected": 0,
+  "entities": {
+    "session": 1,
+    "model_call": 2,
+    "tool_call": 1
+  },
+  "provenance": {
+    "run": "B-conversations-5",
+    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+    "date": "2026-09-07",
+    "human_corrections": 4,
+    "generation_calls": 1,
+    "corrections": [
+      "$.timestamp -> $.timestamp.iso",
+      "tool_call where role == tool_use",
+      "model_call where role == assistant",
+      "notes set by the reviewer"
+    ]
+  }
+}
