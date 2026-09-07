@@ -1,6 +1,6 @@
 {
   "table": "conversations",
-  "accepted": 3,
+  "accepted": 4,
   "rejected": 0,
   "entities": {
     "session": 1,
@@ -19,5 +19,11 @@
       "model_call where role == assistant",
       "notes set by the reviewer"
     ]
+  },
+  "distinct_sessions": 1,
+  "session_fields": {
+    "sess-0": {
+      "agent": "claude-code"
+    }
   }
 }

@@ -48,13 +48,16 @@ function log(...parts) { console.log(new Date().toISOString(), ...parts) }
 
 async function startBackend(root, env) {
   mkdirSync(root, { recursive: true })
+  // the port must be free: a health answer before we start would be another instance's
+  try { await fetch(`${base}/api/health`); throw new Error(`port ${port} already answers; another backend is running there`) } catch (error) { if (!(error instanceof TypeError)) throw error }
   const child = spawn('uv', ['run', 'uvicorn', 'agentscope_app.interfaces.api.main:app', '--host', '127.0.0.1', '--port', String(port)], {
     cwd: join(repo, 'backend'),
     stdio: ['ignore', 'ignore', 'inherit'],
     env: { ...process.env, AGENTSCOPE_DATABASE_URL: `sqlite:///${join(root, 'agentscope.sqlite3')}`, AGENTSCOPE_RAW_FILE_DIR: join(root, 'raw'), ...env },
   })
   for (let i = 0; i < 120; i += 1) {
-    try { const r = await fetch(`${base}/api/health`); if (r.ok) return child } catch { /* not yet */ }
+    if (child.exitCode !== null) throw new Error(`backend exited with code ${child.exitCode} before answering`)
+    try { const r = await fetch(`${base}/api/health`); if (r.ok && child.exitCode === null) return child } catch { /* not yet */ }
     await new Promise(r => setTimeout(r, 500))
   }
   child.kill('SIGTERM')
@@ -177,6 +180,30 @@ async function live() {
       corrections.push({ set_where: spec, applied: true, reserialised: true, base_sha256: base, target_sha256: createHash('sha256').update(documentText).digest('hex') })
       log('where replaced on', rule.id)
     }
+    if (args['fix-bare-paths']) {
+      // a reviewer's systematic fix: paths written as bare column names get the '$.' prefix, and a
+      // bare Parquet timestamp column gets its '.iso' accessor (recorded as one correction)
+      const parsed = JSON.parse(documentText)
+      const base = createHash('sha256').update(documentText).digest('hex')
+      let changed = 0
+      const fix = (path) => {
+        if (typeof path !== 'string' || path.startsWith('$') || path.startsWith('@root')) return path
+        changed += 1
+        return path === 'timestamp' || path === 'created_at' ? `$.${path}.iso` : `$.${path}`
+      }
+      for (const rule of parsed.rules ?? []) {
+        for (const cond of rule.where ?? []) cond.path = fix(cond.path)
+        for (const field of Object.values(rule.fields ?? {})) {
+          if ('path' in field) field.path = fix(field.path)
+          if (Array.isArray(field.paths)) field.paths = field.paths.map(fix)
+        }
+      }
+      if (changed) {
+        documentText = JSON.stringify(parsed, null, 2)
+        corrections.push({ fix_bare_paths: changed, applied: true, reserialised: true, base_sha256: base, target_sha256: createHash('sha256').update(documentText).digest('hex') })
+        log('bare paths prefixed:', changed)
+      } else corrections.push({ fix_bare_paths: 0, applied: false })
+    }
     if (args['set-notes'] !== undefined) {
       const parsed = JSON.parse(documentText)
       const base = createHash('sha256').update(documentText).digest('hex')
@@ -266,10 +293,25 @@ async function replay() {
     await page.waitForURL(/\/imports\/imp_/, { timeout: 120_000 })
     await page.getByText(/^Committed in .*|^Failed|already imported/).first().waitFor({ timeout: 120_000 })
     const report = await page.locator('main').innerText()
+    const importId = new URL(page.url()).pathname.split('/').pop()
+    const imported = await (await fetch(`${base}/api/imports/${encodeURIComponent(importId)}`)).json()
     const sessions = await (await fetch(`${base}/api/sessions?source=${encodeURIComponent(args.source ?? 'swe-chat')}&limit=500`)).json()
-    writeFileSync(join(runDir, 'replay.json'), JSON.stringify({ runId, snapshot: args.replay, control, sessions: sessions.length, requests: counters }, null, 2))
+    const assistantRuns = Object.entries(counters).filter(([k]) => k.includes('/api/assistant/run')).reduce((n, [, v]) => n + v, 0)
+    // a replay passes only when the saved mapping really executed on a fresh database
+    const checks = {
+      control_run_503: control.run_status === 503 && control.code === 'assistant_unavailable',
+      import_committed: imported.status === 'committed',
+      no_duplicates: (imported.records?.duplicate ?? 0) === 0,
+      records_accepted: (imported.records?.accepted ?? 0) + (imported.records?.partial ?? 0) > 0,
+      expected_sessions: args['expect-sessions'] === undefined || sessions.length === Number(args['expect-sessions']),
+      expected_entities: args['expect-entities'] === undefined || JSON.stringify(imported.entities) === args['expect-entities'],
+      no_assistant_runs: assistantRuns === 0,
+    }
+    const passed = Object.values(checks).every(Boolean)
+    writeFileSync(join(runDir, 'replay.json'), JSON.stringify({ runId, snapshot: args.replay, control, import: { id: importId, status: imported.status, records: imported.records, entities: imported.entities, mapping: imported.mapping }, sessions: sessions.length, checks, passed, requests: counters }, null, 2))
     writeFileSync(join(runDir, 'import-report.txt'), report)
-    log('replay done', runId, `control ${control.status} ${control.code}`, `${sessions.length} sessions`)
+    log('replay', passed ? 'PASSED' : 'FAILED', runId, JSON.stringify(checks), `entities ${JSON.stringify(imported.entities)}`)
+    if (!passed) process.exitCode = 3
   } finally {
     await browser.close()
     backend.kill('SIGTERM')

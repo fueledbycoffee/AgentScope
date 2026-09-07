@@ -18,6 +18,17 @@
       "tool_call where role == tool_use",
       "model_call where role == assistant",
       "notes set by the reviewer"
+    ],
+    "post_run_reviewer_corrections": [
+      "session.ended_at removed",
+      "is_error literals removed",
+      "tool_call.status <- $.category removed"
     ]
+  },
+  "distinct_sessions": 1,
+  "session_fields": {
+    "sess-0": {
+      "agent": "claude-code"
+    }
   }
 }

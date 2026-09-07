@@ -25,10 +25,6 @@
         "started_at": {
           "path": "$.timestamp.iso",
           "timestamp_format": "iso8601"
-        },
-        "ended_at": {
-          "path": "$.timestamp.iso",
-          "timestamp_format": "iso8601"
         }
       }
     },
@@ -82,9 +78,6 @@
         "token_semantics": {
           "literal": "unknown"
         },
-        "is_error": {
-          "literal": false
-        },
         "error_message": {
           "literal": null
         },
@@ -122,9 +115,6 @@
         "tool_name": {
           "path": "$.tool_name"
         },
-        "status": {
-          "path": "$.category"
-        },
         "internal_latency_ms": {
           "literal": null
         },
@@ -133,9 +123,6 @@
         },
         "exit_code": {
           "literal": null
-        },
-        "is_error": {
-          "literal": false
         },
         "sequence": {
           "path": "$.turn_number"
@@ -209,5 +196,5 @@
       "reason": "Not needed"
     }
   ],
-  "notes": "SWE-chat conversations: assistant rows are model calls, tool_use rows are tool calls; token semantics unknown. Reviewed 2026-09-07."
+  "notes": "SWE-chat conversations: assistant rows are model calls, tool_use rows are tool calls; token semantics unknown. Reviewed 2026-09-07. Reviewer corrections after the run (2026-09-07 late): session.ended_at removed (a turn's timestamp is not a declared end); model_call.is_error literal removed (unknown stays null); tool_call.is_error literal removed (unknown stays null); tool_call.status <- $.category removed (a category is not an outcome)."
 }

@@ -1,10 +1,10 @@
 """Saved mappings replay without any assistant (issue #16, ADR-005).
 
-Every document under ``documents/`` is a final, human-reviewed mapping from the
-second-source verification runs. Each is saved through the application, applied
-to synthetic Parquet shaped like its SWE-chat table, and imported while a
-recording assistant that raises on any call is wired in: the import must commit
-with the expected outcomes and the assistant call count must stay zero.
+Every document under ``documents/`` is a final, reviewed mapping from the second-source
+verification runs. Each is saved through the real HTTP application, applied to synthetic
+Parquet shaped like its SWE-chat table, and imported through the API while the container's
+assistant is a recorder that raises on any call: the import must commit with the expected
+outcomes, the session rows must carry the mapped fields, and the recorder must never be reached.
 """
 
 from __future__ import annotations
@@ -17,26 +17,13 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from fastapi.testclient import TestClient
 
-from agentscope_app.application.dto import (
-    AssistantReply,
-    FileBinding,
-    PreparedContext,
-    RepairRequest,
-)
-from agentscope_app.application.use_cases.assistant import (
-    PrepareContext,
-    ProfileFile,
-    RunAssistant,
-)
-from agentscope_app.application.use_cases.imports import CommitImport, PreviewImport
-from agentscope_app.application.use_cases.mappings import SaveMappingRevision
-from agentscope_app.application.use_cases.uploads import StoreUpload
-from agentscope_app.infrastructure.db.engine import create_engine_for, run_migrations
-from agentscope_app.infrastructure.db.unit_of_work import make_uow_factory
-from agentscope_app.infrastructure.files.raw_store import FilesystemRawFileStore
-from agentscope_app.infrastructure.ids import UtcClock, UuidIdGenerator
-from agentscope_app.infrastructure.readers.router import FormatRouter
+from agentscope_app.application.dto import AssistantReply, PreparedContext, RepairRequest
+from agentscope_app.application.use_cases.assistant import RunAssistant
+from agentscope_app.infrastructure.settings import Settings
+from agentscope_app.interfaces.api.container import build_container
+from agentscope_app.interfaces.api.main import create_app
 
 DOCUMENTS = sorted(
     p
@@ -84,7 +71,7 @@ def sessions_table(rows: int = 3) -> bytes:
 
 
 def conversations_table() -> bytes:
-    """Assistant response, thinking, tool_use / tool_result pair, user prompt, metadata."""
+    """First user turn, assistant response, thinking, a tool_use / tool_result pair, metadata."""
     roles = ["user", "assistant", "assistant", "tool_use", "tool_result", "metadata"]
     turn_types = [
         "user_prompt",
@@ -103,6 +90,7 @@ def conversations_table() -> bytes:
             "role": pa.array(roles, pa.large_string()),
             "turn_type": pa.array(turn_types, pa.large_string()),
             "is_continuation": pa.array([False] * n, pa.bool_()),
+            "is_first_turn": pa.array([True] + [False] * (n - 1), pa.bool_()),
             "content": pa.array(["hello"] * n, pa.large_string()),
             "model": pa.array([None, "gpt-5.5", "gpt-5.5", None, None, None], pa.large_string()),
             "timestamp": pa.array(
@@ -122,6 +110,8 @@ def conversations_table() -> bytes:
             ),
             "category": pa.array([None, None, None, "shell", None, None], pa.large_string()),
             "agent": pa.array(["claude-code"] * n, pa.large_string()),
+            "repo_id": pa.array(["repo-1"] * n, pa.large_string()),
+            "user_id": pa.array(["user-0"] * n, pa.large_string()),
         }
     )
     return _bytes(table)
@@ -133,44 +123,77 @@ def _bytes(table: pa.Table) -> bytes:
     return buf.getvalue()
 
 
+def app_with_raising_assistant(tmp_path: Path) -> tuple[TestClient, RaisingAssistant]:
+    """The real application, its container's assistant replaced by the recorder."""
+    settings = Settings(
+        _env_file=None,
+        database_url=f"sqlite:///{tmp_path / 'db' / 'agentscope.sqlite3'}",
+        raw_file_dir=tmp_path / "raw",
+        llm_provider="none",
+    )
+    container = build_container(settings)
+    assistant = RaisingAssistant()
+    container.assistant = assistant
+    container.run_assistant = RunAssistant(container.prepare_context, assistant)
+    return TestClient(create_app(settings, container=container)), assistant
+
+
 @pytest.mark.parametrize("document_path", DOCUMENTS, ids=[p.stem for p in DOCUMENTS])
 def test_saved_document_replays_without_the_assistant(document_path: Path, tmp_path: Path) -> None:
     document = json.loads(document_path.read_text(encoding="utf-8"))
     expected = json.loads(document_path.with_suffix(".expected.json").read_text(encoding="utf-8"))
-    engine = create_engine_for(f"sqlite:///{tmp_path / 'db.sqlite3'}")
-    run_migrations(engine)
-    uow_factory = make_uow_factory(engine)
-    store = FilesystemRawFileStore(tmp_path / "raw")
-    reader = FormatRouter()
-    clock, ids = UtcClock(), UuidIdGenerator()
-    assistant = RaisingAssistant()
-    # the assistant is wired exactly as the container wires it, and never reached
-    profile = ProfileFile(uow_factory, store, reader)
-    RunAssistant(PrepareContext(uow_factory, store, reader, profile), assistant)
-
-    saved = SaveMappingRevision(uow_factory, clock).execute(document, created_by="user")
-    data = sessions_table() if expected["table"] == "sessions" else conversations_table()
-    upload = StoreUpload(uow_factory, store, reader, clock, ids).execute(
-        f"{expected['table']}.parquet", data
-    )
-    preview = PreviewImport(uow_factory, store, reader).execute(
-        upload.upload_id, saved.record.id, sample=50
-    )
-    assert preview.records.get("rejected", 0) == expected["rejected"], preview.rejects[:3]
-    report = CommitImport(uow_factory, store, reader, clock, ids).execute(
-        document["source"], [FileBinding(upload.upload_id, saved.record.id)]
-    )
-    assert report.status == "committed"
-    assert (
-        report.records.get("accepted", 0) + report.records.get("partial", 0) == expected["accepted"]
-    )
-    for entity, count in expected["entities"].items():
-        assert report.entities.get(entity, 0) == count, (entity, report.entities)
-    assert assistant.calls == 0
-    # a second start of the application still finds the same revision by hash
-    with make_uow_factory(engine)() as uow:
-        again = uow.mappings.find_by_hash(saved.record.content_hash)
-    assert again is not None and again.id == saved.record.id
+    client, assistant = app_with_raising_assistant(tmp_path)
+    with client:
+        saved = client.post("/api/mappings", json={"document": document})
+        assert saved.status_code == 201, saved.text
+        mapping_id = saved.json()["id"]
+        data = sessions_table() if expected["table"] == "sessions" else conversations_table()
+        upload = client.post(
+            "/api/uploads", files={"file": (f"{expected['table']}.parquet", data)}
+        ).json()
+        preview = client.post(
+            "/api/imports/preview",
+            json={"upload_id": upload["upload_id"], "mapping_id": mapping_id, "sample": 50},
+        ).json()
+        assert preview["records"].get("rejected", 0) == expected["rejected"], preview["rejects"][:3]
+        report = client.post(
+            "/api/imports",
+            json={
+                "upload_id": upload["upload_id"],
+                "mapping_id": mapping_id,
+                "source": document["source"],
+            },
+        ).json()
+        assert report["status"] == "committed", report
+        assert report["records"].get("duplicate", 0) == 0
+        assert (
+            report["records"].get("accepted", 0) + report["records"].get("partial", 0)
+            == expected["accepted"]
+        )
+        for entity, count in expected["entities"].items():
+            assert report["entities"].get(entity, 0) == count, (entity, report["entities"])
+        sessions = client.get(f"/api/sessions?source={document['source']}&limit=50").json()
+        assert len(sessions) == expected["distinct_sessions"]
+        by_id = {s["external_id"]: s for s in sessions}
+        for external_id, fields in expected.get("session_fields", {}).items():
+            assert external_id in by_id, (external_id, sorted(by_id))
+            for field, value in fields.items():
+                assert by_id[external_id][field] == value, (external_id, field, by_id[external_id])
+        # the assistant remained reachable through the real container, and was never reached
+        control = client.post(
+            "/api/assistant/run",
+            json={
+                "kind": "propose",
+                "upload_id": upload["upload_id"],
+                "identity": {"name": "c", "source": "c"},
+                "context_sha256": "0" * 64,
+            },
+        )
+        assert control.status_code == 409  # a stale digest stops before the adapter
+        assert assistant.calls == 0
+        # a second start finds the same revision by content hash
+        again = client.post("/api/mappings", json={"document": document})
+        assert again.status_code == 200 and again.json()["id"] == mapping_id
 
 
 def test_at_least_one_reviewed_document_is_committed() -> None:

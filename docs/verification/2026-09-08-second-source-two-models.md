@@ -121,8 +121,10 @@ was included in the pre-checks.
 
 ## Replay without the assistant
 
-Four replays (`replay-A-sessions-3`, `replay-B-sessions-2`,
-`replay-B-conversations-5`, `replay-A-conversations-6`): the pre-import
+Four replays, each run twice (`replay-*`, then `replay2-*` after the harness
+gained explicit pass/fail assertions: control run 503, import `committed`,
+zero duplicates, records accepted, expected session count and entity counts,
+zero assistant requests; all four `replay2-*` runs PASSED): the pre-import
 snapshot restored into a fresh backend started with
 `AGENTSCOPE_LLM_PROVIDER=none` and an empty key; a control prepare answered
 200 and the following run **503 assistant_unavailable**; the import through the
@@ -131,9 +133,14 @@ live run (12 sessions; 9 sessions, 149 model calls, 88 tool calls); the
 browser request log contains zero assistant run requests.
 
 The API regression test `backend/tests/verification/test_replay_without_assistant.py`
-replays every reviewed final document under `backend/tests/verification/documents/`
-against synthetic SWE-shaped Parquet with a recording assistant that raises on
-any call.
+builds the real application container with its assistant replaced by a
+recorder that raises on any call, then saves each reviewed document, uploads a
+synthetic SWE-shaped Parquet table (with a first-turn row so config A's
+session predicate fires), previews and imports through the HTTP API, and
+asserts: committed, zero duplicates, the expected accepted count and entity
+counts, the distinct sessions and their mapped `agent`, an assistant control
+call that stops at the digest check, zero recorder calls, and the same
+revision found again by content hash.
 
 ## Acceptance matrix
 
@@ -154,9 +161,16 @@ and status fields absent from the source).
 Committed under `backend/tests/verification/documents/` after review (paths,
 role predicates and notes only; no source values):
 `swe-chat-sessions-v1.json` (A-sessions-3; B-sessions-2 produced a document
-with the same fields), `swe-chat-conversations-v1.json` (B-conversations-5:
-richer, with `token_semantics: unknown`, `is_error`, latency and status fields
-mapped to source columns the audit shows are mostly null),
+with the same fields), `swe-chat-conversations-v1.json` (B-conversations-5,
+**with three reviewer corrections applied after the run**, recorded in the
+document's `notes` and in the fixture's provenance: the session rule's
+`ended_at` (a turn's timestamp is not a declared end; the reducer would keep
+the first row's value and raise `conflicting_value` on the rest), the literal
+`is_error: false` on model and tool calls (an unknown outcome stays null, the
+UI shows "unavailable" rather than "no"), and `tool_call.status ← $.category`
+(a category is not an outcome). The revision imported in run B-conversations-5
+still carried those three fields; its counts are unaffected, its declared
+session ends and error flags were fabricated and are not to be trusted),
 `swe-chat-conversations-v1-a.json` (A-conversations-6: the minimal set). Each
 carries an `.expected.json` with the outcomes computed on the synthetic
 SWE-shaped table (sessions: 3 rows accepted, 3 session emissions;
