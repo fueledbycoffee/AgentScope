@@ -55,3 +55,13 @@ copy).
 - Dark theme follows the token derivation stated in the Console README.
 
 See ADR-006 for the architectural consequences.
+
+## Amendment (owner, 2026-09-07): icons over labels
+
+After reviewing the shell the owner asked for icons over labels where
+possible ("feels very textual"). This amends the Console rule "no icons except
+the `i` and the chip ×": repeated row actions are icon-only buttons with an
+accessible name and a tooltip, the rail shows icon + label, the theme toggle
+is icon-only, status pills carry a glyph. Text stays where a first-time user
+needs it (primary import actions, empty states, notices). Icon set:
+`web/src/components/icons.tsx` (inline SVG, `currentColor`).

@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { getMetricsSummary, listSessions } from '../api'
-import { KpiTile, StateBlock } from '../components'
+import { Icon, KpiTile, StateBlock } from '../components'
 import { useScope } from '../scope'
 import { useScopeBar } from '../shellHooks'
 import { useResource } from '../useResource'
@@ -38,7 +38,7 @@ export default function OverviewPage() {
       </div>}
     </StateBlock>
     <section className="panel" aria-label="Sessions">
-      <div className="panel-head"><h2>Sessions</h2><Link to={link('/sessions')}>All sessions in scope</Link></div>
+      <div className="panel-head"><h2>Sessions</h2><Link to={link('/sessions')} className="with-icon">All sessions in scope<Icon name="arrowRight" /></Link></div>
       <StateBlock loading={sessions.loading} error={sessions.error} retry={sessions.retry} lines={4}>
         {sessions.data && <SessionsTable rows={sessions.data} caption="Sessions in scope" hideCaption empty="No sessions match this scope. Clear the scope or import traces." />}
       </StateBlock>

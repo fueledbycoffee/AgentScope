@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { getMapping, listMappings } from '../api'
 import type { Mapping } from '../api'
-import { DataTable, JsonText, StateBlock } from '../components'
+import { DataTable, IconButton, JsonText, StateBlock } from '../components'
 import type { Column } from '../components'
 import { useFileBar } from '../shellHooks'
 import { useResource } from '../useResource'
@@ -28,7 +28,7 @@ export default function MappingsPage() {
     { key: 'format', header: 'Reads', render: mapping => mapping.input_format },
     { key: 'by', header: 'Created by', render: mapping => mapping.created_by },
     { key: 'id', header: 'ID', mono: true, render: mapping => mapping.id },
-    { key: 'doc', header: 'Document', render: mapping => <button className="btn small" aria-expanded={open === mapping.id} onClick={() => setOpen(open === mapping.id ? undefined : mapping.id)}>{open === mapping.id ? 'Hide' : 'Show'}</button> },
+    { key: 'doc', header: 'Document', render: mapping => <IconButton name={open === mapping.id ? 'chevronUp' : 'chevronDown'} label={open === mapping.id ? `Hide document of ${mapping.name}` : `Show document of ${mapping.name}`} className="btn small icon-only" aria-expanded={open === mapping.id} onClick={() => setOpen(open === mapping.id ? undefined : mapping.id)} /> },
   ]
   return <>
     <div className="page-head"><h1>Mappings</h1></div>

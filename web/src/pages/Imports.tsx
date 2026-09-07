@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getImport, getRejectSummary, listImports, listRecords, listRejects } from '../api'
 import type { ImportReport, ImportSummary, ImportedFile, ImportReject, RawReference, RecordRow, RejectSummary } from '../api'
-import { DataTable, Notice, Pagination, SourceRecordDialog, StateBlock, StatusPill } from '../components'
+import { DataTable, Icon, IconButton, Notice, Pagination, SourceRecordDialog, StateBlock, StatusPill } from '../components'
 import type { Column } from '../components'
 import { display, entityCounts, PAGE_SIZE } from '../format'
 import { useScope } from '../scope'
@@ -46,7 +46,7 @@ export function ImportsPage() {
         {resource.data && <>
           <DataTable caption="Import attempts, newest first" hideCaption columns={columns} rows={resource.data} rowKey={r => r.import_id}
             empty={offset > 0 ? 'No imports on this page.' : 'No imports yet.'} />
-          {resource.data.length === 0 && offset === 0 && <p><Link className="btn primary small" to="/import">Import a trace file</Link></p>}
+          {resource.data.length === 0 && offset === 0 && <p><Link className="btn primary small" to="/import"><Icon name="upload" />Import a trace file</Link></p>}
           <Pagination offset={offset} count={resource.data.length} onChange={setOffset} />
         </>}
       </StateBlock>
@@ -91,7 +91,7 @@ type SummaryResource = { data?: RejectSummary; error?: unknown; retry: () => voi
 
 function SummaryProblem({ summary }: { summary: SummaryResource }) {
   if (!summary.error) return null
-  return <Notice kind="warn" title="Filter counts are unavailable."><p>The summary request failed; the rows below are unaffected. <button className="btn small" onClick={summary.retry}>Retry</button></p></Notice>
+  return <Notice kind="warn" title="Filter counts are unavailable."><p>The summary request failed; the rows below are unaffected. <button className="btn small" onClick={summary.retry}><Icon name="refresh" />Retry</button></p></Notice>
 }
 
 function Records({ id, files, summary }: { id: string; files: ImportedFile[]; summary: SummaryResource }) {
@@ -107,7 +107,7 @@ function Records({ id, files, summary }: { id: string; files: ImportedFile[]; su
     { key: 'outcome', header: 'Outcome', render: r => <StatusPill status={r.outcome} /> },
     { key: 'entities', header: 'Entities', render: r => Object.entries(r.entity_counts).map(([k, v]) => `${k.replaceAll('_', ' ')} ${v}`).join(', ') || <span className="muted">—</span> },
     { key: 'warnings', header: 'Warnings', render: r => Object.entries(r.warning_counts).map(([k, v]) => `${k} ${v}`).join(', ') || <span className="muted">—</span> },
-    { key: 'raw', header: 'Source', render: r => <button className="btn small" aria-label={`Raw payload for ${r.locator}`} onClick={() => setOpen({ file_sha256: r.file_sha256, locator: r.locator })}>Raw payload</button> },
+    { key: 'raw', header: 'Source', render: r => <IconButton name="braces" label={`Raw payload for ${r.locator}`} className="btn small icon-only" onClick={() => setOpen({ file_sha256: r.file_sha256, locator: r.locator })} /> },
   ]
   const outcomes = summary.data?.outcomes ?? {}
   const replayed = files.filter(f => f.status === 'duplicate')
@@ -150,7 +150,7 @@ function Rejects({ id, files, summary, total, report }: { id: string; files: Imp
     { key: 'code', header: 'Code', mono: true, render: r => r.code },
     { key: 'field', header: 'Field', render: r => r.field ?? <span className="muted">—</span> },
     { key: 'message', header: 'Message', wrap: true, render: r => r.message },
-    { key: 'raw', header: 'Source', render: r => <button className="btn small" aria-label={`Raw payload for reject at ${r.locator}`} onClick={() => setOpen({ reference: { file_sha256: r.file_sha256 ?? files[0]?.sha256 ?? '', locator: r.locator } })}>Raw payload</button> },
+    { key: 'raw', header: 'Source', render: r => <IconButton name="braces" label={`Raw payload for reject at ${r.locator}`} className="btn small icon-only" onClick={() => setOpen({ reference: { file_sha256: r.file_sha256 ?? files[0]?.sha256 ?? '', locator: r.locator } })} /> },
   ]
   if (total === 0) return <section className="panel" id="rejects" aria-label="Rejects"><div className="panel-head"><h2>Rejects</h2></div>
     <p className="state-block">{report.status === 'failed' ? 'No reject rows: the attempt failed before its records were evaluated.'
@@ -222,7 +222,7 @@ export function ReportPage() {
         </div>
         <section className="panel" aria-label="Imported files"><div className="panel-head"><h2>Imported files</h2><span className="count">{report.files.length}</span></div>
           <DataTable caption="Imported files" hideCaption columns={fileColumns} rows={report.files} rowKey={f => f.sha256} empty="No files." /></section>
-        <div className="actions"><a className="btn small" href="#rejects">View rejects ({n(report.reject_count)})</a><a className="btn small" href="#records">Browse records</a><Link className="btn small" to={link('/overview')}>Open dashboard</Link><Link className="btn small" to="/imports">Imports history</Link></div>
+        <div className="actions"><a className="btn small" href="#rejects"><Icon name="alert" />View rejects ({n(report.reject_count)})</a><a className="btn small" href="#records"><Icon name="sessions" />Browse records</a><Link className="btn small" to={link('/overview')}><Icon name="overview" />Open dashboard</Link><Link className="btn small" to="/imports"><Icon name="imports" />Imports history</Link></div>
         {report.status !== 'failed' && <Records key={`records-${id}`} id={id} files={report.files} summary={summary} />}
         <Rejects key={`rejects-${id}`} id={id} files={report.files} summary={summary} total={report.reject_count} report={report} />
       </>}

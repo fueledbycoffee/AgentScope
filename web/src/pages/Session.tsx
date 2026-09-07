@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getMetricsSummary, getSession } from '../api'
 import type { RawReference } from '../api'
-import { DataTable, Notice, SourceRecordDialog, StateBlock } from '../components'
+import { DataTable, IconButton, Notice, SourceRecordDialog, StateBlock } from '../components'
 import type { Column } from '../components'
 import { display } from '../format'
 import { useScope } from '../scope'
@@ -39,7 +39,7 @@ export default function SessionPage() {
     { key: 'in', header: 'Input tokens', align: 'num', render: call => display(call.input_tokens) },
     { key: 'out', header: 'Output tokens', align: 'num', render: call => display(call.output_tokens) },
     { key: 'sem', header: 'Semantics', render: call => display(call.token_semantics) },
-    { key: 'src', header: 'Source', render: call => <button className="btn small" aria-label={`Source record for model call ${call.id}`} onClick={() => setSource({ sessionId: id, reference: call.raw_record })}>Source record</button> },
+    { key: 'src', header: 'Source', render: call => <IconButton name="braces" label={`Source record for model call ${call.id}`} className="btn small icon-only" onClick={() => setSource({ sessionId: id, reference: call.raw_record })} /> },
   ]
   const toolColumns: Column<ToolCall>[] = [
     { key: 'id', header: 'ID', mono: true, render: call => call.id },
@@ -49,7 +49,7 @@ export default function SessionPage() {
     { key: 'ended', header: 'Ended', mono: true, render: call => display(call.ended_at) },
     { key: 'wall', header: 'Wall latency (ms)', align: 'num', render: call => display(call.wall_latency_ms) },
     { key: 'error', header: 'Error', render: call => call.is_error === null ? 'Unavailable' : call.is_error ? 'Yes' : 'No' },
-    { key: 'src', header: 'Source', render: call => <button className="btn small" aria-label={`Source record for tool call ${call.id}`} onClick={() => setSource({ sessionId: id, reference: call.raw_record })}>Source record</button> },
+    { key: 'src', header: 'Source', render: call => <IconButton name="braces" label={`Source record for tool call ${call.id}`} className="btn small icon-only" onClick={() => setSource({ sessionId: id, reference: call.raw_record })} /> },
   ]
   return <>
     <nav className="crumbs" aria-label="Breadcrumb"><Link to={link('/sessions')}>Sessions</Link><span>/</span><span className="mono">{id}</span></nav>

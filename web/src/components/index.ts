@@ -7,5 +7,7 @@ export {
 } from './primitives'
 export type { Column, KpiProps, QualityItem } from './primitives'
 export { SourceRecordDialog } from './source'
+export { Icon, IconButton } from './icons'
+export type { IconName } from './icons'
 export { Counts, ErrorNotice, JsonView, ResourceState, Table } from './compat'
 export { abbreviate } from '../format'

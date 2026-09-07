@@ -2,12 +2,16 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import type { ReactNode } from 'react'
 import { ApiError } from '../api'
 import { PAGE_SIZE, abbreviate } from '../format'
+import { Icon, IconButton } from './icons'
+import type { IconName } from './icons'
 
 /* ------------------------------------------------------------------ status */
 
 export type Status = 'committed' | 'duplicate' | 'failed' | 'running' | 'pending'
+const PILL_ICONS: Record<string, IconName> = { committed: 'check', accepted: 'check', duplicate: 'copy', failed: 'alert', rejected: 'alert', running: 'clock', pending: 'clock', partial: 'info', ignored: 'filter' }
 export function StatusPill({ status }: { status: string }) {
-  return <span className={`pill ${status}`}>{status}</span>
+  const icon = PILL_ICONS[status]
+  return <span className={`pill ${status}`}>{icon && <Icon name={icon} size={11} />}{status}</span>
 }
 
 export function Notice({ kind = 'info', title, children, role }: { kind?: 'info' | 'warn' | 'bad'; title?: string; children: ReactNode; role?: 'alert' | 'status' }) {
@@ -30,7 +34,7 @@ export function StateBlock({ loading, error, retry, lines, children }: { loading
     return <div className="state-block error"><Notice kind="bad" title={message}>
       {error instanceof ApiError && <><p>Code: <code>{error.code}</code></p>
         {error.details.length > 0 && <details className="disclosure"><summary>Error details</summary><pre className="json">{JSON.stringify(error.details, null, 2)}</pre></details>}</>}
-      {retry && <p style={{ marginTop: 8 }}><button className="btn small" onClick={retry}>Retry</button></p>}
+      {retry && <p style={{ marginTop: 8 }}><button className="btn small" onClick={retry}><Icon name="refresh" />Retry</button></p>}
     </Notice></div>
   }
   return <>{children}</>
@@ -38,9 +42,9 @@ export function StateBlock({ loading, error, retry, lines, children }: { loading
 
 export function Pagination({ offset, count, onChange }: { offset: number; count: number; onChange: (offset: number) => void }) {
   return <nav aria-label="Pagination" className="pagination">
-    <button className="btn small" disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - PAGE_SIZE))}>Previous</button>
+    <IconButton name="arrowRight" label="Previous" className="btn small icon-only flip" disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - PAGE_SIZE))} />
     <span>Page {Math.floor(offset / PAGE_SIZE) + 1}</span>
-    <button className="btn small" disabled={count < PAGE_SIZE} onClick={() => onChange(offset + PAGE_SIZE)}>Next</button>
+    <IconButton name="arrowRight" label="Next" className="btn small icon-only" disabled={count < PAGE_SIZE} onClick={() => onChange(offset + PAGE_SIZE)} />
   </nav>
 }
 
@@ -90,7 +94,7 @@ export function Drawer({ title, onClose, children, closeLabel = 'Close' }: { tit
   }, [])
   return <dialog ref={dialog} className="drawer" aria-labelledby={id} onCancel={event => { event.preventDefault(); onClose() }}
     onClick={event => { if (event.target === dialog.current) onClose() }}>
-    <div className="drawer-head"><h2 id={id}>{title}</h2><button className="btn small" onClick={onClose}>{closeLabel}</button></div>
+    <div className="drawer-head"><h2 id={id}>{title}</h2><IconButton name="x" label={closeLabel} className="btn small icon-only" onClick={onClose} /></div>
     <div className="drawer-body">{children}</div>
   </dialog>
 }
@@ -178,6 +182,6 @@ export function QualityStrip({ items }: { items: QualityItem[] }) {
     {items.map(item => <button key={item.key} type="button" className="item" aria-expanded={open === item.key} onClick={() => setOpen(open === item.key ? undefined : item.key)}>
       <span className={`dot ${item.count ? 'warn' : ''}`} aria-hidden="true" /><b>{item.count == null ? 'Unavailable' : item.count.toLocaleString('en-US')}</b> {item.label}
     </button>)}
-    {current && <div className="detail"><span>{current.explanation}</span>{current.onList && current.count ? <button className="btn small" onClick={current.onList}>List these sessions</button> : null}</div>}
+    {current && <div className="detail"><span>{current.explanation}</span>{current.onList && current.count ? <button className="btn small" onClick={current.onList}><Icon name="sessions" />List these sessions</button> : null}</div>}
   </div>
 }
