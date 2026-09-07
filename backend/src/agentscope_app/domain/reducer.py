@@ -90,6 +90,19 @@ def reduce_sessions(emissions: Iterable[Emission]) -> dict[str, SessionAggregate
         ended_field = emission.fields.get("ended_at")
         started = started_field if started_field is not None else ended_field
         ended = ended_field if ended_field is not None else started_field
+        if isinstance(started, datetime) and isinstance(ended, datetime) and ended < started:
+            # The interpreter rejects these, but the reducer must hold its own
+            # invariant for any emission it is given: diagnose, do not use.
+            acc.conflicts.append(
+                Diagnostic(
+                    emission.rule_id,
+                    emission.occurrence,
+                    "reversed_interval",
+                    f"{emission.entity} ends before it starts; ignored for observed bounds",
+                    "ended_at",
+                )
+            )
+            continue
         if isinstance(started, datetime) and (
             session.observed_start_at is None or started < session.observed_start_at
         ):
