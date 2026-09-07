@@ -47,6 +47,10 @@ The complete allowed capability set is:
   (bounded JSON decoding of a string field).
 - Per-field `type` coercion: `string`, `integer`, `number`, `boolean`, `timestamp`,
   with `timestamp_format: iso8601 | epoch_s | epoch_ms` for timestamps.
+- A fixed timestamp-bounds extraction (`bounds: min | max` over a wildcard
+  path) for call start and end, because event arrays are not always
+  chronological. It is the only operation over a nested collection and is not
+  general aggregation.
 - `unit: {from, to}` for millisecond fields.
 - Ordered coalescing with `paths: [...]` (first present wins), constants with
   `literal`, and composite keys with `native_key: [fields]`.
@@ -88,11 +92,13 @@ before commit. The application orchestrates import; the domain interpreter owns
 deterministic mapping behavior. Saved mappings replay with **no LLM call**,
 including when the provider is disabled or replaced.
 
-The machine-readable JSON Schema and reference TraceLab mapping are delivered
-in the backend by [issue #4](https://github.com/fueledbycoffee/AgentScope/issues/4).
-That PR will add links to both artifacts here once their paths exist. This ADR
-defines the decision and deliberately does not supply a competing schema; this
-handoff supersedes issue #3's original schema checkbox.
+The machine-readable contract is
+[`mapping-dsl-v1.schema.json`](../../backend/src/agentscope_app/domain/mapping/mapping-dsl-v1.schema.json)
+(structural rules; the domain parser adds the semantic stage), the reference
+TraceLab mapping is [`backend/mappings/tracelab-v1.json`](../../backend/mappings/tracelab-v1.json),
+and the human reference is [docs/mapping](../mapping/README.md). All three were
+delivered by [issue #4](https://github.com/fueledbycoffee/AgentScope/issues/4);
+this ADR records the decision and does not duplicate the schema.
 
 ## Consequences
 

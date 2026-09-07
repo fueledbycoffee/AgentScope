@@ -4,6 +4,8 @@
   decisions; the same folder retains the original proposals and cross-reviews.
 - [Datasets](datasets/README.md): verified provenance, retrieval, field caveats,
   fixture review and limits on what has been inspected.
+- [Mapping DSL v1](mapping/README.md): the declarative mapping contract, target
+  schema, validation stages and diagnostic codes, with the TraceLab example.
 - [Architecture decision records](adr/README.md): accepted decisions and their
   rationale for maintainers.
 - Architecture documentation and diagrams: **planned**, not yet published.
