@@ -73,7 +73,7 @@ was included in the pre-checks.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | A-sessions | A | sessions | off | 2 | executable | none applied (harness v1) | rev 1 `map_93ed…` | 0 accepted / 12 rejected (`invalid_value`: `$.created_at` is the wrapper, not `.iso`) | committed with 12 rejects (harness v1 imported anyway; kept as evidence of the gate that was then added) | — |
 | A-sessions-2 | A | sessions | off | 1 | executable (this reply used `$.created_at.iso` itself and added `ended_at`) | none | rev 1 `map_396b…` | 4 accepted / 8 rejected (`reversed_interval`: `attribution_calculated_at` precedes `created_at` by milliseconds; it is not an end time) | committed 4/12 | — |
-| A-sessions-3 | A | sessions | off | | | `--replace` accessor if needed; `--delete-field session.ended_at` | | | | |
+| A-sessions-3 | A | sessions | off | 2 | executable after the built-in repair, `$.created_at.iso`, no `ended_at` | none needed (both prepared corrections were not applicable) | rev 1 `map_f0a1…` | 12 accepted / 0 rejected | committed 12/12 (session 12) | pre-import snapshot restored, backend with `AGENTSCOPE_LLM_PROVIDER=none`: import through the Import page committed, 12 sessions under `source=swe-chat`, no assistant request in the browser log (`replay-A-sessions-3`) |
 | A-conversations | A | conversations | off | | | `--replace "$.timestamp"→"$.timestamp.iso"` if needed | | | | |
 | B-sessions | B | sessions | off | | | | | | | |
 | B-conversations | B | conversations | off | | | | | | | |
@@ -108,11 +108,11 @@ any call.
 
 | | Config A | Config B |
 | --- | --- | --- |
-| sessions: live proposal | yes | |
-| sessions: human-assisted completion | | |
+| sessions: live proposal | yes | yes (pre-check) |
+| sessions: human-assisted completion | **yes**, zero manual edits (run A-sessions-3; the two earlier runs show the model's variance: wrapper path, then a wrong `ended_at`) | |
 | conversations: live proposal | yes (draft) | |
 | conversations: human-assisted completion | | |
-| replay passed | | |
+| replay passed | yes (sessions; UI replay and API regression test) | |
 
 Coverage: sessions **partial** (token and tool aggregates unmapped by design);
 conversations **partial** (no provider field; token semantics unknown; latency
