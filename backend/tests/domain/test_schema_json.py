@@ -62,6 +62,30 @@ def _no_source_in_field(d: dict[str, Any]) -> None:
     d["rules"][0]["fields"]["external_id"] = {"transforms": ["trim"]}
 
 
+def _null_unit(d: dict[str, Any]) -> None:
+    d["rules"][2]["fields"]["wall_latency_ms"]["unit"] = None
+
+
+def _null_timestamp_format(d: dict[str, Any]) -> None:
+    d["rules"][1]["fields"]["started_at"]["timestamp_format"] = None
+
+
+def _null_type(d: dict[str, Any]) -> None:
+    d["rules"][1]["fields"]["external_id"]["type"] = None
+
+
+def _null_bounds(d: dict[str, Any]) -> None:
+    d["rules"][1]["fields"]["started_at"]["bounds"] = None
+
+
+def _null_transforms(d: dict[str, Any]) -> None:
+    d["rules"][2]["fields"]["tool_name"]["transforms"] = None
+
+
+def _null_native_key(d: dict[str, Any]) -> None:
+    d["rules"][1]["native_key"] = None
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
@@ -74,6 +98,12 @@ def _no_source_in_field(d: dict[str, Any]) -> None:
         _version_as_boolean,
         _wildcard_in_field,
         _no_source_in_field,
+        _null_unit,
+        _null_timestamp_format,
+        _null_type,
+        _null_bounds,
+        _null_transforms,
+        _null_native_key,
     ],
 )
 def test_schema_and_parser_agree_on_structural_rejections(

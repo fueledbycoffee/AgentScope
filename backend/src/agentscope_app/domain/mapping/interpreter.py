@@ -8,6 +8,7 @@ and strict conversions, and reports every problem as a reject or warning.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from agentscope_app.domain.errors import ConversionError
@@ -257,6 +258,13 @@ def _emit(
             raise _FieldRejectError(
                 "missing_required", f"Required field {name!r} of {rule.entity} is missing", name
             )
+    started, ended = values.get("started_at"), values.get("ended_at")
+    if isinstance(started, datetime) and isinstance(ended, datetime) and ended < started:
+        raise _FieldRejectError(
+            "reversed_interval",
+            f"ended_at {ended.isoformat()} precedes started_at {started.isoformat()}",
+            "ended_at",
+        )
 
     native_key: tuple[str, ...] | None = None
     if rule.native_key:

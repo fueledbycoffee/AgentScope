@@ -684,3 +684,46 @@ def test_bounds_honour_empty_as_missing() -> None:
     )
     assert mixed.rejects == ()
     assert mixed.emissions[0].fields["started_at"] == datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def test_reversed_intervals_are_rejected_with_explanation() -> None:
+    result = run(
+        {"sid": "s", "kind": "call", "ts": 1, "usage": {"output": 0}, "tools": [{"name": "t"}]}
+    )
+    assert result.rejects == ()
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "model_call",
+                "entity": "model_call",
+                "select": "$",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "started_at": {"path": "$.start"},
+                    "ended_at": {"path": "$.end"},
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    reversed_call = apply_mapping(
+        spec,
+        {"sid": "s", "start": "2026-01-02T00:00:00Z", "end": "2026-01-01T00:00:00Z"},
+        file_sha256="f",
+        locator="line:1",
+    )
+    assert [(r.code, r.field) for r in reversed_call.rejects] == [("reversed_interval", "ended_at")]
+    assert "precedes" in reversed_call.rejects[0].message
+    same_instant = apply_mapping(
+        spec,
+        {"sid": "s", "start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:00:00Z"},
+        file_sha256="f",
+        locator="line:2",
+    )
+    assert same_instant.rejects == ()

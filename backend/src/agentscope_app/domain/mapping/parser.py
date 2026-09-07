@@ -274,7 +274,12 @@ def _parse_rule(raw_rule: Any, path: str, issues: _Issues) -> Rule | None:
 
     raw_key = raw_rule.get("native_key")
     native_key: tuple[str, ...]
-    if raw_key is None:
+    if "native_key" in raw_rule and raw_key is None:
+        issues.error(
+            "schema", f"{path}.native_key", "invalid_type", "native_key cannot be null; omit it"
+        )
+        native_key = ()
+    elif raw_key is None:
         native_key = ("external_id",) if "external_id" in fields else ()
     elif isinstance(raw_key, list) and all(isinstance(k, str) for k in raw_key):
         native_key = tuple(raw_key)
@@ -403,6 +408,12 @@ def _parse_field(raw: Any, target: TargetField, path: str, issues: _Issues) -> F
         issues.error("schema", path, "not_an_object", "A field mapping must be a JSON object")
         return None
     issues.unknown_keys(raw, _FIELD_KEYS, path)
+    for option in ("path", "paths", "type", "timestamp_format", "unit", "bounds", "transforms"):
+        if option in raw and raw[option] is None:
+            issues.error(
+                "schema", f"{path}.{option}", "invalid_type", f"{option} cannot be null; omit it"
+            )
+            return None
     sources = [k for k in ("path", "paths", "literal") if k in raw]
     if len(sources) != 1:
         issues.error(

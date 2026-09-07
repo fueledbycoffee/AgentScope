@@ -166,7 +166,8 @@ Warnings (value stored as null, emission kept): `absent`, `null`, `empty`,
 Rejects (emission dropped, explained): `missing_value` (`on_missing: reject`),
 `invalid_value` (including `precision_loss` and `out_of_range` conversions),
 `missing_required`, `missing_relationship`, `conflicting_relationship`,
-`negative_measure`, `selector_limit`, `predicate_too_deep`, `internal_error`.
+`negative_measure`, `reversed_interval` (ended_at before started_at),
+`selector_limit`, `predicate_too_deep`, `internal_error`.
 
 Reducer diagnostics: `conflicting_value`, `implicit_session`.
 
