@@ -74,9 +74,12 @@ was included in the pre-checks.
 | A-sessions | A | sessions | off | 2 | executable | none applied (harness v1) | rev 1 `map_93ed…` | 0 accepted / 12 rejected (`invalid_value`: `$.created_at` is the wrapper, not `.iso`) | committed with 12 rejects (harness v1 imported anyway; kept as evidence of the gate that was then added) | — |
 | A-sessions-2 | A | sessions | off | 1 | executable (this reply used `$.created_at.iso` itself and added `ended_at`) | none | rev 1 `map_396b…` | 4 accepted / 8 rejected (`reversed_interval`: `attribution_calculated_at` precedes `created_at` by milliseconds; it is not an end time) | committed 4/12 | — |
 | A-sessions-3 | A | sessions | off | 2 | executable after the built-in repair, `$.created_at.iso`, no `ended_at` | none needed (both prepared corrections were not applicable) | rev 1 `map_f0a1…` | 12 accepted / 0 rejected | committed 12/12 (session 12) | pre-import snapshot restored, backend with `AGENTSCOPE_LLM_PROVIDER=none`: import through the Import page committed, 12 sessions under `source=swe-chat`, no assistant request in the browser log (`replay-A-sessions-3`) |
-| A-conversations | A | conversations | off | | | `--replace "$.timestamp"→"$.timestamp.iso"` if needed | | | | |
-| B-sessions | B | sessions | off | | | | | | | |
-| B-conversations | B | conversations | off | | | | | | | |
+| A-conversations | A | conversations | off | — | harness v1 timed out waiting for a reply bubble (the page shows failures as notices, which v1 did not watch); no artifacts; rerun as A-conversations-2 | | | | | |
+| B-sessions | B | sessions | off | — | harness v1 timed out the same way; rerun below | | | | | |
+| B-sessions-2 | B | sessions | off | 2 | executable after the built-in repair, `$.created_at.iso`, no `ended_at` | none needed | rev 1 `map_88c1…` | 12 accepted / 0 rejected (warnings: `precision_reduced` 10, `null` 3) | committed 12/12 (session 12) | snapshot restored, `AGENTSCOPE_LLM_PROVIDER=none`: control prepare 200 then run **503 assistant_unavailable**; Import page import committed, 12 sessions under `source=swe-chat`, zero assistant run requests (`replay-B-sessions-2`) |
+| B-conversations | B | conversations | off | 1 | executable | 1: `"$.timestamp"` → `"$.timestamp.iso"` (base `df02f6fa…`, target `cf4124b1…`) | rev 1 `map_622e…` | 200 sampled: 74 accepted, 126 partial, 0 rejected; 50 reject rows in the sample (tool_call rule) | committed 518/518 records: 9 sessions, **149 model calls (= assistant rows), 132 tool calls (88 tool_use + 44 tool_result rows with a name)**, 386 `missing_required tool_name` emission rejects: the rule's `where tool_name exists` is true for Parquet nulls and for result rows | pending (rerun with the predicate fixed below) |
+| B-conversations-2 | B | conversations | off | | | + `where` of the tool_call rule → `role == "tool_use"` | | | | |
+| A-conversations-2 | A | conversations | off | | | same corrections prepared | | | | |
 
 ## Findings so far
 
@@ -91,6 +94,18 @@ was included in the pre-checks.
 3. Free hosted models are intermittently unavailable (429, upstream
    overload, cut-off replies); the adapter reports each cleanly and the
    substitution log records what was tried.
+4. The conversations table's tool rows need a role predicate, not a
+   presence test: Parquet keeps `tool_name: null` on every non-tool row, the
+   DSL's `exists` is true for a present null, and 44 tool_result rows carry a
+   tool name. `where tool_name exists` therefore fires on all 518 rows,
+   rejects 386 emissions as `missing_required` and double-counts 44 results as
+   calls. The correction is `where role == "tool_use"` (the audit predicted
+   it; the built-in fake already uses it).
+5. Both models' `model_call` rule (`role == "assistant"`) counts
+   `assistant_thinking` rows as calls (22 of 149 in the excerpt); whether that
+   is right depends on what the source means by a turn, which the audit shows
+   is not "one API call" (assistant rows equal the declared call count in 4 of
+   12 sessions). Recorded as a coverage limit, not corrected.
 
 ## Replay without the assistant
 
@@ -108,11 +123,11 @@ any call.
 
 | | Config A | Config B |
 | --- | --- | --- |
-| sessions: live proposal | yes | yes (pre-check) |
-| sessions: human-assisted completion | **yes**, zero manual edits (run A-sessions-3; the two earlier runs show the model's variance: wrapper path, then a wrong `ended_at`) | |
-| conversations: live proposal | yes (draft) | |
+| sessions: live proposal | yes | yes |
+| sessions: human-assisted completion | **yes**, zero manual edits (run A-sessions-3; the two earlier runs show the model's variance: wrapper path, then a wrong `ended_at`) | **yes**, zero manual edits (B-sessions-2) |
+| conversations: live proposal | yes (draft in the pre-check; UI run pending) | yes (executable) |
 | conversations: human-assisted completion | | |
-| replay passed | yes (sessions; UI replay and API regression test) | |
+| replay passed | yes (sessions; UI replay and API regression test) | yes (sessions; UI replay with the 503 control) |
 
 Coverage: sessions **partial** (token and tool aggregates unmapped by design);
 conversations **partial** (no provider field; token semantics unknown; latency
