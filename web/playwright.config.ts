@@ -26,7 +26,12 @@ export default defineConfig({
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // One database for the whole run: the smoke spec's unscoped totals must be measured before the
+  // assistant spec imports its own source, so the assistant project depends on the smoke project.
+  projects: [
+    { name: 'chromium', testMatch: /smoke\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'assistant', testMatch: /assist\.spec\.ts/, dependencies: ['chromium'], use: { ...devices['Desktop Chrome'] } },
+  ],
   webServer: {
     command: 'node e2e/start-backend.mjs',
     url: `http://127.0.0.1:${port}/api/health`,
