@@ -70,3 +70,12 @@ def test_emissions_without_identity_are_ignored() -> None:
         call(1, session_external_id=None, started_at=ts(1)),
     ]
     assert reduce_sessions(emissions) == {}
+
+
+def test_session_declared_after_its_children_is_not_implicit() -> None:
+    emissions = [
+        call(1, session_external_id="s1", started_at=ts(1)),
+        session(1, external_id="s1", agent="codex"),
+    ]
+    s = reduce_sessions(emissions)["s1"]
+    assert s.conflicts == () and s.model_call_count == 1 and s.agent == "codex"

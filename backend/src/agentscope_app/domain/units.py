@@ -24,21 +24,43 @@ _FALSE: Final = frozenset({"false", "0", "no", "n", "f"})
 _INT_STRING: Final = re.compile(r"-?\d{1,18}")
 
 
-def convert_duration(value: int | float, from_unit: str, to_unit: str) -> int | float:
+def convert_duration(value: Any, from_unit: str, to_unit: str) -> int | float:
+    """Convert a duration exactly. Accepts ints, floats and numeric strings.
+
+    Strings are parsed as decimals directly (never through a binary float), so
+    ``"1.0000000000000001"`` seconds stays fractional and is reported invalid
+    downstream instead of silently rounding to 1000 ms.
+    """
     if from_unit not in DURATION_UNITS or to_unit not in DURATION_UNITS:
         raise ConversionError(
             "unknown_unit", f"Unknown duration unit: {from_unit!r} -> {to_unit!r}"
         )
-    if isinstance(value, bool):
-        raise ConversionError("invalid_type", "Durations cannot be booleans")
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        raise ConversionError("invalid_type", f"Cannot convert {value!r} to a duration")
     try:
-        exact = Decimal(value) if isinstance(value, int) else Decimal(repr(value))
+        if isinstance(value, int):
+            exact = Decimal(value)
+        elif isinstance(value, float):
+            exact = Decimal(repr(value))
+        else:
+            exact = Decimal(value.strip())
     except (InvalidOperation, ValueError) as exc:
         raise ConversionError("invalid_type", f"Cannot convert {value!r} to a duration") from exc
+    if not exact.is_finite():
+        raise ConversionError("nonfinite_value", f"Duration {value!r} is not a finite number")
     result = exact * DURATION_UNITS[from_unit] / DURATION_UNITS[to_unit]
     if result == result.to_integral_value():
         return int(result)
-    return float(result)
+    try:
+        approx = float(result)
+    except OverflowError as exc:
+        raise ConversionError("nonfinite_value", f"Duration {value!r} overflows") from exc
+    if approx == 0.0 or approx in (float("inf"), float("-inf")):
+        # A non-zero exact value that a float cannot hold: never let it become 0 or inf.
+        raise ConversionError(
+            "precision_loss", f"Duration {value!r} {from_unit} cannot be represented in {to_unit}"
+        )
+    return approx
 
 
 def parse_timestamp(value: Any, fmt: str) -> datetime:

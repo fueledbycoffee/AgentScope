@@ -65,6 +65,7 @@ document itself carries only what the engine needs.
 | model_call | external_id | string | | | Claimed native identifier |
 | model_call | sequence | integer | | | Order inside the session |
 | model_call | provider, model | string | | | Labels as given by the source |
+| model_call | token_semantics | string | | | Accounting-semantics tag for the token fields (what the source counts); `unknown` when unvalidated. Token values are only comparable within one tag |
 | model_call | started_at, ended_at | timestamp | | | First and last timestamp of the invocation |
 | model_call | input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, reasoning_tokens | integer | tokens | | Token counts; null when the source has none |
 | model_call | is_error | boolean | | | Marked failed by the source |

@@ -42,21 +42,18 @@ class SessionAggregate:
 
 def reduce_sessions(emissions: Iterable[Emission]) -> dict[str, SessionAggregate]:
     sessions: dict[str, SessionAggregate] = {}
+    first_child: dict[str, Emission] = {}
+    declared: set[str] = set()
 
     def get(external_id: str, emission: Emission) -> SessionAggregate:
         session = sessions.get(external_id)
         if session is None:
             session = SessionAggregate(external_id)
             sessions[external_id] = session
-            if emission.entity != "session":
-                session.conflicts += (
-                    Diagnostic(
-                        emission.rule_id,
-                        emission.occurrence,
-                        "implicit_session",
-                        f"Session {external_id!r} is only known through its children",
-                    ),
-                )
+        if emission.entity == "session":
+            declared.add(external_id)
+        else:
+            first_child.setdefault(external_id, emission)
         session.contributions += (emission.occurrence,)
         return session
 
@@ -86,6 +83,18 @@ def reduce_sessions(emissions: Iterable[Emission]) -> dict[str, SessionAggregate
             session.observed_end_at is None or ended > session.observed_end_at
         ):
             session.observed_end_at = ended
+    # Only decided once every contribution is in: a session row may arrive after
+    # its children in file order without being "implicit".
+    for external_id, child in first_child.items():
+        if external_id not in declared:
+            sessions[external_id].conflicts += (
+                Diagnostic(
+                    child.rule_id,
+                    child.occurrence,
+                    "implicit_session",
+                    f"Session {external_id!r} is only known through its children",
+                ),
+            )
     return sessions
 
 

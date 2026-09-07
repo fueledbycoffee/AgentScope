@@ -36,6 +36,12 @@
         "model": {"path": "$.model"},
         "started_at": {"path": "$.timing_events[0].timestamp", "timestamp_format": "iso8601"},
         "ended_at": {"path": "$.timing_events[-1].timestamp", "timestamp_format": "iso8601"},
+        "token_semantics": {
+          "path": "$.provider",
+          "transforms": [
+            {"enum_map": {"mapping": {"claude": "tracelab-claude", "codex": "tracelab-codex"}, "unmapped": "reject"}}
+          ]
+        },
         "input_tokens": {"path": "$.input_tokens_total"},
         "output_tokens": {"path": "$.output_tokens"},
         "cache_read_tokens": {"path": "$.claude_cache_read_input_tokens"},

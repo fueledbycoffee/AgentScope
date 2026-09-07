@@ -15,7 +15,7 @@ from agentscope_app.domain.identity import SourceOccurrence
 from agentscope_app.domain.mapping.contract import Condition, FieldMapping, MappingSpec, Rule
 from agentscope_app.domain.mapping.paths import MISSING, resolve_many, resolve_one
 from agentscope_app.domain.mapping.transforms import apply_transform
-from agentscope_app.domain.schema import TARGET_SCHEMA, FieldType
+from agentscope_app.domain.schema import TARGET_SCHEMA
 from agentscope_app.domain.units import coerce, convert_duration
 
 
@@ -233,10 +233,9 @@ def _evaluate(
             if value is None:
                 return None
         if fm.unit_from and fm.unit_to:
-            # Convert units on the numeric value first; the strict coercion below then
-            # rejects anything that is not integral instead of rounding it.
-            numeric = coerce(value, FieldType.NUMBER)
-            value = convert_duration(numeric, fm.unit_from, fm.unit_to)
+            # Exact unit conversion first (ints, floats and numeric strings); the strict
+            # coercion below then rejects anything not integral instead of rounding.
+            value = convert_duration(value, fm.unit_from, fm.unit_to)
         value = coerce(value, fm.type, timestamp_format=fm.timestamp_format)
     except ConversionError as exc:
         if fm.on_invalid == "null":

@@ -119,3 +119,12 @@ def test_convert_duration_is_exact() -> None:
     assert convert_duration(1, "ns", "ms") == 0.000001
     with pytest.raises(ConversionError):
         convert_duration(True, "ms", "ms")
+
+
+def test_convert_duration_parses_numeric_strings_exactly() -> None:
+    assert convert_duration("1.001", "s", "ms") == 1001
+    assert convert_duration("1.0000000000000001", "s", "ms") == 1000.0000000000001
+    for bad in ("1e-400", "inf", "nan", "1e309x", "", "abc", float("inf"), float("nan"), None):
+        with pytest.raises(ConversionError):
+            convert_duration(bad, "s", "ms")
+    assert convert_duration("1e309", "ms", "ms") == 10**309

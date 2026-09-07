@@ -398,3 +398,43 @@ def test_float_duration_conversion_is_exact_through_the_interpreter() -> None:
     assert result.rejects == ()
     tool = next(e for e in result.emissions if e.entity == "tool_call")
     assert tool.fields["wall_latency_ms"] == 1001
+
+
+def test_string_durations_keep_decimal_precision_and_nonfinite_follows_policy() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "tool_call",
+                "entity": "tool_call",
+                "select": "$.tools[*]",
+                "fields": {
+                    "session_external_id": {"path": "@root.sid"},
+                    "tool_name": {"literal": "t"},
+                    "wall_latency_ms": {
+                        "path": "$.secs",
+                        "unit": {"from": "s", "to": "ms"},
+                        "on_invalid": "null",
+                    },
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    record = {
+        "sid": "s",
+        "tools": [{"secs": "1.001"}, {"secs": "1.0000000000000001"}, {"secs": float("inf")}],
+    }
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    assert result.rejects == ()
+    values = [e.fields["wall_latency_ms"] for e in result.emissions]
+    assert values == [1001, None, None]
+    assert [(w.code, w.occurrence.emission_path) for w in result.warnings] == [
+        ("invalid_value", "tool_call[1]"),
+        ("invalid_value", "tool_call[2]"),
+    ]

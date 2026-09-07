@@ -66,7 +66,18 @@ TARGET_SCHEMA: Final[dict[str, TargetEntity]] = {
         TargetField("model", _S, "Model identifier as given by the source."),
         TargetField("started_at", _T, "First timestamp of the invocation."),
         TargetField("ended_at", _T, "Last timestamp of the invocation."),
-        TargetField("input_tokens", _I, "Total input tokens billed for the call.", unit="tokens"),
+        TargetField(
+            "token_semantics",
+            _S,
+            "Accounting-semantics tag for the token fields (what the source counts); "
+            "'unknown' when unvalidated. Token values are only comparable within one tag.",
+        ),
+        TargetField(
+            "input_tokens",
+            _I,
+            "Input tokens as counted by the source (meaning given by token_semantics).",
+            unit="tokens",
+        ),
         TargetField("output_tokens", _I, "Output tokens for the call.", unit="tokens"),
         TargetField("cache_read_tokens", _I, "Input tokens served from cache.", unit="tokens"),
         TargetField("cache_creation_tokens", _I, "Input tokens written to cache.", unit="tokens"),
