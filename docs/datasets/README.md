@@ -100,35 +100,21 @@ This is a pattern-based review aid, not proof that all possible sensitive conten
 is absent. Any future positive candidate blocks fixture publication pending review;
 do not silently redact rows or choose another seed to conceal findings.
 
-## SWE-chat: pending owner action
+## SWE-chat: gated, retrieved locally; excerpt pending
 
 Reference: [SALT-NLP/SWE-chat](https://huggingface.co/datasets/SALT-NLP/SWE-chat).
-Metadata revision observed: `f66cca95b14caaa4177f7ed5eaa424608dadcffa`.
+Revision: `f66cca95b14caaa4177f7ed5eaa424608dadcffa` (pinned in the commands below).
 Licence: [Open Data Commons Attribution (ODC-BY)](https://opendatacommons.org/licenses/by/1-0/),
 as declared in the [dataset card](https://huggingface.co/datasets/SALT-NLP/SWE-chat/blob/f66cca95b14caaa4177f7ed5eaa424608dadcffa/README.md).
-Metadata checked 2026-09-07 with:
+The dataset is gated (`gated: "auto"`): the owner accepted the access terms on the
+Hugging Face website with their own account, then downloaded with that account.
+No access bypass was used; the token stays in the HF CLI credential store.
+
+Retrieved **2026-09-07T08:51Z** with the `hf` CLI 1.30.0 (Homebrew formula `hf`)
+from the repository root:
 
 ```sh
-curl -fsSL https://huggingface.co/api/datasets/SALT-NLP/SWE-chat
-```
-
-The API reports `gated: "auto"`. **No gated data was downloaded and no access
-bypass was attempted.** Data retrieval date, hashes, sizes and excerpt selection
-are pending. The public metadata lists `sessions.parquet` and
-`conversations.parquet` at the dataset root.
-
-The owner must:
-
-1. Log into the Hugging Face website and visit the dataset page above. Read and
-   accept its access terms using the account that will download the data; complete
-   any access form and wait until access is granted.
-2. Install the [HF CLI](https://huggingface.co/docs/huggingface_hub/guides/cli) if needed
-   (`brew install hf` on this Mac), then run `hf auth login` interactively with that
-   same account. Do not put credentials in this repository or command history.
-3. Run these commands from the repository root:
-
-```sh
-hf auth login
+hf auth login                      # once, interactive, same account that accepted the terms
 mkdir -p data/raw/swe-chat
 hf download SALT-NLP/SWE-chat sessions.parquet conversations.parquet \
   --repo-type dataset --revision f66cca95b14caaa4177f7ed5eaa424608dadcffa \
@@ -136,22 +122,42 @@ hf download SALT-NLP/SWE-chat sessions.parquet conversations.parquet \
 shasum -a 256 data/raw/swe-chat/sessions.parquet data/raw/swe-chat/conversations.parquet
 ```
 
-For an existing legacy CLI installation, the equivalent commands are:
+| Table | Local path | Bytes | Rows | Columns | SHA-256 |
+| --- | --- | ---: | ---: | ---: | --- |
+| sessions | `data/raw/swe-chat/sessions.parquet` | 1,997,377 | 5,851 | 39 | `2ada63973b182b691318916ca8c813e694091400e43744eca9cad3da2d958a95` |
+| conversations | `data/raw/swe-chat/conversations.parquet` | 1,311,422,253 | 2,692,480 | 35 | `9ee1d937dbf7eb73a8dad75071c69a4f6b5aac7f4120bd8ef3799ee50f4f1c36` |
 
-```sh
-huggingface-cli login
-huggingface-cli download SALT-NLP/SWE-chat sessions.parquet conversations.parquet \
-  --repo-type dataset --revision f66cca95b14caaa4177f7ed5eaa424608dadcffa \
-  --local-dir data/raw/swe-chat
-```
+Row counts and column names were read from Parquet footers with pyarrow; no
+content was inspected beyond the schema.
 
-These commands fetch the two full Parquet files, not sampled excerpts. After
-access, record retrieval time, sizes and hashes before defining an excerpt.
-Redistribution decision: **none committed**; keep downloads local and review terms
-and content before any redistribution. Sessions and conversations are different
-tables; do not treat their rows as interchangeable or assume their granularity
-matches TraceLab. The available second-source fallback is **Trace Commons decoded
-Parquet**, already downloaded below.
+Schema notes relevant to normalisation (from the footers):
+
+- `sessions`: one row per coding session. `session_id`, `repo_id`, `user_id`,
+  `agent`, `created_at` (UTC), session-level totals `input_tokens`,
+  `output_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `api_call_count`,
+  `tool_call_count`, `turn_count`, `prompt_count`, `duration_seconds`, plus
+  attribution and repo metadata columns.
+- `conversations`: one row per **conversation entry**, not per model invocation.
+  `turn_id`, `session_id`, `turn_number`, `role`, `turn_type`, `is_continuation`,
+  `content`, `model`, `timestamp` (UTC), per-entry `input_tokens`, `output_tokens`,
+  `cache_creation_input_tokens`, `cache_read_input_tokens`, and tool fields
+  `tool_name`, `tool_call_id`, `file_path`, `command`, `tool_input_json`.
+  Whether one assistant entry equals one API call must be established from the
+  data (compare against `sessions.api_call_count`) before any model-call mapping
+  is trusted; see the identity rules in the consolidated plan.
+
+The conversations file is far above the planned 25 MiB per-upload limit. Before
+UI integration, build a local excerpt: select whole sessions from `sessions.parquet`
+(deterministic, stratified by `agent`), then filter `conversations.parquet` by those
+`session_id`s, writing both tables as Parquet under `data/samples/swe-chat/` with a
+manifest. That script belongs to the second-source work (issues #8 and #16).
+
+Redistribution decision: **none committed**. The files stay under gitignored
+`data/raw/`; ODC-BY permits redistribution with attribution, but the excerpt will be
+reviewed for sensitive content first and its terms re-read at that point.
+Sessions and conversations are different tables; do not treat their rows as
+interchangeable or assume their granularity matches TraceLab. The fallback second
+source remains **Trace Commons decoded Parquet**, downloaded below.
 
 ## Trace Commons: public fallback downloaded; native file reserved unseen
 
