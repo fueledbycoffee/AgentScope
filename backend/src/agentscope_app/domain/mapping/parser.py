@@ -161,6 +161,17 @@ def parse_mapping(raw: Any) -> ParsedMapping:
     return ParsedMapping(spec, tuple(issues.items))
 
 
+MAX_CONDITION_DEPTH = 16
+
+
+def _depth(value: Any, limit: int = MAX_CONDITION_DEPTH + 1) -> int:
+    """Nesting depth of a JSON value, capped at ``limit`` to stay cheap on hostile input."""
+    if not isinstance(value, list | dict) or limit == 0:
+        return 0
+    children = value.values() if isinstance(value, dict) else value
+    return 1 + max((_depth(child, limit - 1) for child in children), default=0)
+
+
 def _is_version(value: Any, expected: int) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value == expected
 
@@ -330,6 +341,14 @@ def _parse_condition(raw: Any, path: str, issues: _Issues) -> Condition | None:
         )
         return None
     value = raw.get("value")
+    if _depth(value) > MAX_CONDITION_DEPTH:
+        issues.error(
+            "semantic",
+            f"{path}.value",
+            "invalid_condition_value",
+            f"Condition values may not be nested deeper than {MAX_CONDITION_DEPTH}",
+        )
+        return None
     if op in ("in", "not_in") and not isinstance(value, list):
         issues.error(
             "semantic",

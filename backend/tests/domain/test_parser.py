@@ -342,3 +342,13 @@ def test_boolean_versions_are_not_accepted() -> None:
     assert ("dsl_version", "unsupported_version") in codes(parsed)
     parsed = variant(lambda d: d.__setitem__("target_schema_version", True))
     assert ("target_schema_version", "unsupported_version") in codes(parsed)
+
+
+def test_condition_values_nested_too_deeply_are_rejected() -> None:
+    import json
+
+    deep = json.loads("[" * 40 + "0" + "]" * 40)
+    parsed = variant(
+        lambda d: d["rules"][1].__setitem__("where", [{"path": "$.k", "op": "eq", "value": deep}])
+    )
+    assert ("rules[1].where[0].value", "invalid_condition_value") in codes(parsed)

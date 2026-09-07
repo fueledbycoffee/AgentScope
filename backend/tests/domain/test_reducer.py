@@ -79,3 +79,15 @@ def test_session_declared_after_its_children_is_not_implicit() -> None:
     ]
     s = reduce_sessions(emissions)["s1"]
     assert s.conflicts == () and s.model_call_count == 1 and s.agent == "codex"
+
+
+def test_reduction_scales_linearly_with_contributions() -> None:
+    import time
+
+    emissions = [call(i, session_external_id="big", started_at=ts(1)) for i in range(1, 60_001)]
+    started = time.perf_counter()
+    s = reduce_sessions(emissions)["big"]
+    elapsed = time.perf_counter() - started
+    assert s.model_call_count == 60_000 and len(s.contributions) == 60_000
+    assert [c.code for c in s.conflicts] == ["implicit_session"]
+    assert elapsed < 5, elapsed  # quadratic concatenation took tens of seconds at this size

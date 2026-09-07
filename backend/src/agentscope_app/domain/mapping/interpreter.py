@@ -90,11 +90,11 @@ def apply_mapping(
             continue
         is_root = not rule.select.segments
         for index, item in enumerate(items):
-            if not all(_holds(cond, item, record) for cond in rule.where):
-                continue
             emission_path = rule.id if is_root else f"{rule.id}[{index}]"
             occurrence = SourceOccurrence(file_sha256, locator, emission_path)
             try:
+                if not all(_holds(cond, item, record) for cond in rule.where):
+                    continue
                 emission = _emit(rule, item, record, occurrence, root_emissions, warnings)
             except _FieldRejectError as fr:
                 rejects.append(Reject(rule.id, occurrence, fr.code, fr.message, fr.field_name))
@@ -125,16 +125,29 @@ def _holds(cond: Condition, item: Any, root: Any) -> bool:
     return matched if cond.op == "in" else not matched
 
 
-def _json_equal(a: Any, b: Any) -> bool:
-    """Equality with JSON types: booleans never equal numbers, containers recurse."""
+MAX_PREDICATE_DEPTH = 32
+
+
+def _json_equal(a: Any, b: Any, depth: int = 0) -> bool:
+    """Equality with JSON types: booleans never equal numbers, containers recurse.
+
+    Nesting is bounded so a hostile record cannot exhaust the stack; deeper
+    structures raise and become a reject for that item.
+    """
+    if depth > MAX_PREDICATE_DEPTH:
+        raise _FieldRejectError(
+            "predicate_too_deep", f"Predicate values nested deeper than {MAX_PREDICATE_DEPTH}"
+        )
     if isinstance(a, bool) or isinstance(b, bool):
         return isinstance(a, bool) and isinstance(b, bool) and a is b
     if isinstance(a, int | float) and isinstance(b, int | float):
         return a == b
     if isinstance(a, list) and isinstance(b, list):
-        return len(a) == len(b) and all(_json_equal(x, y) for x, y in zip(a, b, strict=True))
+        return len(a) == len(b) and all(
+            _json_equal(x, y, depth + 1) for x, y in zip(a, b, strict=True)
+        )
     if isinstance(a, dict) and isinstance(b, dict):
-        return a.keys() == b.keys() and all(_json_equal(a[k], b[k]) for k in a)
+        return a.keys() == b.keys() and all(_json_equal(a[k], b[k], depth + 1) for k in a)
     if type(a) is not type(b):
         return False
     return bool(a == b)

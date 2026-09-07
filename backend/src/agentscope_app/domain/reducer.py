@@ -40,35 +40,46 @@ class SessionAggregate:
     conflicts: tuple[Diagnostic, ...] = field(default_factory=tuple)
 
 
-def reduce_sessions(emissions: Iterable[Emission]) -> dict[str, SessionAggregate]:
-    sessions: dict[str, SessionAggregate] = {}
-    first_child: dict[str, Emission] = {}
-    declared: set[str] = set()
+class _Accumulator:
+    """Mutable per-session state; lists are frozen into the aggregate once."""
 
-    def get(external_id: str, emission: Emission) -> SessionAggregate:
-        session = sessions.get(external_id)
-        if session is None:
-            session = SessionAggregate(external_id)
-            sessions[external_id] = session
+    __slots__ = ("aggregate", "conflicts", "contributions", "declared", "first_child")
+
+    def __init__(self, external_id: str) -> None:
+        self.aggregate = SessionAggregate(external_id)
+        self.contributions: list[SourceOccurrence] = []
+        self.conflicts: list[Diagnostic] = []
+        self.declared = False
+        self.first_child: Emission | None = None
+
+
+def reduce_sessions(emissions: Iterable[Emission]) -> dict[str, SessionAggregate]:
+    accumulators: dict[str, _Accumulator] = {}
+
+    def get(external_id: str, emission: Emission) -> _Accumulator:
+        acc = accumulators.get(external_id)
+        if acc is None:
+            acc = _Accumulator(external_id)
+            accumulators[external_id] = acc
         if emission.entity == "session":
-            declared.add(external_id)
-        else:
-            first_child.setdefault(external_id, emission)
-        session.contributions += (emission.occurrence,)
-        return session
+            acc.declared = True
+        elif acc.first_child is None:
+            acc.first_child = emission
+        acc.contributions.append(emission.occurrence)
+        return acc
 
     for emission in emissions:
         if emission.entity == "session":
             external_id = emission.fields.get("external_id")
             if external_id is None:
                 continue
-            session = get(str(external_id), emission)
-            _merge_session_fields(session, emission)
+            _merge_session_fields(get(str(external_id), emission), emission)
             continue
         session_id = emission.fields.get("session_external_id")
         if session_id is None:
             continue
-        session = get(str(session_id), emission)
+        acc = get(str(session_id), emission)
+        session = acc.aggregate
         if emission.entity == "model_call":
             session.model_call_count += 1
         elif emission.entity == "tool_call":
@@ -83,22 +94,28 @@ def reduce_sessions(emissions: Iterable[Emission]) -> dict[str, SessionAggregate
             session.observed_end_at is None or ended > session.observed_end_at
         ):
             session.observed_end_at = ended
-    # Only decided once every contribution is in: a session row may arrive after
-    # its children in file order without being "implicit".
-    for external_id, child in first_child.items():
-        if external_id not in declared:
-            sessions[external_id].conflicts += (
+
+    sessions: dict[str, SessionAggregate] = {}
+    for external_id, acc in accumulators.items():
+        # Only decided once every contribution is in: a session row may arrive
+        # after its children in file order without being "implicit".
+        if not acc.declared and acc.first_child is not None:
+            acc.conflicts.append(
                 Diagnostic(
-                    child.rule_id,
-                    child.occurrence,
+                    acc.first_child.rule_id,
+                    acc.first_child.occurrence,
                     "implicit_session",
                     f"Session {external_id!r} is only known through its children",
-                ),
+                )
             )
+        acc.aggregate.contributions = tuple(acc.contributions)
+        acc.aggregate.conflicts = tuple(acc.conflicts)
+        sessions[external_id] = acc.aggregate
     return sessions
 
 
-def _merge_session_fields(session: SessionAggregate, emission: Emission) -> None:
+def _merge_session_fields(acc: _Accumulator, emission: Emission) -> None:
+    session = acc.aggregate
     for name in _MERGED_FIELDS:
         incoming = emission.fields.get(name)
         if incoming is None:
@@ -108,12 +125,12 @@ def _merge_session_fields(session: SessionAggregate, emission: Emission) -> None
         if current is None:
             setattr(session, attr, incoming)
         elif current != incoming:
-            session.conflicts += (
+            acc.conflicts.append(
                 Diagnostic(
                     emission.rule_id,
                     emission.occurrence,
                     "conflicting_value",
                     f"{name}: kept {current!r}, ignored {incoming!r}",
                     name,
-                ),
+                )
             )

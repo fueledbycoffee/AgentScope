@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from agentscope_app.domain.mapping.interpreter import RecordResult, apply_mapping
 from agentscope_app.domain.mapping.parser import parse_mapping
 
@@ -535,3 +537,39 @@ def test_predicates_use_json_typed_equality() -> None:
     }
     result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
     assert [e.fields["external_id"] for e in result.emissions] == ["keep", "keep-float"]
+
+
+def test_deeply_nested_predicate_values_become_rejects_not_exceptions() -> None:
+    import json
+
+    deep = json.loads("[" * 40 + "0" + "]" * 40)
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "s",
+                "entity": "session",
+                "select": "$.rows[*]",
+                "where": [{"path": "$.blob", "op": "eq", "value": [[[0]]]}],
+                "fields": {"external_id": {"path": "$.id"}},
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    record = {"rows": [{"id": "a", "blob": deep}, {"id": "b", "blob": [[[0]]]}]}
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    # A deep record against a shallow condition simply does not match: no exception.
+    assert [e.fields["external_id"] for e in result.emissions] == ["b"]
+    assert result.rejects == ()
+    # Condition values are capped by the parser, so the runtime bound is defence in
+    # depth; it must raise a contained field error rather than a RecursionError.
+    from agentscope_app.domain.mapping.interpreter import _FieldRejectError, _json_equal
+
+    with pytest.raises(_FieldRejectError, match="nested deeper") as caught:
+        _json_equal(deep, deep)
+    assert caught.value.code == "predicate_too_deep"

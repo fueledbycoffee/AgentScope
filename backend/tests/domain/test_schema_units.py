@@ -130,7 +130,10 @@ def test_convert_duration_parses_numeric_strings_exactly() -> None:
     for bad in ("1e-9999999", "1e9999999", "inf", "nan", "", "abc", float("inf"), None):
         with pytest.raises(ConversionError):
             convert_duration(bad, "s", "ms")
-    assert convert_duration("1e309", "ms", "ms") == 10**309
+    assert convert_duration("1e18", "ms", "ms") == 10**18
+    for huge in ("1e19", "1e309", "1e999999", "-1e999999"):
+        with pytest.raises(ConversionError, match="range"):
+            convert_duration(huge, "ms", "ms")
 
 
 def test_coerce_handles_exact_decimals() -> None:

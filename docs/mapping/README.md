@@ -137,7 +137,8 @@ an integer, unknown enum values are not silently kept unless the mapping says
 so. Negative token or latency values are rejected. Duration arithmetic is done
 in exact decimals (numeric strings are parsed as decimals, never through a
 binary float), so `1.001 s` is `1001 ms`; a value that cannot be converted
-exactly, overflows or underflows is `invalid_value` (`precision_loss`). A `literal` of `null` counts as a
+exactly, overflows or underflows is `invalid_value` (`precision_loss`), and
+converted durations beyond 10^19 target units are `out_of_range`. A `literal` of `null` counts as a
 missing value and follows `on_missing`.
 
 ## Validation stages
@@ -162,9 +163,9 @@ Warnings (value stored as null, emission kept): `absent`, `null`, `empty`,
 `invalid_value` (with `on_invalid: null`), `parent_unavailable`.
 
 Rejects (emission dropped, explained): `missing_value` (`on_missing: reject`),
-`invalid_value`, `missing_required`, `missing_relationship`,
-`conflicting_relationship`, `negative_measure`, `selector_limit`,
-`internal_error`.
+`invalid_value` (including `precision_loss` and `out_of_range` conversions),
+`missing_required`, `missing_relationship`, `conflicting_relationship`,
+`negative_measure`, `selector_limit`, `predicate_too_deep`, `internal_error`.
 
 Reducer diagnostics: `conflicting_value`, `implicit_session`.
 

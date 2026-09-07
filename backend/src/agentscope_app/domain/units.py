@@ -28,6 +28,9 @@ DURATION_UNITS: Final[dict[str, Decimal]] = {
     "min": Decimal(60000),
 }
 TIMESTAMP_FORMATS: Final = ("iso8601", "epoch_s", "epoch_ms")
+# Converted durations must stay below 10^19 target units (about 300 million years
+# in ms); anything larger is out of range rather than a multi-megabyte integer.
+MAX_DURATION_MAGNITUDE: Final = Decimal(10) ** 19
 _TRUE: Final = frozenset({"true", "1", "yes", "y", "t"})
 _FALSE: Final = frozenset({"false", "0", "no", "n", "f"})
 _INT_STRING: Final = re.compile(r"-?\d{1,18}")
@@ -73,6 +76,11 @@ def convert_duration(value: Any, from_unit: str, to_unit: str) -> int | Decimal:
             "precision_loss",
             f"Duration {value!r} {from_unit} cannot be converted to {to_unit} exactly",
         ) from exc
+    if abs(result) >= MAX_DURATION_MAGNITUDE:
+        # Never expand a huge exponent into a huge integer: bound before int().
+        raise ConversionError(
+            "out_of_range", f"Duration {value!r} {from_unit} exceeds the supported range"
+        )
     if result == result.to_integral_value():
         return int(result)
     return result
