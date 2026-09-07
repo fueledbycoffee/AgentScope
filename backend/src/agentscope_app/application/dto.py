@@ -54,6 +54,14 @@ class UploadInfo:
 
 
 @dataclass(frozen=True)
+class CachedProfile:
+    """A sanitised field profile stored on the upload row, tagged with the profiler version."""
+
+    version: int
+    profile: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class MappingRecord:
     id: str
     name: str

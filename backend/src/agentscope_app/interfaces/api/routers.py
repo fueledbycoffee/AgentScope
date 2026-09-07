@@ -22,8 +22,8 @@ from agentscope_app.application.dto import (
     UploadInfo,
 )
 from agentscope_app.application.errors import LimitExceededError
+from agentscope_app.domain.jsonx import dumps_exact
 from agentscope_app.domain.mapping.parser import parse_mapping
-from agentscope_app.infrastructure.jsonx import dumps_exact
 from agentscope_app.interfaces.api.container import Container
 from agentscope_app.interfaces.api.schemas import ImportRequest, PreviewRequest
 

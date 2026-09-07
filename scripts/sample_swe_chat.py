@@ -65,12 +65,19 @@ def file_digest(path: Path) -> tuple[str, int]:
 
 def write_outputs(
     selected: list[dict],
+    sessions_path: Path,
     conversations_path: Path,
     out_dir: Path,
     *,
     batch_rows: int = 65_536,
 ) -> tuple[Path, Path, int, int]:
-    """Write both tables for ``selected`` sessions; conversations are streamed by batch."""
+    """Write both tables for ``selected`` sessions; conversations are streamed by batch.
+
+    Rows are filtered as Arrow tables, never rebuilt from Python values: the
+    sessions table carries ``timestamp[ns]`` columns that Arrow refuses to
+    convert to ``datetime`` (it would lose precision), and a rebuilt table would
+    not keep the upstream schema anyway.
+    """
     import pyarrow as pa
     import pyarrow.compute as pc
     import pyarrow.parquet as pq
@@ -79,7 +86,9 @@ def write_outputs(
     ids = pa.array([str(r["session_id"]) for r in selected], pa.string())
     sessions_out = out_dir / "sessions.parquet"
     conversations_out = out_dir / "conversations.parquet"
-    pq.write_table(pa.Table.from_pylist(selected), sessions_out)
+    sessions_table = pq.read_table(sessions_path)
+    keep = pc.is_in(sessions_table.column("session_id").cast(pa.string()), value_set=ids)
+    pq.write_table(sessions_table.filter(keep), sessions_out)
     source = pq.ParquetFile(conversations_path)
     writer = None
     rows = 0
@@ -150,12 +159,15 @@ def build_excerpt(
 ) -> dict:
     import pyarrow.parquet as pq
 
-    sessions = pq.read_table(sessions_path).to_pylist()
+    # selection needs only the id and the agent; the other columns stay in Arrow
+    sessions = pq.read_table(sessions_path, columns=["session_id", "agent"]).to_pylist()
     selected = select_sessions(sessions, seed=seed, per_agent=per_agent)
     if not selected:
         raise SystemExit("no sessions to select")
     while True:
-        s_out, c_out, s_rows, c_rows = write_outputs(selected, conversations_path, out_dir)
+        s_out, c_out, s_rows, c_rows = write_outputs(
+            selected, sessions_path, conversations_path, out_dir
+        )
         if within_limits(s_out, c_out, s_rows, c_rows):
             bad = offending_sessions(c_out, s_out)
             if not bad:

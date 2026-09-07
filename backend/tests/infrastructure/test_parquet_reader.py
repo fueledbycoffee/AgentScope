@@ -8,7 +8,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from agentscope_app.application.errors import InvalidInputError, LimitExceededError
-from agentscope_app.infrastructure.jsonx import dumps_exact, loads_exact
+from agentscope_app.domain.jsonx import dumps_exact, loads_exact
 from agentscope_app.infrastructure.readers.parquet import ParquetRecordReader
 from agentscope_app.infrastructure.readers.router import FormatRouter
 

@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, BinaryIO
 
 from agentscope_app.application.dto import (
+    CachedProfile,
     ImportRef,
     ImportReport,
     MappingRecord,
@@ -25,7 +26,7 @@ from agentscope_app.application.dto import (
     StoredFile,
     UploadInfo,
 )
-from agentscope_app.application.errors import ConflictError, InvalidInputError
+from agentscope_app.application.errors import ConflictError, InvalidInputError, NotFoundError
 from agentscope_app.domain.mapping.interpreter import Emission
 from agentscope_app.domain.reducer import SessionAggregate
 
@@ -90,12 +91,21 @@ class FakeReader:
 class FakeUploads:
     def __init__(self) -> None:
         self.items: dict[str, UploadInfo] = {}
+        self.profiles: dict[str, CachedProfile] = {}
 
     def add(self, info: UploadInfo) -> None:
         self.items[info.upload_id] = info
 
     def get(self, upload_id: str) -> UploadInfo | None:
         return self.items.get(upload_id)
+
+    def get_profile(self, upload_id: str) -> CachedProfile | None:
+        return self.profiles.get(upload_id)
+
+    def set_profile(self, upload_id: str, cached: CachedProfile) -> None:
+        if upload_id not in self.items:
+            raise NotFoundError(f"Unknown upload {upload_id}")
+        self.profiles[upload_id] = cached
 
 
 class FakeMappings:

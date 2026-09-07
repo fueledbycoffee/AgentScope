@@ -82,6 +82,9 @@ class Upload(Base):
     record_count: Mapped[int]
     preview: Mapped[list[Any]]
     created_at: Mapped[datetime]
+    # cache of the sanitised field profile (see application.use_cases.assistant)
+    profile: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    profile_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Mapping(Base):

@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any, BinaryIO, Protocol
 
 from agentscope_app.application.dto import (
+    CachedProfile,
     ImportRef,
     ImportReport,
     MappingRecord,
@@ -60,6 +61,12 @@ class UploadRepository(Protocol):
     def add(self, info: UploadInfo) -> None: ...
 
     def get(self, upload_id: str) -> UploadInfo | None: ...
+
+    def get_profile(self, upload_id: str) -> CachedProfile | None:
+        """The cached sanitised profile, or None when never computed."""
+        ...
+
+    def set_profile(self, upload_id: str, cached: CachedProfile) -> None: ...
 
 
 class MappingRepository(Protocol):
