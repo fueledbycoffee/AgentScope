@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Final
 
 from agentscope_app.domain.errors import ConversionError
@@ -56,7 +57,9 @@ def apply_transform(transform: Transform, value: Any) -> Any:
                 "json_too_large", f"json_decode input exceeds {MAX_JSON_DECODE_CHARS} characters"
             )
         try:
-            return json.loads(text)
+            # Fractions decode as exact decimals so strict integer coercion can
+            # still see them; ints stay ints.
+            return json.loads(text, parse_float=Decimal)
         except ValueError as exc:
             raise ConversionError("invalid_json", f"json_decode failed: {exc}") from exc
         except RecursionError as exc:

@@ -741,3 +741,39 @@ def test_bounds_preserve_missingness_states() -> None:
         result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
         assert result.rejects == () and result.emissions[0].fields["started_at"] is None
         assert [(w.field, w.code) for w in result.warnings] == [("started_at", expected)], expected
+
+
+def test_json_decode_fractions_never_become_integer_tokens() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "model_call",
+                "entity": "model_call",
+                "select": "$",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "input_tokens": {"path": "$.tokens", "transforms": ["json_decode"]},
+                    "model": {"path": "$.m", "transforms": ["json_decode"]},
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    for text in ("1.00000000000000001", "1e-400", "12.5"):
+        result = apply_mapping(
+            spec, {"sid": "s", "tokens": text, "m": "1"}, file_sha256="f", locator="line:1"
+        )
+        assert [(r.code, r.field) for r in result.rejects] == [("invalid_value", "input_tokens")], (
+            text
+        )
+    ok = apply_mapping(
+        spec, {"sid": "s", "tokens": "12", "m": "1.5"}, file_sha256="f", locator="line:2"
+    )
+    assert ok.rejects == () and ok.emissions[0].fields["input_tokens"] == 12
+    assert ok.emissions[0].fields["model"] == "1.5"

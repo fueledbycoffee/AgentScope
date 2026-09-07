@@ -121,7 +121,7 @@ def coerce(value: Any, field_type: FieldType, *, timestamp_format: str | None = 
     if field_type is FieldType.STRING:
         if isinstance(value, str):
             return value
-        if isinstance(value, int | float):
+        if isinstance(value, int | float | Decimal):
             return str(value)
     elif field_type is FieldType.INTEGER:
         if isinstance(value, int):

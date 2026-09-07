@@ -47,3 +47,13 @@ def test_unknown_transform_is_refused() -> None:
 def test_json_decode_too_deep_is_a_conversion_error() -> None:
     with pytest.raises(ConversionError, match="deep"):
         apply_transform(Transform("json_decode", {}), "[" * 20000 + "0" + "]" * 20000)
+
+
+def test_json_decode_keeps_fractions_exact() -> None:
+    from decimal import Decimal
+
+    t = Transform("json_decode", {})
+    assert apply_transform(t, "1.00000000000000001") == Decimal("1.00000000000000001")
+    assert apply_transform(t, "1e-400") == Decimal("1e-400")
+    assert apply_transform(t, "12") == 12 and isinstance(apply_transform(t, "12"), int)
+    assert apply_transform(t, '{"a": [1.5]}') == {"a": [Decimal("1.5")]}
