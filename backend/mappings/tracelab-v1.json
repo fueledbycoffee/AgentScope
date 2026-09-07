@@ -83,6 +83,7 @@
     {"path": "$.current_input_chars", "reason": "Context-window composition counter; not part of the target schema."},
     {"path": "$.first_input_event_type", "reason": "Not part of the target schema."},
     {"path": "$.store", "reason": "Source store label (e.g. .claude); provenance is recorded per file instead."},
+    {"path": "$.turn_id", "reason": "Codex-only turn identifier present on Codex rows; order and claimed identity already come from round_index and trace_key. Kept in the raw payload."},
     {"path": "$.tools[*].input_chars", "reason": "Size of the removed tool input; not modelled."},
     {"path": "$.tools[*].result_chars", "reason": "Size of the tool result; not modelled."},
     {"path": "$.tools[*].continuation_of_tool_call_id", "reason": "Codex continuation links are not modelled in v0.1.0."}

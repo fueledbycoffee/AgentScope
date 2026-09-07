@@ -84,3 +84,31 @@ def test_call_bounds_are_chronological_extrema_of_timing_events() -> None:
         if stamps != sorted(stamps):
             non_chronological += 1
     assert non_chronological > 0  # the fixture really has unsorted event arrays
+
+
+def test_every_source_field_in_the_fixture_is_mapped_or_explained() -> None:
+    raw = json.loads(MAPPING_PATH.read_text(encoding="utf-8"))
+    referenced: set[str] = set()
+    for rule in raw["rules"]:
+        prefix = "" if rule["select"] == "$" else rule["select"].removeprefix("$.") + "."
+        for fm in rule["fields"].values():
+            for p in [fm["path"]] if "path" in fm else fm.get("paths", []):
+                referenced.add(prefix + p.removeprefix("$."))
+    for entry in raw["unmapped"]:
+        referenced.add(entry["path"].removeprefix("$."))
+
+    def covered(key: str) -> bool:
+        return any(
+            ref == key or ref.startswith(key + ".") or ref.startswith(key + "[")
+            for ref in referenced
+        )
+
+    top_keys: set[str] = set()
+    tool_keys: set[str] = set()
+    for _, row in load_rows():
+        top_keys.update(row)
+        for tool in row.get("tools") or []:
+            tool_keys.update(tool)
+    uncovered = sorted(k for k in top_keys if not covered(k))
+    uncovered += sorted(f"tools[*].{k}" for k in tool_keys if not covered(f"tools[*].{k}"))
+    assert uncovered == [], uncovered

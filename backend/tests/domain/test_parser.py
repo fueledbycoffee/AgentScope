@@ -403,3 +403,23 @@ def test_equality_conditions_need_an_explicit_value() -> None:
         lambda d: d["rules"][1].__setitem__("where", [{"path": "$.k", "op": "ne", "value": None}])
     )
     assert explicit_null.is_executable
+
+
+def test_timestamp_format_is_validated_even_where_it_does_not_apply() -> None:
+    parsed = variant(
+        lambda d: d["rules"][0]["fields"].__setitem__(
+            "external_id", {"path": "$.sid", "timestamp_format": []}
+        )
+    )
+    assert ("rules[0].fields.external_id.timestamp_format", "unknown_timestamp_format") in codes(
+        parsed
+    )
+    ignored = variant(
+        lambda d: d["rules"][0]["fields"].__setitem__(
+            "external_id", {"path": "$.sid", "timestamp_format": "epoch_s"}
+        )
+    )
+    assert ignored.is_executable
+    assert ("rules[0].fields.external_id.timestamp_format", "ignored_option") in codes(
+        ignored, Severity.WARNING
+    )

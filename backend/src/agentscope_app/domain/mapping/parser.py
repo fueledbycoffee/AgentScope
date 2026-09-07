@@ -493,19 +493,19 @@ def _parse_field(raw: Any, target: TargetField, path: str, issues: _Issues) -> F
 
     timestamp_format = raw.get("timestamp_format")
     if timestamp_format is not None:
-        if target.type is not FieldType.TIMESTAMP:
-            issues.warning(
-                "semantic",
-                f"{path}.timestamp_format",
-                "ignored_option",
-                "timestamp_format only applies to timestamp fields",
-            )
-        elif timestamp_format not in TIMESTAMP_FORMATS:
+        if timestamp_format not in TIMESTAMP_FORMATS:  # structure first, applicability second
             issues.error(
                 "semantic",
                 f"{path}.timestamp_format",
                 "unknown_timestamp_format",
                 f"timestamp_format must be one of {TIMESTAMP_FORMATS}",
+            )
+        elif target.type is not FieldType.TIMESTAMP:
+            issues.warning(
+                "semantic",
+                f"{path}.timestamp_format",
+                "ignored_option",
+                "timestamp_format only applies to timestamp fields",
             )
     elif target.type is FieldType.TIMESTAMP:
         timestamp_format = "iso8601"
