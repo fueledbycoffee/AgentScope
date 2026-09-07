@@ -167,3 +167,9 @@ def test_integers_must_fit_signed_64_bits() -> None:
             coerce(out, FieldType.INTEGER)
     with pytest.raises(ConversionError, match="64-bit"):
         convert_duration(2**63, "ms", "ms")
+
+
+def test_scientific_zero_is_zero_not_out_of_range() -> None:
+    assert coerce(Decimal("0e19"), FieldType.INTEGER) == 0
+    assert coerce(Decimal("0e99999"), FieldType.INTEGER) == 0
+    assert coerce(Decimal("0e19"), FieldType.NUMBER) == 0.0

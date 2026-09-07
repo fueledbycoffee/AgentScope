@@ -864,3 +864,52 @@ def test_int64_overflow_and_absurd_decimals_follow_on_invalid() -> None:
     fields = result.emissions[0].fields
     assert fields["input_tokens"] is None and fields["output_tokens"] is None
     assert sorted(w.field or "" for w in result.warnings) == ["input_tokens", "output_tokens"]
+
+
+def test_bounds_skip_empty_candidates_before_transforms() -> None:
+    spec = parse_mapping(
+        _bounds_doc(transforms=["json_decode"], empty_as_missing=True, on_missing="null")
+    ).spec
+    assert spec is not None
+    record = {"sid": "s", "events": [{"ts": ""}, {"ts": '"2026-01-01T00:00:00Z"'}]}
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    assert result.rejects == ()
+    assert result.emissions[0].fields["started_at"] == datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def test_transform_producing_null_follows_on_missing() -> None:
+    def doc(**opts: Any) -> dict[str, Any]:
+        return {
+            "dsl_version": 1,
+            "target_schema_version": 1,
+            "name": "x",
+            "source": "test",
+            "input_format": "jsonl",
+            "rules": [
+                {
+                    "id": "model_call",
+                    "entity": "model_call",
+                    "select": "$",
+                    "fields": {
+                        "session_external_id": {"path": "$.sid"},
+                        "model": {"path": "$.m", "transforms": ["json_decode"], **opts},
+                    },
+                }
+            ],
+        }
+
+    reject = parse_mapping(doc(on_missing="reject")).spec
+    assert reject is not None
+    result = apply_mapping(reject, {"sid": "s", "m": "null"}, file_sha256="f", locator="line:1")
+    assert [(r.code, r.field) for r in result.rejects] == [("missing_value", "model")]
+
+    default = parse_mapping(doc(on_missing="default", default="unknown")).spec
+    assert default is not None
+    result = apply_mapping(default, {"sid": "s", "m": "null"}, file_sha256="f", locator="line:1")
+    assert result.rejects == () and result.emissions[0].fields["model"] == "unknown"
+
+    warn = parse_mapping(doc()).spec
+    assert warn is not None
+    result = apply_mapping(warn, {"sid": "s", "m": "null"}, file_sha256="f", locator="line:1")
+    assert result.emissions[0].fields["model"] is None
+    assert [(w.field, w.code) for w in result.warnings] == [("model", "null")]

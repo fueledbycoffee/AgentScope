@@ -144,7 +144,7 @@ def coerce(value: Any, field_type: FieldType, *, timestamp_format: str | None = 
                 raise ConversionError("nonfinite_value", f"{value} is not a finite number")
             # adjusted() reads the exponent without arithmetic, so a huge exponent
             # is refused before any context operation can overflow or expand it.
-            if value.adjusted() >= MAX_INTEGER_DIGITS:
+            if not value.is_zero() and value.adjusted() >= MAX_INTEGER_DIGITS:
                 raise ConversionError("out_of_range", f"{value} exceeds the supported range")
             if value != value.to_integral_value():
                 raise ConversionError("invalid_type", f"Cannot convert {value} to integer exactly")
@@ -157,7 +157,7 @@ def coerce(value: Any, field_type: FieldType, *, timestamp_format: str | None = 
         if isinstance(value, int | float):
             return value
         if isinstance(value, Decimal) and value.is_finite():
-            if value.adjusted() >= MAX_INTEGER_DIGITS:
+            if not value.is_zero() and value.adjusted() >= MAX_INTEGER_DIGITS:
                 raise ConversionError("out_of_range", f"{value} exceeds the supported range")
             return float(value)
         if isinstance(value, str):

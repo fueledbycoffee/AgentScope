@@ -130,6 +130,27 @@ MAX_PREDICATE_DEPTH = 32
 MAX_BOUNDS_ITEMS = 10_000
 
 
+def _missing_outcome(
+    fm: FieldMapping,
+    state: str,
+    rule: Rule,
+    occurrence: SourceOccurrence,
+    warnings: list[Diagnostic],
+) -> Any:
+    """Apply ``on_missing``: raise (reject), return a default to continue with,
+    or return MISSING meaning "store null" (with a warning naming the state)."""
+    if fm.on_missing == "reject":
+        raise _FieldRejectError(
+            "missing_value", f"{fm.target} is {state} and the mapping rejects missing values"
+        )
+    if fm.on_missing == "default":
+        return MISSING if fm.default is None else fm.default
+    warnings.append(
+        Diagnostic(rule.id, occurrence, state, f"{fm.target} is {state}; stored as null", fm.target)
+    )
+    return MISSING
+
+
 def _on_invalid(
     fm: FieldMapping,
     exc: ConversionError,
@@ -167,6 +188,9 @@ def _bounds(fm: FieldMapping, item: Any, root: Any) -> tuple[Any, str]:
     seen_states: set[str] = set()
     for candidate in candidates:
         value = candidate
+        if fm.empty_as_missing and isinstance(value, str) and value.strip() == "":
+            seen_states.add("empty")  # checked on the raw value, before any transform
+            continue
         for transform in fm.transforms:  # transforms run on each raw candidate first
             if value is None:
                 break
@@ -313,26 +337,17 @@ def _evaluate(
     ):
         state = "empty"
     if state != "present":
-        if fm.on_missing == "reject":
-            raise _FieldRejectError(
-                "missing_value", f"{fm.target} is {state} and the mapping rejects missing values"
-            )
-        if fm.on_missing == "default":
-            value = fm.default
-            if value is None:
-                return None
-        else:
-            warnings.append(
-                Diagnostic(
-                    rule.id, occurrence, state, f"{fm.target} is {state}; stored as null", fm.target
-                )
-            )
+        value = _missing_outcome(fm, state, rule, occurrence, warnings)
+        if value is MISSING:
             return None
     try:
         for transform in fm.transforms:
             value = apply_transform(transform, value)
-            if value is None:
-                return None
+            if value is None:  # a transform produced null: same policy as a source null
+                value = _missing_outcome(fm, "null", rule, occurrence, warnings)
+                if value is MISSING:
+                    return None
+                break  # the default replaces the value; remaining transforms do not apply
         if fm.unit_from and fm.unit_to:
             # Exact unit conversion first (ints, floats and numeric strings); the strict
             # coercion below then rejects anything not integral instead of rounding.
