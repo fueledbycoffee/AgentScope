@@ -292,3 +292,68 @@ the digest differs.
 About one day. Out of scope: the compatible adapter (#14), the assistant UI
 (#15), SWE-chat mapping correctness (#16), persisted conversations, a
 provenance column (#17).
+
+## 10. Revision 3: decisions after the second Codex pass
+
+The second pass (`…-review-codex-2.md`, 18 findings, still BLOCK) is folded
+into the implementation under the round-cap rule; these are the decisions.
+
+- **Digest semantics (1, 13).** The digest is over the final outgoing text
+  and nothing else: content equivalence, stated as such in the API doc. What
+  the run acts on is only what the text contains, so the document carries
+  `sample_included`, `sample_count`, the identity (`name`, `source`,
+  validated as slugs so they are never redactable), the upload's
+  `input_format`, and all versions (`context`, `profiler`, `sanitizer`,
+  `prompt`) as fields. `context_sha256` is required for every run. The
+  acknowledgement authorises one derived repair that adds only a sanitised,
+  bounded (16 KiB candidate, 4 KiB issues) rendering of the model's own
+  reply and the parser's issues, marked as data; no new raw evidence enters
+  during repair, and the recording-adapter tests inspect both calls.
+- **Sensitive keys (2).** A key whose text the redactor would change is
+  withheld with its whole subtree and reported as `withheld: [{parent,
+  reason}]` without the key; an unaddressable key is redacted and cut before
+  it is reported. Executable paths are therefore never rewritten. Redaction
+  counts: the cached profile keeps the counts of its own examples; the
+  context builder trims first and sanitises the final document once, so the
+  other counts describe exactly the retained content.
+- **Budget (5).** Trim order: sample records from the end, examples to 2 per
+  path, history oldest first (the `message` and the current mapping are never
+  trimmed); if the text is still over 64 KiB the prepare fails with
+  `413 context_too_large` and no port call happens. Request bounds live in
+  the schemas: message 4,000 characters, 20 history turns of 4,000, current
+  mapping 64 KiB. Sample records are projected before sanitising (depth 8,
+  20 array items, 5,000 nodes per record) and the projection is reported.
+- **Profile (7, 15).** Wrapper payload member per kind: timestamp `value`,
+  duration/time `seconds`, binary `base64`, float `value`. Integral Decimals
+  are `integer`. Distinct values are tracked exactly up to 5,000 for the
+  identifier ratio and reported capped at 50; a saturated path gets no
+  cardinality hint. Wrapper paths carry `wrapper: {kind, units, tz,
+  accessors}` so an adapter knows to address `.iso` or `.seconds`, and the
+  DSL reference sent with the context explains the wrappers.
+- **Contract and stamping (8).** The document carries the resolved contract:
+  upload format, DSL and target versions, entities with required fields, and
+  a compact DSL reference text. `name`, `source` and `input_format` are the
+  user's and are set on the reply from the request and the upload; versions
+  are validated, never rewritten (a wrong version is a contract issue and
+  goes to repair). Revise requires `current_mapping` to carry the requested
+  identity, else `400 invalid_input`.
+- **Transitions (9, 16).** `refusal` → terminal, no candidate. `length` →
+  one repair; a candidate born from a `length` reply is never executable;
+  `length` again → `502 assistant_failed {kind: truncated}`. Envelope
+  failure (not an object with a `mapping` object) → one repair; again →
+  `502 {kind: malformed}`. Non-executable mapping → one repair; again →
+  `200` with the editable candidate, `executable: false` and its issues.
+  Adapter `AssistantError` → terminal: `503 assistant_unavailable` or `502
+  assistant_failed {kind}`. Stale digest → `409 stale_context`. Every
+  non-2xx keeps the `{error: {code, message, details}}` envelope through
+  `application/errors.py` subclasses and the ordered status map.
+- **Port return type (14).** The port returns `AssistantReply(text, finish,
+  model)`; envelope parsing, validation and the repair counter live in the
+  application so both adapters share them. ADR-005 gets an amendment
+  paragraph saying so.
+- **Hash compatibility (17).** `content_hash` keeps the legacy canonical
+  form byte for byte (a test pins the bundled document's stored id); the
+  context digest uses the exact codec with sorted keys, a separate contract.
+- **Save races (18).** The repository translates an integrity failure into
+  `ConflictError`; the use case then re-reads by hash and returns the winner,
+  or retries the revision allocation once before surfacing `409 conflict`.

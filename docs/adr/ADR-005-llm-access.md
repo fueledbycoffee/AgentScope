@@ -90,3 +90,18 @@ execution stays deterministic and available independently of provider access.
 - Vendor SDK types in application/domain code: couples business behavior to a provider and violates layering.
 - Browser-held keys or direct provider calls: exposes credentials and bypasses server-side controls.
 - Trust structured output or retry indefinitely: neither establishes mapping correctness nor bounds failure cost.
+
+## Amendment (2026-09-07, issue #13): where the response envelope is parsed
+
+The port stays a single application-owned contract, but its return value is
+`AssistantReply(text, finish, model)` rather than a fully parsed
+`MappingProposal`. Parsing the `{mapping, explanations, ambiguities,
+questions}` envelope, validating the mapping through the ADR-004 stages and
+counting the single bounded repair attempt all live in the application
+(`RunAssistant`), so the fake adapter and the OpenAI-compatible adapter share
+one parser and one repair policy instead of each carrying its own. Adapters
+still own transport, the fixed instruction preamble and the mapping of vendor
+failures to `AssistantError(kind)`. Vendor types never cross the port. The
+prepared context is frozen and digested before any call; the repair call adds
+only a sanitised, bounded rendering of the model's own reply and the
+validation issues, treated as data.
