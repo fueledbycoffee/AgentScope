@@ -86,6 +86,14 @@ def _null_native_key(d: dict[str, Any]) -> None:
     d["rules"][1]["native_key"] = None
 
 
+def _path_too_deep(d: dict[str, Any]) -> None:
+    d["rules"][0]["select"] = "$" + ".a" * 17
+
+
+def _field_path_too_deep(d: dict[str, Any]) -> None:
+    d["rules"][0]["fields"]["external_id"]["path"] = "$" + ".a" * 17
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
@@ -104,6 +112,8 @@ def _null_native_key(d: dict[str, Any]) -> None:
         _null_bounds,
         _null_transforms,
         _null_native_key,
+        _path_too_deep,
+        _field_path_too_deep,
     ],
 )
 def test_schema_and_parser_agree_on_structural_rejections(

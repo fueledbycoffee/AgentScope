@@ -423,3 +423,37 @@ def test_timestamp_format_is_validated_even_where_it_does_not_apply() -> None:
     assert ("rules[0].fields.external_id.timestamp_format", "ignored_option") in codes(
         ignored, Severity.WARNING
     )
+
+
+def test_measurement_fields_cannot_default_to_a_number() -> None:
+    parsed = variant(
+        lambda d: d["rules"][1]["fields"].__setitem__(
+            "input_tokens", {"path": "$.t", "on_missing": "default", "default": 0}
+        )
+    )
+    assert ("rules[1].fields.input_tokens.default", "default_invents_measurement") in codes(parsed)
+    null_default = variant(
+        lambda d: d["rules"][1]["fields"].__setitem__(
+            "input_tokens", {"path": "$.t", "on_missing": "default", "default": None}
+        )
+    )
+    assert null_default.is_executable
+    label_default = variant(
+        lambda d: d["rules"][1]["fields"].__setitem__(
+            "model", {"path": "$.m", "on_missing": "default", "default": "unknown"}
+        )
+    )
+    assert label_default.is_executable
+
+
+def test_unknown_enum_map_parameters_are_warned() -> None:
+    parsed = variant(
+        lambda d: d["rules"][2]["fields"]["tool_name"].__setitem__(
+            "transforms", [{"enum_map": {"mapping": {"a": "b"}, "unmapped_policy": "keep"}}]
+        )
+    )
+    assert parsed.is_executable
+    assert (
+        "rules[2].fields.tool_name.transforms[0].enum_map.unmapped_policy",
+        "unknown_key",
+    ) in codes(parsed, Severity.WARNING)

@@ -18,12 +18,12 @@
   "$defs": {
     "path": {
       "type": "string",
-      "pattern": "^(\\$|@root)(\\.[A-Za-z_][A-Za-z0-9_-]*|\\[-?[0-9]{1,18}\\]|\\[\\*\\])*$",
-      "description": "Restricted path: '$' is the current item, '@root' the root record; '.name', '[n]' and '[*]' only."
+      "pattern": "^(\\$|@root)(\\.[A-Za-z_][A-Za-z0-9_-]*|\\[-?[0-9]{1,18}\\]|\\[\\*\\]){0,16}$",
+      "description": "Restricted path: '$' is the current item, '@root' the root record; '.name', '[n]' and '[*]' only; at most 16 segments."
     },
     "fieldPath": {
       "type": "string",
-      "pattern": "^(\\$|@root)(\\.[A-Za-z_][A-Za-z0-9_-]*|\\[-?[0-9]{1,18}\\])*$",
+      "pattern": "^(\\$|@root)(\\.[A-Za-z_][A-Za-z0-9_-]*|\\[-?[0-9]{1,18}\\]){0,16}$",
       "description": "Like path but without '[*]'."
     },
     "rule": {

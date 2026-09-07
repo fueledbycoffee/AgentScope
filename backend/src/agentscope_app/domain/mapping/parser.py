@@ -71,6 +71,7 @@ _FIELD_KEYS = frozenset(
     }
 )
 _CONDITION_KEYS = frozenset({"path", "op", "value"})
+_ENUM_MAP_KEYS = frozenset({"mapping", "unmapped"})
 _RULE_ID = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
 _REQUIRED_DOC_KEYS = ("name", "source", "input_format")
 
@@ -566,6 +567,14 @@ def _parse_field(raw: Any, target: TargetField, path: str, issues: _Issues) -> F
             "default_required",
             "on_missing 'default' needs a default value",
         )
+    if target.unit is not None and raw.get("default") is not None:
+        issues.error(
+            "semantic",
+            f"{path}.default",
+            "default_invents_measurement",
+            f"{target.name} is a measurement ({target.unit}); a non-null default would turn "
+            "a missing value into a measured one. Missing is never zero.",
+        )
     on_invalid = raw.get("on_invalid", "reject")
     if on_invalid not in ON_INVALID_POLICIES:
         issues.error(
@@ -621,6 +630,7 @@ def _parse_transform(raw: Any, path: str, issues: _Issues) -> Transform | None:
         )
         return None
     if name == "enum_map":
+        issues.unknown_keys(params, _ENUM_MAP_KEYS, f"{path}.enum_map")
         mapping = params.get("mapping")
         policy = params.get("unmapped", "reject")
         if not isinstance(mapping, Mapping) or policy not in ENUM_UNMAPPED_POLICIES:
