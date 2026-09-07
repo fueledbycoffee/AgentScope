@@ -10,7 +10,8 @@
 //     [--force-import] [--out ../data/verification/runs]
 //   --replace applies a human correction to the editor text as a plain string replacement (no
 //   parsing; recorded with base and target hashes). --delete-field rule_id.field removes one field
-//   mapping (this one parses and re-indents the document; recorded as such with hashes). Import runs only when the preview accepted at
+//   mapping and --set-where 'rule_id=<json array>' replaces a rule's conditions (these two parse and
+//   re-indent the document; recorded as such with hashes). Import runs only when the preview accepted at
 //   least one record, unless --force-import.
 //   node e2e/verify-second-source.mjs --replay ../data/verification/runs/A-sessions/snapshot --file … --out …
 //
@@ -158,14 +159,39 @@ async function live() {
       corrections.push({ delete: spec, applied: true, reserialised: true, base_sha256: base, target_sha256: createHash('sha256').update(documentText).digest('hex') })
       log('field removed', spec)
     }
+    for (const spec of [].concat(args['set-where'] ?? [])) {
+      const eq = spec.indexOf('=')
+      const ruleId = spec.slice(0, eq)
+      const where = JSON.parse(spec.slice(eq + 1))
+      const parsed = JSON.parse(documentText)
+      const rule = (parsed.rules ?? []).find(r => r.id === ruleId || r.entity === ruleId)
+      const base = createHash('sha256').update(documentText).digest('hex')
+      if (!rule) { log('rule not present', ruleId); corrections.push({ set_where: spec, applied: false }); continue }
+      rule.where = where
+      documentText = JSON.stringify(parsed, null, 2)
+      corrections.push({ set_where: spec, applied: true, reserialised: true, base_sha256: base, target_sha256: createHash('sha256').update(documentText).digest('hex') })
+      log('where replaced on', rule.id)
+    }
+    if (args['set-notes'] !== undefined) {
+      const parsed = JSON.parse(documentText)
+      const base = createHash('sha256').update(documentText).digest('hex')
+      parsed.notes = String(args['set-notes'])
+      documentText = JSON.stringify(parsed, null, 2)
+      corrections.push({ set_notes: true, applied: true, reserialised: true, base_sha256: base, target_sha256: createHash('sha256').update(documentText).digest('hex') })
+      log('notes replaced')
+    }
     if (corrections.some(c => c.applied)) {
       await page.getByLabel('Mapping document (JSON)').fill(documentText)
       writeFileSync(join(runDir, 'document.corrected.json'), documentText)
     }
     log('validate')
     await page.getByRole('button', { name: 'Validate the document' }).click()
-    await page.getByText(/No issues: the document is executable\.|Validation issues/).first().waitFor({ timeout: 60_000 })
+    // either the "no issues" line or the issue list (a labelled <ul>, no visible heading)
+    await page.getByText('No issues: the document is executable.').or(page.locator('ul[aria-label="Validation issues"]')).first().waitFor({ timeout: 60_000 })
     const executable = await page.getByText('No issues: the document is executable.').count() > 0
+    const issuesText = executable ? '' : await page.locator('ul[aria-label="Validation issues"]').innerText()
+    writeFileSync(join(runDir, 'validation.txt'), executable ? 'executable' : issuesText)
+    if (!executable) log('validation issues:', issuesText.slice(0, 400).replace(/\n/g, ' | '))
     let saved = null
     let preview = null
     let report = null
