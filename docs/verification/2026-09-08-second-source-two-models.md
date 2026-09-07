@@ -81,7 +81,7 @@ was included in the pre-checks.
 | B-conversations-2 | B | conversations | off | 1 | executable; this reply used `$.timestamp.iso` itself but left the **model_call rule without a `where`** | 1: tool_call `where` → `role == "tool_use"` | rev 1 `map_74da…` | accepted 518/518, 0 rejects | committed: 9 sessions, **518 model calls (every row), 88 tool calls** | not replayed: semantically wrong (a model call per row); superseded by B-conversations-3 |
 | B-conversations-3 | B | conversations | off | 1 | executable | both `where` corrections prepared | — | — | — | harness v3 waited on an invalid locator at validation; no outcome (corrected document kept) |
 | B-conversations-4 | B | conversations | off | — | no reply and no error notice within 420 s (two 180 s calls plus preparation can exceed it) | | — | — | — | rerun with a 600 s wait and a 240 s adapter timeout |
-| B-conversations-5 | B | conversations | off | 1 | executable (this reply used the wrapper path again) | 4: `$.timestamp` → `$.timestamp.iso`; tool_call `where` → `role == "tool_use"`; model_call `where` → `role == "assistant"`; `notes` set by the reviewer (all recorded with base/target hashes) | rev 1 `map_cd22…` | 518 accepted, 0 rejected | committed 518/518: **9 sessions, 149 model calls, 88 tool calls, 0 reject rows** (the audit's expected counts) | see below |
+| B-conversations-5 | B | conversations | off | 1 | executable (this reply used the wrapper path again) | 4: `$.timestamp` → `$.timestamp.iso`; tool_call `where` → `role == "tool_use"`; model_call `where` → `role == "assistant"`; `notes` set by the reviewer (all recorded with base/target hashes) | rev 1 `map_cd22…` | 518 accepted, 0 rejected | committed 518/518: **9 sessions, 149 model calls, 88 tool calls, 0 reject rows** (the audit's expected counts) | snapshot restored, `AGENTSCOPE_LLM_PROVIDER=none`: control prepare 200 then run **503**; Import page import committed: **9 sessions, 149 model calls, 88 tool calls, 0 rejects**, identical; zero assistant run requests (`replay-B-conversations-5`) |
 | A-conversations-2 | A | conversations | off | 1 | draft: the only issue is `notes` (an object instead of a string); rules were right (session `where is_first_turn == true`, model_call `role == assistant`) | tool_call `where` applied; harness v2 did not watch the issue list and timed out at validation | — | — | — | — |
 | A-conversations-3 | A | conversations | off | — | stopped on purpose (same locator defect) | | | | | |
 | A-conversations-4 | A | conversations | off | 2 | executable after the built-in repair (`$.timestamp.iso` by itself) | model_call `where` → `role == "assistant"`, `notes` string; the tool_call `where` correction was **lost by a harness flag-parsing defect** (repeated `--set-where` kept only the last) | rev 1 `map_d1ae…` | 518 accepted | committed 518/518: 9 sessions, **149 model calls (correct)**, 132 tool calls and 386 `missing_required` emission rejects (the presence test again) | superseded by A-conversations-5 |
@@ -136,9 +136,9 @@ any call.
 | --- | --- | --- |
 | sessions: live proposal | yes | yes |
 | sessions: human-assisted completion | **yes**, zero manual edits (run A-sessions-3; the two earlier runs show the model's variance: wrapper path, then a wrong `ended_at`) | **yes**, zero manual edits (B-sessions-2) |
-| conversations: live proposal | yes (draft in the pre-check; UI run pending) | yes (executable) |
-| conversations: human-assisted completion | | |
-| replay passed | yes (sessions; UI replay and API regression test) | yes (sessions; UI replay with the 503 control) |
+| conversations: live proposal | yes (executable after the built-in repair in runs 4 and 6; drafts in 2 and 5) | yes (executable, one call) |
+| conversations: human-assisted completion | pending (run 6) | **yes**, four recorded corrections (accessor, two role predicates, notes) |
+| replay passed | yes (sessions; UI replay and API regression test) | yes (sessions and conversations; UI replays with the 503 control, API regression test for both documents) |
 
 Coverage: sessions **partial** (token and tool aggregates unmapped by design);
 conversations **partial** (no provider field; token semantics unknown; latency
