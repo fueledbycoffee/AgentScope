@@ -1,0 +1,26 @@
+# Claude's adversarial review of Codex's plan
+
+## Where Codex is right and I would change my plan
+
+1. **Session bounds derived by the system, not by the DSL.** I proposed a `group-by` entity type with `min/max/count` aggregates in the DSL. Codex keeps the DSL free of aggregation ("observed session bounds may be cached from accepted events, with the derivation documented"). That is simpler and safer: the DSL only declares *identity* (session key on a model-call row), and the application computes bounds from children. Adopt.
+2. **Metric definitions in the core, optimised SQL in the query adapter, cross-checked by reference tests.** My "pure functions over rows in domain" does not scale past a few thousand rows and would push logic into the API layer anyway. Codex's `TraceQuery` port with an application-owned query spec is the right shape. Adopt.
+3. **Record outcomes vs entity outcomes reported separately.** One TraceLab row yields one model call plus N tool calls plus a session contribution. A single "rows imported" number lies. Adopt.
+4. **Verify model access and local hardware on day 1.** I left the second model choice open until day 3. That is a late-failure risk. Adopt.
+5. **Explicit product limits** (file size, records per batch, array expansion) decided now. Adopt.
+6. **`ci-required` aggregate job** as the single required check. Adopt.
+7. **Distinguish absent key / explicit null / empty text / failed conversion** in the field policy. Adopt.
+
+## Where Codex is wrong, weaker, or riskier
+
+1. **Ollama *native* chat adapter as the second provider.** An OpenAI-compatible adapter covers Ollama (`/v1`), OpenAI, Mistral, Groq, LM Studio, vLLM, OpenRouter with one implementation. Choosing Ollama-native buys a "portability exercise" at the price of reach for a real product. Position: ship Anthropic + OpenAI-compatible; the two documented configs are Claude (Anthropic) and a local Ollama model *through the OpenAI-compatible adapter*. A third native adapter is exactly the "add an adapter" extension point the brief wants demonstrated, and can be a documented example, not a day-3 deliverable.
+2. **CI scope is too heavy for day 1 of a solo sprint.** Playwright end-to-end, migration-from-empty, import-boundary check, two toolchains, all before the first slice exists. Playwright alone can eat half a day of flake. Position: day 1 CI = ruff + import-linter + pytest (with an API-level end-to-end test through FastAPI's TestClient using the fake provider) + tsc + vitest + build. Playwright is a day-4 add if time remains, otherwise a documented manual rehearsal.
+3. **"One application container" on day 1.** Not needed for a clone-and-run SQLite app. Defer Dockerfile to day 4 if trivial; do not let it into the day-1 gate.
+4. **General merge policy ("merge only complementary null/non-null values") is more machinery than v0.1.0 needs.** Restrict: sessions are the only entity assembled from several records (identity upsert + system-derived bounds); model calls and tool calls are single-record with identity uniqueness; a second record with the same identity is a duplicate if hash-equal and a conflict reject otherwise. Same guarantee, far less code.
+5. **Missed: SWE-chat is gated on Hugging Face.** Terms must be accepted with a logged-in HF account before download. This must be done on day 1 (or today) or the day-3 second source slips. Fallback: Trace Commons' decoded Parquet becomes the day-3 tabular source and a native Trace Commons JSONL is the day-4 unseen file.
+6. **Missed: `agentscope` name collision.** PyPI `agentscope` is Alibaba's agent framework. Repo name is fine; the Python package must be something else (`agentscope_app`, `ascope`) and the README should say "not related to".
+7. **Issue granularity too coarse.** 14 issues for 4 days, each spanning several PRs (e.g. D2-03 "dashboard and drill-down" is 4 KPIs + 3 charts + filters + definitions + quality strip). The board is supposed to mirror real work; one issue per PR-sized task is closer to 20-25 issues. Position: split D1-03, D1-04, D2-01, D2-03, D3-02 into two or three each.
+8. **Dropping CSV entirely.** Brief-wise fine (CSV *or* Parquet). Product-wise, CSV is the format a stranger will try first, and with pyarrow already present it is ~20 lines. Position: Parquet is the committed tabular format; CSV is a day-2 add if the reader abstraction makes it free, otherwise not in v0.1.0. Not a fight.
+9. **Provenance as a separate table with typed FKs.** Correct in general, but for v0.1.0 with the restricted merge policy above, `raw_record_id` on model_calls/tool_calls plus a `session_contributions(session_id, raw_record_id)` table gives the same lineage with one less abstraction. Either is acceptable; I lean to the simpler one and an ADR noting the upgrade path.
+
+## Points of agreement worth stating
+Python + React + SQLite + Parquet. Closed versioned mapping AST, no expression language. Application-generated keys, DB uniqueness constraints, SQLite foreign keys on every connection. Replay of saved mappings with no LLM call. Profiles first, samples only after visible filtering. Unavailable is not zero. Status field cannot be edited via `gh`; do it once in the UI. Branch protection with zero required approvals and a required CI check.

@@ -1,0 +1,39 @@
+# Local-only material
+_school/
+.claude/settings.local.json
+.DS_Store
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# Data (never commit raw uploads or datasets; see docs for retrieval)
+data/
+*.jsonl
+*.jsonl.gz
+*.parquet
+*.duckdb
+*.sqlite
+*.sqlite3
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Node
+node_modules/
+web/dist/
+.vite/
+
+# Editors
+.idea/
+.vscode/
