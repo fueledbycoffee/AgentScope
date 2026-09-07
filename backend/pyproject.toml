@@ -14,6 +14,7 @@ dependencies = [
     "alembic>=1.13",
     "python-multipart>=0.0.9",
     "pyarrow>=25.0.1",
+    "httpx2>=2.12.0",
 ]
 
 [dependency-groups]
@@ -22,7 +23,6 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "import-linter>=2.1",
-    "httpx2>=2.12.0",
     "jsonschema>=4.23",
     "hypothesis>=6.100",
 ]
@@ -95,6 +95,14 @@ forbidden_modules = [
     "httpx", "httpx2", "requests", "openai", "anthropic",
     "pydantic_settings",
 ]
+
+[[tool.importlinter.contracts]]
+name = "HTTP clients live in infrastructure only"
+type = "forbidden"
+source_modules = ["agentscope_app.interfaces"]
+forbidden_modules = ["httpx", "httpx2", "requests", "openai", "anthropic"]
+# the composition root may wire an adapter that uses a client; it may not use one itself
+allow_indirect_imports = "True"
 
 [[tool.mypy.overrides]]
 module = ["pyarrow", "pyarrow.*"]

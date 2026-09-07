@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = ""
     llm_api_key: SecretStr = Field(default=SecretStr(""))
+    # Assistant-only settings are kept as text and parsed by the adapter factory: a typo
+    # here must not stop the application, only the assistant (ADR-005).
+    llm_timeout_s: str = "60"  # deadline of one generation call in seconds
+    llm_json_mode: str = "auto"  # auto | on | off: send response_format json_object
+    llm_max_tokens: str = "8192"
 
     database_url: str = "sqlite:///./data/agentscope.sqlite3"
     raw_file_dir: Path = Path("./data/raw-files")

@@ -81,7 +81,10 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.container = container or build_container(settings)
-        yield
+        try:
+            yield
+        finally:
+            app.state.container.close()
 
     app = FastAPI(title="AgentScope", version=__version__, lifespan=lifespan)
 

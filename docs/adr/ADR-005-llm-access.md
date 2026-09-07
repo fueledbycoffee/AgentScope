@@ -47,8 +47,9 @@ or availability.
 Advertise configurations as **tested** only with recorded live evidence; accepting
 this ADR does not certify all compatible endpoints or models. Release evidence
 must record two distinct models completing the workflow, either hosted/local or
-two OpenRouter models from different vendors. CI uses the fake adapter only,
-without live provider calls or credentials.
+two OpenRouter models from different vendors. CI never calls a provider and
+never holds credentials: it runs the fake adapter and the compatible adapter
+over recorded or synthetic transports only (`backend/tests/llm_recordings/`).
 
 The adapter owns authentication, endpoints, structured-output negotiation and
 refusal, truncation, timeout and malformed-response handling. Use
@@ -105,3 +106,20 @@ failures to `AssistantError(kind)`. Vendor types never cross the port. The
 prepared context is frozen and digested before any call; the repair call adds
 only a sanitised, bounded rendering of the model's own reply and the
 validation issues, treated as data.
+
+## Tested configurations (evidence log)
+
+Only recorded live runs count (`scripts/llm_smoke.py`; see
+`docs/llm/configuration.md` for the full table):
+
+- 2026-09-07, OpenRouter, `dots-studio/dots-3-note-preview:free`: profile-only
+  context of the TraceLab fixture. First adapter build: 113 s, two generation
+  calls, editable non-executable draft (reply captured as
+  `backend/tests/llm_recordings/captured_openrouter_dots3_2026-09-07.json`).
+  Final adapter: 78 s, two generation calls, executable proposal with session,
+  model_call and tool_call rules, 26 explanations, 5 ambiguities, 4 questions.
+- The owner's earlier choice `minimax/minimax-m3:free` left OpenRouter's free
+  tier on or before 2026-09-07 (404 "unavailable for free"); a paid slug
+  exists but was not used.
+- LM Studio and Ollama: adapter paths covered by synthetic fixtures; live
+  evidence pending. The two-distinct-model release evidence is issue #16.

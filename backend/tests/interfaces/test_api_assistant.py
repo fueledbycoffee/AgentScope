@@ -249,7 +249,11 @@ def test_default_provider_starts_and_only_the_assistant_is_unavailable(tmp_path:
             503,
             "assistant_unavailable",
         )
-        assert "openai_compatible" in error["message"] and "#14" in error["message"]
+        # the default settings have no model: the message names the variable, and startup,
+        # upload and preview above were unaffected
+        assert (
+            "AGENTSCOPE_LLM_MODEL" in error["message"] and "openai_compatible" in error["message"]
+        )
 
 
 def test_saved_mapping_documents_round_trip_with_their_number_types(client: TestClient) -> None:
