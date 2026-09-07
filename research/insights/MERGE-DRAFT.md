@@ -12,6 +12,18 @@ Where the two docs computed the same quantity I re-ran it against
 
 ---
 
+> **Codex review, 2026-09-07** (`codex-review-of-merge-draft.md`): the §1.3 interval
+> correction mixed grains (the 12.96 h / 5.9 h figures are cross-session unions; Opus's
+> 47.8 % / 1.4 % are within-session union over span, which reproduce at 18.87 h summed
+> per session); the retry share is 196 / 288 = 68.06 %, rounded 68.1 %; several rows of
+> §1.1 and §§4.1, 4.6, 4.9, 4.10 overstate Codex's boundaries (source-specific prefix
+> split, adjacency views and descriptive model summaries are permitted with scope and
+> coverage; only cross-provider "reuse", "retry" without identity, and causal rankings
+> are refused); accounting partitions in the token chart, exact definitions and import
+> outcome reporting are baseline, not stretch. Section 8 below was rewritten after that
+> review. Read the review before treating §§1 to 7 as settled.
+
+
 ## 1. Agreement
 
 ### 1.1 Insights both proposed (deduplicated)
@@ -334,76 +346,76 @@ combined (G4); "Unprofiled" is a distinct state from "0% coverage" (G1).
 
 ## 8. Questions for the owner
 
-1. **Prices.** Configure a price table at all? Options: (a) never in v0.1.0 — no
-   currency anywhere [both docs' recommendation]; (b) build the versioned user-owned
-   schedule now with cache-read rates and priced-coverage display; (c) ship an unpriced
-   token view and a "configure prices" empty state. *Consequence*: (a) costs nothing and
-   protects trust; (b) eats most of a day and, with ~96% of input being reused prefix,
-   is dominated by an unknown cache-read discount; (c) permanent empty space that C
-   explicitly rules out.
+Revised after the Codex review. Each option is followed by its consequence.
 
-2. **May Codex `prefix_tokens` be shown?** (§4.1) Options: (a) headline KPI "context
-   reuse 95.9%" across both providers [O]; (b) labelled secondary series "prefix reuse
-   (billing status unknown)", never on the cache panel; (c) raw evidence only, no metric
-   [C]. *Consequence*: (a) gives the strongest single number in the product but attaches
-   a canonical-looking KPI to a raw extension whose billing meaning is unproven;
-   (b) keeps the insight and the honesty at the cost of a wordy label; (c) leaves the
-   Claude-only cache panel (shortlist #6) as the only caching view.
+1. **Prices.** Options: (a) no currency anywhere in v0.1.0 [both]; (b) build a
+   versioned, user-owned price schedule now with cache-read rates and priced
+   coverage. *Consequence*: (a) nothing to build, nothing to mistrust; (b) real
+   cost, and the largest input component (prefix tokens) has no validated billing
+   meaning for Codex, so most of the number would be labelled unknown anyway.
 
-3. **What the four KPI slots are for.** (§4.2) Options: (a) insight numbers — sessions,
-   reuse ratio, error rate, observed span [O]; (b) navigation counts aligned to the
-   existing API — sessions, model calls, tool calls, input usage by accounting group [C];
-   (c) hybrid — counts plus the error rate. *Consequence*: (a) a more opinionated
-   dashboard, day-2 API churn, and it depends on Q2; (b) zero API churn and no
-   contested metric, but the dashboard states nothing a user could act on; (c) one
-   contested slot only.
+2. **Source-specific prefix reuse.** Options: (a) fund a separately defined,
+   source-specific "prefix share of input" metric now, extracted and tested like
+   any canonical field, shown only within one source and never called cache or
+   reuse; (b) keep prefix tokens as raw evidence in v0.1.0 and define the metric
+   later. *Consequence*: (a) about half a day, one honest per-source number;
+   (b) the Claude-only cache panel (shortlist #6) is the only caching view.
 
-4. **May observed span be a KPI tile?** (§4.3) Options: (a) KPI with in-tile caveat
-   [O]; (b) sessions-table column and session-header label only [C]. *Consequence*:
-   (a) the 456 h / 18.9 h gap is visible on day one but the tile must carry a sentence
-   of caveat; (b) safer, but "how long did this take" then has no answer on the
-   dashboard.
+3. **What the four KPI slots are for.** Options: (a) navigation counts aligned to
+   the API: sessions, model-call observations, tool-call observations, input
+   usage by accounting group [C]; (b) replace one slot (which one?) with the tool
+   error rate and its known denominator; (c) Opus's four insight numbers.
+   *Consequence*: (a) counts are actionable entry points into a large workload and
+   need only the semantics groups and coverage the contract already carries;
+   (b) one contested slot, one more definition to defend; (c) depends on Q2 and Q4
+   and churns the day-2 API.
 
-5. **Which token semantics may share an axis?** Options: (a) never — separate panels
-   per tag; (b) same tag only, and a mixed slice returns a machine-enforced refusal
-   ("not comparable: 2 token semantics in selection") with a split button [O H4];
-   (c) allow pooling with a label. *Consequence*: (a) safest, most panels; (b) one
-   metric-layer feature that makes the rule impossible to violate later — both docs
-   point here; (c) fastest and the one way to ship a number that is quietly wrong.
+4. **Aggregated observed span as a headline.** Options: (a) no headline; span
+   appears per session with the fixed label "observed span in imported data"
+   [C]; (b) a headline tile carrying that label and its caveat [O].
+   *Consequence*: neither answers "how long did this take"; the gap between spans
+   and tool intervals measures neither idle nor active work, so (b) buys
+   visibility of a number that must not be read as duration.
 
-6. **Percentile, rounding and publication rule.** (§4.11, §1.3) Options: (a) adopt C's
-   nearest rank + even-n median averaging and attach the rule to every report [C];
-   (b) linear interpolation; (c) leave to implementation. *Consequence*: (a) p90 rounds
-   per session publishes as **139**, `Read` p90 as **288 ms**, and O's 140 / 281 ms must
-   be corrected before any of these numbers leave the repo; (b) 140 / 281 ms stand but
-   the rule must still be declared; (c) the same figure differs between the API, the
-   docs and the release notes.
+5. **Token semantics on one axis.** Options: (a) partition by validated
+   compatibility and refuse incompatible sums with a visible reason ("not
+   comparable: 2 token semantics in selection") and a split control; (b) allow
+   pooling with a label. *Consequence*: (a) a metric-layer rule that cannot be
+   violated later, more panels; (b) the one way to ship a number that is quietly
+   wrong. Note: an `unknown` or unvalidated tag never counts as compatible.
 
-7. **Does v0.1.0 get the session timeline?** (§4.4) Options: (a) gap-visible tool
-   timeline in session detail (~4 h) [O]; (b) ordered call/tool table only, timeline
-   later [C]; (c) table now, timeline behind a "show timeline" control. *Consequence*:
-   (a) makes the observed-span caveat self-evident and is the natural drill-down target,
-   at real cost inside a 4-day box; (b) protects the day-4 verification gates and the
-   second-source work; (c) the control itself costs something and may ship half-drawn.
+6. **Quantile and display rule.** Options: (a) nearest-rank quantiles, even-n
+   medians averaged, display precision declared separately [C]; (b) inclusive
+   linear interpolation with the same declaration. *Consequence*: (a) p90 rounds
+   per session publishes as 139 and `Read` p90 as 288 ms; (b) 139.6 and 280.8 ms
+   with their rounding rule. Either way the rule is attached to every report; it
+   is never left to an implementation default.
 
-8. **Repeat-after-error: publish or defer?** (§4.6) Options: (a) publish 196 of **288**
-   marked errors with a following observation (68.1%) as "repeated tool observation";
-   (b) session-detail visual only, no aggregate; (c) defer entirely until command
-   identity exists [C]. *Consequence*: (a) a genuinely interesting behavioural number
-   that will be read as "retry rate" no matter the label; (b) keeps the evidence and
-   drops the claim; (c) loses the most concrete loop-behaviour finding in either doc.
+7. **Session timeline in v0.1.0.** Options: (a) ordered call and tool table now,
+   timeline later [C]; (b) gap-visible timeline now (about 4 h) [O].
+   *Consequence*: (a) protects the day-4 gates; (b) makes the span caveat
+   self-evident at real cost. Hiding a timeline behind a control does not reduce
+   what must be built and verified.
 
-9. **Reasoning: how far may it be shown?** (§4.10) Options: (a) the 46.15% ratio plus
-   the per-model trend as a finding [O]; (b) the ratio as an accounting diagnostic on
-   the definitions page, no model comparison [C]; (c) per-call reasoning tokens in Codex
-   session detail only. *Consequence*: (a) a striking generational story drawn from a
-   provider-stratified, non-task-matched sample with unvalidated inclusion semantics;
-   (b) truthful and dull; (c) no aggregate to misread, but the finding is invisible.
+8. **Repeat-after-error.** Options: (a) defer the adjacency feature beyond
+   v0.1.0; call it "retry" only once command identity or linkage exists; (b) show
+   a session-detail marker only, no aggregate; (c) publish 196 / 288 = 68.1 % as
+   "same tool observed next after a marked error" with the eligible-adjacency
+   denominator stated. *Consequence*: (a) nothing to misread; (b) the evidence
+   stays visible; (c) readers will call it a retry rate whatever the label.
 
-10. **Zero and near-zero latency observations.** (§4.8) Options: (a) exclude `shell`'s
-    84 zeros and 38 one-millisecond values from latency aggregates with a visible reason
-    [O]; (b) always include observed zeros, flag the instrumentation question in the
-    tool table [C]; (c) include, and add a per-tool "instrumentation suspect" badge.
-    *Consequence*: (a) medians stop being distorted by an un-instrumented generation but
-    the product starts dropping records; (b) no records dropped and a visibly odd row
-    the user must interpret; (c) both, at the price of one more concept in the UI.
+9. **Reasoning tokens.** Options: (a) known reasoning-token totals and
+   distributions by compatible model group, with scope and coverage, and the
+   reasoning-to-output ratio only as an accounting diagnostic on the definitions
+   page; (b) additionally publish the per-model ratio trend as a finding [O].
+   *Consequence*: (a) descriptive, defensible; (b) a generational story from a
+   provider-stratified, non-task-matched sample with unvalidated inclusion
+   semantics.
+
+10. **Zero and near-zero tool latencies.** Options: (a) include every recorded
+    value and flag the instrumentation question in the tool table until source
+    evidence justifies a validity rule; (b) exclude `shell`'s 84 zero and 38
+    one-millisecond values from latency aggregates with a visible reason [O].
+    *Consequence*: (a) no record dropped, one visibly odd row; (b) medians stop
+    being distorted, and the product starts dropping records on an assumption.
+    What evidence would justify a validity rule is itself an open question.
