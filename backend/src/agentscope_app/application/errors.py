@@ -29,3 +29,34 @@ class LimitExceededError(ApplicationError):
 
 class ConflictError(ApplicationError):
     code = "conflict"
+
+
+class StaleContextError(ConflictError):
+    """The prepared context the client acknowledged is not the one that would be sent now."""
+
+    code = "stale_context"
+
+
+class ContextTooLargeError(LimitExceededError):
+    code = "context_too_large"
+
+
+class AssistantUnavailableError(ApplicationError):
+    code = "assistant_unavailable"
+
+
+class AssistantFailedError(ApplicationError):
+    code = "assistant_failed"
+
+
+class AssistantError(Exception):
+    """Raised by adapters; ``kind`` is one of unavailable, timeout, provider, malformed.
+
+    Application-owned so vendor exceptions never cross the port. The message must
+    already be safe: no headers, no keys, no SDK dumps.
+    """
+
+    def __init__(self, kind: str, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message

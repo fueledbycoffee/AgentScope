@@ -27,7 +27,7 @@ import pyarrow.parquet as pq
 
 from agentscope_app.application.dto import MAX_DECODED_BYTES, MAX_RECORDS_PER_FILE, RawRecord
 from agentscope_app.application.errors import InvalidInputError, LimitExceededError
-from agentscope_app.infrastructure.jsonx import dumps_exact
+from agentscope_app.domain.jsonx import dumps_exact
 
 PARQUET_MAGIC: Final = b"PAR1"
 WRAPPER_KEY: Final = "_arrow"

@@ -77,7 +77,7 @@ def test_jsonl_reader_keeps_numbers_exact_and_rejects_non_objects() -> None:
 def test_exact_json_codec_never_rewrites_strings_or_keys() -> None:
     from decimal import Decimal
 
-    from agentscope_app.infrastructure.jsonx import dumps_exact, loads_exact
+    from agentscope_app.domain.jsonx import dumps_exact, loads_exact
 
     payload = {
         "n": 7,
@@ -100,7 +100,7 @@ def test_exact_json_codec_never_rewrites_strings_or_keys() -> None:
 def test_exact_json_codec_is_linear_in_size() -> None:
     import time
 
-    from agentscope_app.infrastructure.jsonx import dumps_exact
+    from agentscope_app.domain.jsonx import dumps_exact
 
     record = {"values": list(range(200_000))}
     started = time.perf_counter()

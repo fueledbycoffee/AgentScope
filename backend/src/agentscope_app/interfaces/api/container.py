@@ -5,8 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentscope_app.application.ports import UnitOfWorkFactory
+from agentscope_app.application.ports import MappingAssistant, UnitOfWorkFactory
+from agentscope_app.application.use_cases.assistant import (
+    PrepareContext,
+    ProfileFile,
+    RunAssistant,
+)
 from agentscope_app.application.use_cases.imports import CommitImport, PreviewImport
+from agentscope_app.application.use_cases.mappings import SaveMappingRevision
 from agentscope_app.application.use_cases.queries import (
     GetImport,
     GetMapping,
@@ -25,6 +31,8 @@ from agentscope_app.infrastructure.db.engine import create_engine_for, run_migra
 from agentscope_app.infrastructure.db.unit_of_work import make_uow_factory
 from agentscope_app.infrastructure.files.raw_store import FilesystemRawFileStore
 from agentscope_app.infrastructure.ids import UtcClock, UuidIdGenerator
+from agentscope_app.infrastructure.llm.fake import FakeMappingAssistant
+from agentscope_app.infrastructure.llm.unavailable import UnavailableMappingAssistant
 from agentscope_app.infrastructure.mappings.bundled import load_bundled_mappings
 from agentscope_app.infrastructure.readers.router import FormatRouter
 from agentscope_app.infrastructure.settings import Settings
@@ -48,6 +56,21 @@ class Container:
     get_session: GetSession
     get_raw_record: GetRawRecord
     metrics_summary: MetricsSummary
+    profile_file: ProfileFile
+    prepare_context: PrepareContext
+    run_assistant: RunAssistant
+    save_mapping: SaveMappingRevision
+
+
+def build_assistant(settings: Settings) -> MappingAssistant:
+    """Only ``fake`` is explicit; any other provider is unavailable until its adapter exists (#14).
+
+    Nothing else depends on this choice: uploads, saved-mapping replay and the
+    dashboards work without an assistant (ADR-005).
+    """
+    if settings.llm_provider == "fake":
+        return FakeMappingAssistant(settings.bundled_mappings_dir)
+    return UnavailableMappingAssistant(settings.llm_provider)
 
 
 def build_container(settings: Settings) -> Container:
@@ -62,6 +85,8 @@ def build_container(settings: Settings) -> Container:
     load_bundled_mappings(uow_factory, settings.bundled_mappings_dir, clock)
     store = FilesystemRawFileStore(settings.raw_file_dir)
     reader = FormatRouter()
+    profile_file = ProfileFile(uow_factory, store, reader)
+    prepare_context = PrepareContext(uow_factory, store, reader, profile_file)
     return Container(
         settings=settings,
         uow_factory=uow_factory,
@@ -79,4 +104,8 @@ def build_container(settings: Settings) -> Container:
         get_session=GetSession(uow_factory),
         get_raw_record=GetRawRecord(uow_factory),
         metrics_summary=MetricsSummary(uow_factory),
+        profile_file=profile_file,
+        prepare_context=prepare_context,
+        run_assistant=RunAssistant(prepare_context, build_assistant(settings)),
+        save_mapping=SaveMappingRevision(uow_factory, clock),
     )

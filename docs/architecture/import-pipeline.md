@@ -95,8 +95,26 @@ infrastructure library, or if `infrastructure` imports `interfaces`.
 - `entity_contributions` link every accepted emission back to its record,
   mapping revision and rule; exactly one entity foreign key is set.
 
+## The assistant path (ADR-005, #13)
+
+The mapping assistant never touches canonical records and never reads the
+file itself. `ProfileFile` (application) runs the domain profiler over the
+stored upload through the same reader as an import and caches the sanitised
+result on `uploads.profile` with a version. `PrepareContext` builds the
+complete document the model will see as data (identity, upload format, the
+target contract, the profile, an optional deterministic sample, the current
+mapping, message and history), passes all of it through the domain redactor,
+trims it to the 64 KiB budget and freezes it with a SHA-256 over the final
+text. `RunAssistant` prepares the same context again, refuses a stale digest,
+calls the `MappingAssistant` port (`infrastructure/llm/`: the deterministic
+fake, or the unavailable adapter until #14) and owns parsing, identity
+stamping, validation through `parse_mapping` and the single repair call. The
+only write on this path is the profile cache; a proposal becomes a mapping
+revision only through `SaveMappingRevision`, the same use case the bundled
+loader uses, and then imports through the commit path above.
+
 ## Not yet
 
 Record and entity outcome browsing in the UI (#9), the
-metric definition module (#10), the dashboard (#11), mapping revisions from
-the UI and the assistant (#13 to #15).
+metric definition module (#10), the dashboard (#11), the compatible adapter
+(#14) and the assistant UI (#15).

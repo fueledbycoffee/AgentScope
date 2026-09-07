@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from agentscope_app.application.dto import (
+    CachedProfile,
     Coverage,
     DiagnosticRow,
     FileInfo,
@@ -35,7 +36,7 @@ from agentscope_app.application.dto import (
 from agentscope_app.application.dto import (
     RawRecord as RawRecordDTO,
 )
-from agentscope_app.application.errors import ConflictError
+from agentscope_app.application.errors import ConflictError, NotFoundError
 from agentscope_app.domain.mapping.interpreter import Emission
 from agentscope_app.domain.reducer import SessionAggregate
 from agentscope_app.infrastructure.db import models as m
@@ -82,6 +83,19 @@ class SqlAlchemyUploads:
                 created_at=_now(),
             )
         )
+
+    def get_profile(self, upload_id: str) -> CachedProfile | None:
+        row = self._s.get(m.Upload, upload_id)
+        if row is None or row.profile is None or row.profile_version is None:
+            return None
+        return CachedProfile(version=row.profile_version, profile=row.profile)
+
+    def set_profile(self, upload_id: str, cached: CachedProfile) -> None:
+        row = self._s.get(m.Upload, upload_id)
+        if row is None:
+            raise NotFoundError(f"Unknown upload {upload_id}")
+        row.profile = cached.profile
+        row.profile_version = cached.version
 
     def get(self, upload_id: str) -> UploadInfo | None:
         row = self._s.get(m.Upload, upload_id)
@@ -147,6 +161,13 @@ class SqlAlchemyMappings:
                 created_at=record.created_at,
             )
         )
+        try:
+            self._s.flush()
+        except IntegrityError as exc:
+            raise ConflictError(
+                "A mapping with the same content, or the same name and revision, "
+                "was saved concurrently"
+            ) from exc
 
 
 class SqlAlchemyImports:

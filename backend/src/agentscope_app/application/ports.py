@@ -11,14 +11,18 @@ from datetime import datetime
 from typing import Any, BinaryIO, Protocol
 
 from agentscope_app.application.dto import (
+    AssistantReply,
+    CachedProfile,
     ImportRef,
     ImportReport,
     MappingRecord,
+    PreparedContext,
     RawRecord,
     RecordOutcome,
     RecordRow,
     RejectRow,
     RejectSummary,
+    RepairRequest,
     SessionDetail,
     SessionSummary,
     StoredFile,
@@ -60,6 +64,12 @@ class UploadRepository(Protocol):
     def add(self, info: UploadInfo) -> None: ...
 
     def get(self, upload_id: str) -> UploadInfo | None: ...
+
+    def get_profile(self, upload_id: str) -> CachedProfile | None:
+        """The cached sanitised profile, or None when never computed."""
+        ...
+
+    def set_profile(self, upload_id: str, cached: CachedProfile) -> None: ...
 
 
 class MappingRepository(Protocol):
@@ -158,6 +168,19 @@ class TraceRepository(Protocol):
     def metrics_summary(self, *, source: str | None, agent: str | None) -> dict[str, Any]:
         """Aggregates for MetricsSummary: counts, token sums, coverage, by_semantics."""
         ...
+
+
+class MappingAssistant(Protocol):
+    """ADR-005 port. Adapters own transport and the fixed instruction preamble only.
+
+    ``prepared.text`` must reach the model verbatim as data; ``repair`` adds the
+    sanitised previous candidate and issues, also as data. Failures are
+    ``AssistantError``; the reply is raw text the application parses and validates.
+    """
+
+    def complete(
+        self, prepared: PreparedContext, *, repair: RepairRequest | None = None
+    ) -> AssistantReply: ...
 
 
 class UnitOfWork(Protocol):

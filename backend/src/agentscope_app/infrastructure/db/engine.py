@@ -9,7 +9,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, create_engine, event
 
-from agentscope_app.infrastructure.jsonx import dumps_exact, loads_exact
+from agentscope_app.domain.jsonx import dumps_exact, loads_exact
 
 ALEMBIC_DIR = Path(__file__).resolve().parent / "alembic"
 

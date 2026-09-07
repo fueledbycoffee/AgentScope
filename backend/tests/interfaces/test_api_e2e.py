@@ -137,7 +137,7 @@ def test_errors_follow_the_contract(client: TestClient) -> None:
 def test_payload_text_keeps_big_integers_and_decimals_exact() -> None:
     from decimal import Decimal
 
-    from agentscope_app.infrastructure.jsonx import dumps_exact
+    from agentscope_app.domain.jsonx import dumps_exact
 
     text = dumps_exact(
         {
