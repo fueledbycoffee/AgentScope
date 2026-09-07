@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { commitImport, listMappings, previewImport, uploadFile } from '../api'
 import type { ImportPreview, ImportRequest, Mapping, Upload } from '../api'
 import { Counts, ErrorNotice, JsonView, ResourceState, Table } from '../components'
+import { useFileBar } from '../shellHooks'
 
 /** One previewed (file, mapping) pair waiting in the batch. */
 interface Pair { upload: Upload; mapping: Mapping; preview: ImportPreview }
@@ -36,6 +37,13 @@ export default function ImportPage() {
   const mixedSources = new Set(pairs.map(pair => pair.mapping.source)).size > 1
   const batchMixed = new Set(batch.map(pair => pair.mapping.source)).size > 1
   const duplicateInBatch = !!current && batch.some(pair => pair.upload.sha256 === current.upload.sha256)
+  useFileBar('Import', upload ? [
+    { label: 'File', value: upload.filename },
+    { label: 'SHA-256', value: `${upload.sha256.slice(0, 12)}…`, mono: true },
+    { label: 'Records', value: upload.record_count.toLocaleString('en-US') },
+    ...(mapping ? [{ label: 'Mapping', value: `${mapping.name} · revision ${mapping.revision}` }] : []),
+    ...(batch.length ? [{ label: 'Batch', value: `${batch.length} queued` }] : []),
+  ] : [])
 
   async function run(label: string, action: () => Promise<void>) {
     if (inFlight.current) return

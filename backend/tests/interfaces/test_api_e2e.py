@@ -149,3 +149,25 @@ def test_payload_text_keeps_big_integers_and_decimals_exact() -> None:
     )
     assert "9007199254740993" in text and "1.00000000000000001" in text
     assert '"9007199254740993"' not in text and "true" in text and "null" in text
+
+
+def test_client_routes_are_served_by_the_index_page(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><title>AgentScope</title><div id=root></div>")
+    (dist / "assets" / "app.js").write_text("console.log('app')")
+    settings = Settings(
+        _env_file=None,
+        database_url=f"sqlite:///{tmp_path / 'db' / 'agentscope.sqlite3'}",
+        raw_file_dir=tmp_path / "raw",
+    )
+    with TestClient(create_app(settings, web_dist=dist)) as client:
+        assert client.get("/assets/app.js").text == "console.log('app')"
+        for route in ("/", "/overview", "/sessions/ses_1", "/imports?offset=50"):
+            response = client.get(route)
+            assert response.status_code == 200 and "id=root" in response.text, route
+        assert client.get("/assets/missing.js").status_code == 404  # real files keep real 404s
+        assert client.get("/api/sessions/nope").status_code == 404  # the API is untouched
+        assert client.get("/api/sessions/nope").json()["error"]["code"] == "not_found"
+        typo = client.get("/api/metrics/sumary")  # an unknown API path is never the page
+        assert typo.status_code == 404 and typo.json()["error"]["code"] == "not_found"

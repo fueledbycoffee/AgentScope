@@ -15,8 +15,10 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.encoders import ENCODERS_BY_TYPE
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import Scope
 
 from agentscope_app import __version__
 from agentscope_app.application.errors import (
@@ -42,7 +44,29 @@ _STATUS = {
 }
 
 
-def create_app(settings: Settings | None = None, container: Container | None = None) -> FastAPI:
+class SpaFiles(StaticFiles):
+    """The built web app: real files as they are, and ``index.html`` for every
+    other extension-less path so client-side routes survive a reload or a
+    shared link. ``/api`` never reaches here."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            is_api = path == "api" or path.startswith("api/")
+            if exc.status_code == 404 and not is_api and "." not in path.rsplit("/", 1)[-1]:
+                return await super().get_response("index.html", scope)
+            raise
+
+
+DEFAULT_WEB_DIST = Path(__file__).resolve().parents[5] / "web" / "dist"
+
+
+def create_app(
+    settings: Settings | None = None,
+    container: Container | None = None,
+    web_dist: Path | None = None,
+) -> FastAPI:
     settings = settings or Settings()
 
     @asynccontextmanager
@@ -66,6 +90,13 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         }
         return JSONResponse(status_code=status, content=body)
 
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        # Unknown API paths (and any other framework-level HTTP error) keep the envelope.
+        code = "not_found" if exc.status_code == 404 else "http_error"
+        body = {"error": {"code": code, "message": str(exc.detail), "details": []}}
+        return JSONResponse(status_code=exc.status_code, content=body)
+
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
         details = [
@@ -77,9 +108,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         }
         return JSONResponse(status_code=400, content=body)
 
-    web_dist = Path(__file__).resolve().parents[5] / "web" / "dist"
+    web_dist = DEFAULT_WEB_DIST if web_dist is None else web_dist
     if web_dist.is_dir():
-        app.mount("/", StaticFiles(directory=web_dist, html=True), name="web")
+        app.mount("/", SpaFiles(directory=web_dist, html=True), name="web")
     return app
 
 

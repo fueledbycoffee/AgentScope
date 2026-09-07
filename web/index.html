@@ -6,6 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Import, inspect, and explore AI coding-agent traces." />
     <title>AgentScope</title>
+    <script>
+      // Stamp the saved theme before the first paint; "system" leaves the OS in charge.
+      try {
+        var theme = localStorage.getItem('agentscope-theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+      } catch (error) { /* storage may be unavailable */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>
