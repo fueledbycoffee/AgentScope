@@ -51,14 +51,17 @@ carry `tool_name`, `tool_result` rows mostly do not; `assistant` rows include
 | | Config A | Config B |
 | --- | --- | --- |
 | Endpoint | OpenRouter `https://openrouter.ai/api/v1` | OpenRouter |
-| Model | `dots-studio/dots-3-note-preview:free` (dots-studio) | `liquid/lfm-2.5-2.6b:free` (Liquid AI) |
+| Model | `dots-studio/dots-3-note-preview:free` (dots-studio) | `nvidia/nemotron-3-super-120b-a12b:free` (NVIDIA); first candidate `liquid/lfm-2.5-2.6b:free` (Liquid AI) was truncated twice on both tables and is recorded as a failed substitution |
 | JSON mode | `auto` | `auto` |
 | Timeout / max tokens | 180 s / 8192 | 180 s / 8192 |
 
 Pre-checks (profile only, `scripts/llm_smoke.py`, no sample) on 2026-09-07:
 A: sessions executable in one call (38 s); conversations draft after the
-repair (141 s; `not_an_object`, `required_field_unmapped`). B: truncated
-twice on both tables (87 s, 53 s). Substitutions are bounded: at most three
+repair (141 s; `not_an_object`, `required_field_unmapped`). B candidate 1
+(Liquid): truncated twice on both tables (87 s, 53 s). B candidate 2
+(NVIDIA): sessions executable in one call (131 s); conversations pending.
+`google/gemma-4-26b-a4b-it:free` was rate-limited upstream (429) every time
+it was tried. Substitutions are bounded: at most three
 candidates per slot, each recorded (id, vendor, outcome); the two final
 models must be from different vendors; no paid model without the owner's
 decision; a local model counts only if it is actually different weights and
