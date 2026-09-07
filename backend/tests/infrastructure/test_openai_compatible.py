@@ -276,6 +276,11 @@ def test_a_provider_error_inside_a_200_is_a_provider_failure() -> None:
     [
         (httpx2.Response(401, json={"error": "bad key"}), "unavailable", "AGENTSCOPE_LLM_API_KEY"),
         (
+            httpx2.Response(403, json={"error": {"message": "model not available on this plan"}}),
+            "unavailable",
+            "AGENTSCOPE_LLM_MODEL is available to this key",
+        ),
+        (
             httpx2.Response(402, json={"error": {"message": "insufficient credits"}}),
             "unavailable",
             "credits",
