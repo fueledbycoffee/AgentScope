@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getRawRecord, getSession } from '../api'
 import type { RawReference } from '../api'
-import { JsonView, ResourceState, Table } from '../components'
+import { ResourceState, Table } from '../components'
 
 function SourceDrawer({ reference, onClose }: { reference: RawReference; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -20,7 +20,7 @@ function SourceDrawer({ reference, onClose }: { reference: RawReference; onClose
     <h2 id="source-title">Source record</h2>
     <dl><dt>File SHA-256</dt><dd className="hash">{reference.file_sha256}</dd><dt>Locator</dt><dd>{reference.locator}</dd></dl>
     <ResourceState {...resource} />
-    {resource.data && <JsonView value={resource.data.payload} />}
+    {resource.data && <pre>{resource.data.payload_text}</pre>}
   </dialog>
 }
 

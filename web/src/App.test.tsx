@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { mapping, metrics, preview, reject, report, session, upload } from './test/fixtures'
+import { mapping, metrics, preview, rawRecord, reject, report, session, upload } from './test/fixtures'
 
 const fetchMock = vi.fn<typeof fetch>()
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -18,7 +18,7 @@ function defaultResponse(input: RequestInfo | URL, options?: RequestInit): Promi
   if (url.pathname === '/api/metrics/summary') return Promise.resolve(json(metrics))
   if (url.pathname === '/api/sessions') return Promise.resolve(json([session]))
   if (url.pathname === '/api/sessions/ses_1') return Promise.resolve(json(session))
-  if (url.pathname === '/api/raw-records') return Promise.resolve(json({ ...session.model_calls[0].raw_record, payload: { message: '<script>untrusted trace</script>', nested: { value: 42 } } }))
+  if (url.pathname === '/api/raw-records') return Promise.resolve(json({ ...rawRecord, locator: url.searchParams.get('locator') }))
   throw new Error(`Unexpected request: ${url}`)
 }
 function start(route = '/import') {
@@ -286,7 +286,9 @@ describe('Reports, history, and session detail', () => {
     const drawer = await screen.findByRole('dialog', { name: 'Source record' })
     await within(drawer).findByText(/untrusted trace/)
     expect(drawer.querySelector('script')).toBeNull()
-    expect(drawer.querySelector('pre')?.textContent).toContain('\n  "message":')
+    expect(drawer.querySelector('pre')?.textContent).toBe(rawRecord.payload_text)
+    expect(drawer.querySelector('pre')?.textContent).toContain('9007199254740993')
+    expect(drawer.querySelector('pre')?.textContent).not.toContain('9007199254740992')
     expect(fetchMock).toHaveBeenCalledWith('/api/raw-records?file_sha256=d044a766&locator=line%3A1', undefined)
     fireEvent.click(within(drawer).getByRole('button', { name: 'Close source record' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

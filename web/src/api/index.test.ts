@@ -3,7 +3,7 @@ import {
   ApiError, commitImport, getImport, getMapping, getMetricsSummary, getRawRecord,
   getSession, listImports, listMappings, listRejects, listSessions, previewImport, uploadFile,
 } from './index'
-import { mapping, metrics, preview, reject, report, session, upload } from '../test/fixtures'
+import { mapping, metrics, preview, rawRecord, reject, report, session, upload } from '../test/fixtures'
 
 const fetchMock = vi.fn<typeof fetch>()
 function respond(body: unknown, status = 200) {
@@ -15,7 +15,7 @@ afterEach(() => { vi.unstubAllGlobals(); fetchMock.mockReset() })
 describe('API contract', () => {
   it('uses same-origin API paths, encoded identifiers, filters, and pagination for every read endpoint', async () => {
     const mappingDetail = { ...mapping, document: { dsl_version: 1 }, issues: [] }
-    const raw = { file_sha256: 'hash&bytes', locator: 'line:1+2', payload: { nested: [null, false, 0] } }
+    const raw = { ...rawRecord, file_sha256: 'hash&bytes', locator: 'line:1+2' }
     const cases: [() => Promise<unknown>, string, unknown][] = [
       [() => listMappings({ limit: 50, offset: 0 }), '/api/mappings?limit=50&offset=0', [mapping]],
       [() => getMapping('map/1'), '/api/mappings/map%2F1', mappingDetail],

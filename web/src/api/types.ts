@@ -60,7 +60,7 @@ export interface ImportReport extends ImportSummary { warnings: Record<string, n
 export interface Coverage { known: number; total: number }
 export interface CoveredValue { value: number | null; coverage: Coverage }
 export interface RawReference { file_sha256: string; locator: string }
-export interface RawRecord extends RawReference { payload: Json }
+export interface RawRecord extends RawReference { payload: Json; payload_text: string }
 export interface Session {
   id: string
   source: string

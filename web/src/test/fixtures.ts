@@ -1,4 +1,17 @@
-import type { ImportPreview, ImportReport, Mapping, MetricsSummary, SessionDetail, Upload } from '../api'
+import type { ImportPreview, ImportReport, Mapping, MetricsSummary, RawRecord, SessionDetail, Upload } from '../api'
+
+export const rawRecord: RawRecord = {
+  file_sha256: 'd044a766', locator: 'line:1',
+  payload_text: `{
+  "message": "<script>untrusted trace</script>",
+  "native_id": 9007199254740993,
+  "nested": {
+    "value": 42
+  }
+}`,
+  // The parsed payload models the precision loss in response.json().
+  payload: { message: '<script>untrusted trace</script>', native_id: 9007199254740992, nested: { value: 42 } },
+}
 
 export const mapping: Mapping = {
   id: 'map_1', name: 'tracelab-v1', source: 'tracelab', revision: 1, created_by: 'bundled', input_format: 'jsonl',
