@@ -10,6 +10,30 @@ AgentScope takes trace files (JSONL, Parquet), normalises them into a common rel
 
 Pre-release. The plan for v0.1.0 lives in [`docs/planning/`](docs/planning/2026-09-07-consolidated-plan.md). Work is tracked on the GitHub Project linked to this repository.
 
+## Development
+
+Requirements: [uv](https://docs.astral.sh/uv/) (provisions Python 3.12), Node 24 and [pnpm](https://pnpm.io/).
+
+```bash
+# Backend (FastAPI)
+cd backend
+uv sync --all-groups
+cp ../.env.example .env          # then fill in your LLM endpoint and key
+uv run uvicorn agentscope_app.interfaces.api.main:app --reload
+uv run pytest                    # tests
+uv run ruff check . && uv run mypy && uv run lint-imports   # lint, types, architecture rules
+
+# Web (React + Vite), in a second terminal
+cd web
+pnpm install
+pnpm dev                         # proxies /api to the backend on :8000
+pnpm test && pnpm typecheck && pnpm lint && pnpm build
+```
+
+CI runs all of the above on every pull request; `ci-required` is the single status check that must pass before merging to `main`.
+
+Layout: `backend/src/agentscope_app/{domain,application,infrastructure,interfaces}` follows Clean Architecture with the dependency direction enforced by import-linter (see `backend/pyproject.toml`). `web/` is the single-page front end.
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
