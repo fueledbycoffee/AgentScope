@@ -4,11 +4,13 @@ export type Theme = 'light' | 'dark' | 'system'
 const KEY = 'agentscope-theme'
 const listeners = new Set<() => void>()
 
+let chosen: Theme | undefined // the last choice made in this page, for when storage is unavailable
+
 function read(): Theme {
   try {
     const value = localStorage.getItem(KEY)
-    return value === 'light' || value === 'dark' ? value : 'system'
-  } catch { return 'system' }
+    return value === 'light' || value === 'dark' ? value : chosen ?? 'system'
+  } catch { return chosen ?? 'system' }
 }
 
 /** Stamp the root element; "system" removes the attribute so the OS decides. */
@@ -19,7 +21,8 @@ export function applyTheme(theme: Theme = read()) {
 }
 
 export function setTheme(theme: Theme) {
-  try { if (theme === 'system') localStorage.removeItem(KEY); else localStorage.setItem(KEY, theme) } catch { /* private mode */ }
+  chosen = theme
+  try { if (theme === 'system') localStorage.removeItem(KEY); else localStorage.setItem(KEY, theme) } catch { /* private mode: the in-memory choice still applies */ }
   applyTheme(theme)
   listeners.forEach(listener => listener())
 }

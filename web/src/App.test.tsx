@@ -258,6 +258,21 @@ describe('Dashboard', () => {
   })
 })
 
+describe('Scope in the shell', () => {
+  it('rail links keep the scope on data routes and the session receipt follows the current scope', async () => {
+    start('/overview?source=tracelab&agent=claude-code')
+    await screen.findAllByRole('region', { name: 'Sessions' })
+    expect(screen.getByRole('link', { name: 'Sessions' })).toHaveAttribute('href', '/sessions?source=tracelab&agent=claude-code')
+    expect(screen.getByRole('link', { name: 'Imports' })).toHaveAttribute('href', '/imports')
+    fireEvent.click(screen.getByRole('link', { name: 'claude:native_1' }))
+    await screen.findByRole('heading', { name: 'Session detail' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/metrics/summary?source=tracelab&agent=claude-code', undefined)
+    fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'codex' } })
+    fireEvent.keyDown(screen.getByLabelText('Agent'), { key: 'Enter' })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/metrics/summary?source=tracelab&agent=codex', undefined))
+  })
+})
+
 describe('Reports, history, and session detail', () => {
   it.each(['duplicate', 'failed'] as const)('explains a %s report without implying observations were inserted', async status => {
     fetchMock.mockImplementation((url, options) => url === '/api/imports/imp_1'

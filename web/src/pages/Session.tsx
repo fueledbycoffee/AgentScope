@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getSession } from '../api'
+import { getMetricsSummary, getSession } from '../api'
 import type { RawReference } from '../api'
 import { DataTable, Notice, SourceRecordDialog, StateBlock } from '../components'
 import type { Column } from '../components'
@@ -18,10 +18,17 @@ import type { ModelCall, ToolCall } from '../api'
  */
 export default function SessionPage() {
   const { id = '' } = useParams()
-  const { link } = useScope()
+  const { scope, link } = useScope()
   const resource = useResource(useCallback(() => getSession(id), [id]))
+  // The bar keeps the list's context: its receipt is recomputed for the current scope,
+  // never carried over from the page that opened this one.
+  const metrics = useResource(useCallback(() => getMetricsSummary(scope), [scope]))
   const [source, setSource] = useState<{ sessionId: string; reference: RawReference }>()
-  useScopeBar([{ key: 'source', label: 'Source', options: [] }, { key: 'agent', label: 'Agent', options: [] }], undefined, false)
+  useScopeBar(
+    [{ key: 'source', label: 'Source', options: [] }, { key: 'agent', label: 'Agent', options: [] }],
+    metrics.data ? { sessions: metrics.data.sessions.value, modelCalls: metrics.data.model_calls.value } : metrics.error ? {} : undefined,
+    metrics.loading,
+  )
   const session = resource.data
   const modelColumns: Column<ModelCall>[] = [
     { key: 'id', header: 'ID', mono: true, render: call => call.id },

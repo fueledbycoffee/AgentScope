@@ -27,7 +27,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   // Stable setters that ignore no-op updates: pages call them from effects, so a
   // fresh object on every call would re-render the provider forever.
   const setScopeBar = useCallback((patch: { dimensions?: Dimension[]; receipt?: ReceiptValues; loading?: boolean }) => setState(previous => {
-    const next = { ...previous, dimensions: patch.dimensions ?? previous.dimensions, receipt: patch.receipt ?? previous.receipt, receiptLoading: patch.loading ?? previous.receiptLoading }
+    const next = { ...previous, dimensions: patch.dimensions ?? previous.dimensions, receipt: 'receipt' in patch ? patch.receipt : previous.receipt, receiptLoading: patch.loading ?? previous.receiptLoading }
     return same(previous, next) ? previous : next
   }), [])
   const setFileBar = useCallback((file: { title?: string; items: FileItem[] }) => setState(previous => {

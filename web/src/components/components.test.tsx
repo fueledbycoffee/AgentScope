@@ -115,3 +115,21 @@ describe('ScopeBar', () => {
     expect(screen.getByLabelText('Source')).toHaveValue('')
   })
 })
+
+
+describe('theme', () => {
+  it('keeps the choice in memory when storage throws', async () => {
+    const { setTheme, applyTheme } = await import('../theme')
+    const original = Storage.prototype.setItem
+    Storage.prototype.setItem = () => { throw new Error('quota') }
+    try {
+      setTheme('dark')
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+      applyTheme()
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    } finally {
+      Storage.prototype.setItem = original
+      setTheme('system')
+    }
+  })
+})
