@@ -1,0 +1,1044 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentScope Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* ---------- tokens ---------- */
+:root {
+  --paper: #FCFCFA;
+  --paper-2: #F3F3EF;
+  --paper-3: #E8E8E2;
+  --ink: #191C22;
+  --ink-2: #555B66;
+  --ink-3: #8A8F99;
+  --rule: #DADBD5;
+  --rule-2: #AEB0A8;
+  --accent: #1E4B94;
+  --accent-ink: #163A74;
+  --accent-wash: #EDF1F8;
+  --good: #1D6B49;
+  --good-wash: #E7F1EB;
+  --warn: #8A5A00;
+  --warn-wash: #FAF2DF;
+  --bad: #A4281E;
+  --bad-wash: #FAE9E6;
+  --focus: #1E4B94;
+  --scrim: rgba(25, 28, 34, .38);
+  --shadow: 0 1px 2px rgba(25,28,34,.06), 0 8px 24px rgba(25,28,34,.10);
+
+  --serif: 'IBM Plex Serif', Georgia, 'Times New Roman', serif;
+  --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --t0: 11px; --t1: 12px; --t2: 13px; --t3: 14px; --t4: 16px; --t5: 20px; --t6: 26px; --t7: 34px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; --s8: 72px;
+  --col: 1120px; --measure: 66ch; --r: 3px;
+}
+
+/* ---------- base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--paper); color: var(--ink); font: 400 var(--t3)/1.5 var(--sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body { margin: 0; min-height: 100vh; }
+h1, h2, h3, h4 { font-family: var(--serif); font-weight: 500; margin: 0; line-height: 1.25; letter-spacing: -.005em; }
+h1 { font-size: var(--t7); letter-spacing: -.015em; }
+h2 { font-size: var(--t5); }
+h3 { font-size: var(--t4); }
+p { margin: 0; }
+a { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
+a:hover { color: var(--accent-ink); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+code, .mono { font-family: var(--mono); font-size: .92em; }
+.num, td.num, th.num, .figure { font-variant-numeric: tabular-nums; }
+.skip { position: absolute; left: var(--s4); top: -60px; background: var(--paper); padding: var(--s2) var(--s3); border: 1px solid var(--rule-2); z-index: 20; }
+.skip:focus { top: var(--s3); }
+.vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+/* ---------- masthead ---------- */
+.masthead { border-bottom: 1px solid var(--rule); background: var(--paper); }
+.masthead .in { max-width: var(--col); margin: 0 auto; padding: 0 var(--s6); display: flex; align-items: baseline; gap: var(--s6); min-height: 52px; }
+.brand { font-family: var(--serif); font-size: var(--t4); font-weight: 600; color: var(--ink); text-decoration: none; letter-spacing: -.01em; padding: var(--s3) 0; }
+.brand span { font-weight: 400; color: var(--ink-2); }
+.masthead nav { display: flex; gap: var(--s5); flex-wrap: wrap; }
+.masthead nav a { color: var(--ink-2); text-decoration: none; padding: var(--s3) 0; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: var(--t3); }
+.masthead nav a:hover { color: var(--ink); }
+.masthead nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--ink); }
+
+/* ---------- document ---------- */
+main { max-width: var(--col); margin: 0 auto; padding: var(--s7) var(--s6) var(--s8); }
+main:focus { outline: none; }
+.doc-head { display: grid; grid-template-columns: 1fr auto; gap: var(--s4) var(--s6); align-items: end; padding-bottom: var(--s5); border-bottom: 1px solid var(--ink); margin-bottom: var(--s6); }
+.doc-head .lede { color: var(--ink-2); max-width: var(--measure); margin-top: var(--s2); font-family: var(--serif); font-size: var(--t4); line-height: 1.55; }
+.doc-head .meta { font-size: var(--t2); color: var(--ink-2); text-align: right; line-height: 1.6; }
+.doc-head .meta b { font-weight: 500; color: var(--ink); }
+section.part { margin-top: var(--s7); }
+section.part > h2 { padding-bottom: var(--s2); border-bottom: 1px solid var(--rule); margin-bottom: var(--s4); display: flex; align-items: baseline; flex-wrap: wrap; gap: 0; }
+section.part > h2 .aside { font-family: var(--sans); font-size: var(--t2); color: var(--ink-2); font-weight: 400; margin-left: auto; padding-left: var(--s4); }
+.prose { max-width: var(--measure); font-family: var(--serif); font-size: 15px; line-height: 1.6; }
+.prose + .prose { margin-top: var(--s3); }
+.muted { color: var(--ink-2); }
+.small { font-size: var(--t2); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s6); }
+.actions { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; margin-top: var(--s5); }
+.actions .spacer { flex: 1; }
+hr.thin { border: 0; border-top: 1px solid var(--rule); margin: var(--s5) 0; }
+
+/* ---------- footnotes ---------- */
+.fn { display: inline-block; vertical-align: super; font-size: .68em; line-height: 1; padding: 0 .18em; margin-left: .08em; border: 0; background: none; color: var(--accent); cursor: pointer; font-family: var(--sans); font-weight: 500; border-radius: 2px; }
+.fn:hover, .fn[aria-expanded="true"] { background: var(--accent-wash); }
+.pop-wrap { position: relative; display: inline; }
+.pop { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; width: 360px; max-width: min(360px, calc(100vw - 48px)); background: var(--paper); border: 1px solid var(--rule-2); box-shadow: var(--shadow); padding: var(--s4); font-family: var(--sans); font-size: var(--t2); line-height: 1.5; text-align: left; font-weight: 400; vertical-align: baseline; font-variant-numeric: normal; }
+.pop.right { left: auto; right: 0; }
+.pop h4 { font-family: var(--sans); font-size: var(--t2); font-weight: 600; margin-bottom: var(--s1); }
+.pop dl { margin: var(--s3) 0 0; display: grid; grid-template-columns: auto 1fr; gap: var(--s1) var(--s3); }
+.pop dt { color: var(--ink-2); }
+.pop dd { margin: 0; }
+.pop .links { display: flex; gap: var(--s4); margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--rule); }
+.notes { margin-top: var(--s8); padding-top: var(--s4); border-top: 1px solid var(--ink); max-width: var(--measure); }
+.notes h2 { font-size: var(--t4); margin-bottom: var(--s3); }
+.notes ol { margin: 0; padding-left: 1.6em; font-size: var(--t2); line-height: 1.55; color: var(--ink-2); }
+.notes li { padding-left: .3em; margin-bottom: var(--s2); }
+.notes li.hilite { color: var(--ink); background: var(--accent-wash); outline: 6px solid var(--accent-wash); }
+.notes li:focus { outline: 2px solid var(--focus); outline-offset: 4px; }
+.notes b { color: var(--ink); font-weight: 500; }
+
+/* ---------- statements & tables ---------- */
+.stmt { width: 100%; border-collapse: collapse; font-size: var(--t3); }
+.stmt caption { text-align: left; font-family: var(--serif); font-size: var(--t4); font-weight: 500; padding-bottom: var(--s3); }
+.stmt caption .sub { display: block; font-family: var(--sans); font-size: var(--t2); color: var(--ink-2); font-weight: 400; margin-top: 2px; }
+.stmt th, .stmt td { text-align: left; padding: var(--s2) var(--s2); border-bottom: 1px solid var(--rule); vertical-align: top; }
+.stmt th { font-weight: 500; font-size: var(--t1); color: var(--ink-2); letter-spacing: .01em; }
+.stmt td.num, .stmt th.num { text-align: right; white-space: nowrap; }
+.stmt tr.total td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 500; }
+.stmt tr.total td.num { font-family: var(--serif); font-size: var(--t4); }
+.stmt td:first-child, .stmt th:first-child { padding-left: 0; }
+.stmt td:last-child, .stmt th:last-child { padding-right: 0; }
+.stmt .desc { color: var(--ink-2); font-size: var(--t2); }
+.stmt tbody tr:hover td { background: var(--paper-2); }
+.stmt tr.total:hover td { background: transparent; }
+.tbl-wrap { overflow-x: auto; margin: 0 calc(-1 * var(--s2)); padding: 0 var(--s2); }
+.cell-id { font-family: var(--mono); font-size: var(--t1); white-space: nowrap; }
+.hash { font-family: var(--mono); font-size: var(--t1); overflow-wrap: anywhere; line-height: 1.45; }
+.hash .grp { margin-right: .35em; }
+.skel td { color: transparent; }
+.skel td::before { content: ''; display: block; height: 12px; width: 70%; background: var(--paper-3); border-radius: 2px; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+
+/* figures (KPI statement) */
+.figures { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--rule); }
+.figure-cell { padding: var(--s4) var(--s4) var(--s4) 0; border-right: 1px solid var(--rule); margin-right: var(--s4); }
+.figure-cell:last-child { border-right: 0; margin-right: 0; }
+.figure-cell h3 { font-family: var(--sans); font-size: var(--t2); font-weight: 500; color: var(--ink-2); }
+.figure-cell .figure { font-family: var(--serif); font-size: var(--t6); font-weight: 500; line-height: 1.2; margin: var(--s2) 0 var(--s1); letter-spacing: -.01em; overflow-wrap: anywhere; }
+.figure-cell .figure.na { color: var(--ink-2); font-style: italic; font-weight: 400; }
+.figure-cell .cov { font-size: var(--t1); color: var(--ink-2); }
+.figure-cell .cov.zero { color: var(--warn); }
+
+/* status stamps */
+.stamp { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t2); font-weight: 500; white-space: nowrap; }
+.stamp::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.stamp.committed { color: var(--good); }
+.stamp.duplicate { color: var(--ink-2); }
+.stamp.failed { color: var(--bad); }
+.stamp.running { color: var(--accent); }
+.stamp.running::before { animation: pulse 1s ease-in-out infinite; }
+.stamp.big { font-family: var(--serif); font-size: var(--t5); font-weight: 500; gap: 10px; }
+.stamp.big::before { width: 11px; height: 11px; }
+
+/* notices */
+.notice { border-left: 3px solid var(--ink); background: var(--paper-2); padding: var(--s3) var(--s4); font-size: var(--t2); line-height: 1.5; max-width: 760px; }
+.notice + .notice { margin-top: var(--s3); }
+.notice b { font-weight: 600; }
+.notice.warn { border-color: var(--warn); background: var(--warn-wash); }
+.notice.bad { border-color: var(--bad); background: var(--bad-wash); }
+.notice.good { border-color: var(--good); background: var(--good-wash); }
+.notice p + p { margin-top: var(--s2); }
+.notice .code { font-family: var(--mono); font-size: var(--t1); color: var(--ink-2); }
+
+/* controls */
+.btn { font-family: var(--sans); font-size: var(--t2); font-weight: 500; padding: 7px 12px; border: 1px solid var(--rule-2); background: var(--paper); color: var(--ink); border-radius: var(--r); cursor: pointer; line-height: 1.3; }
+.btn:hover { border-color: var(--ink); }
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn.primary:hover { background: #000; }
+.btn.quiet { border-color: transparent; color: var(--accent); padding-left: 6px; padding-right: 6px; }
+.btn.quiet:hover { background: var(--accent-wash); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.sm { padding: 3px 8px; font-size: var(--t1); }
+label.field { display: block; font-size: var(--t2); font-weight: 500; margin-bottom: var(--s1); }
+.hint { font-size: var(--t1); color: var(--ink-2); margin-top: var(--s1); }
+input[type=text], input[type=search], input[type=date], select, textarea { background: var(--paper); border: 1px solid var(--rule-2); border-radius: var(--r); padding: 6px 9px; font-size: var(--t2); min-height: 32px; }
+select { padding-right: 24px; }
+input:hover, select:hover, textarea:hover { border-color: var(--ink-3); }
+.row { display: flex; gap: var(--s4); align-items: end; flex-wrap: wrap; }
+.field-group { min-width: 160px; }
+.invalid { border-color: var(--bad) !important; }
+.err { color: var(--bad); font-size: var(--t1); margin-top: var(--s1); }
+.status-line { font-size: var(--t2); color: var(--ink-2); display: flex; align-items: center; gap: var(--s2); min-height: 20px; }
+.status-line::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+.status-line:empty { display: none; }
+
+/* dropzone */
+.drop { border: 1px dashed var(--rule-2); border-radius: var(--r); padding: var(--s6) var(--s5); display: flex; gap: var(--s5); align-items: center; justify-content: space-between; background: var(--paper); }
+.drop:hover { border-color: var(--ink); }
+.drop .t { font-family: var(--serif); font-size: var(--t4); }
+
+/* definition lists */
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--s2) var(--s5); font-size: var(--t2); margin: 0; align-content: start; }
+.kv dt { color: var(--ink-2); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+
+/* journal (imports history) */
+.journal { width: 100%; border-collapse: collapse; }
+.journal th { text-align: left; white-space: nowrap; font-size: var(--t1); font-weight: 500; color: var(--ink-2); padding: var(--s2) var(--s2); border-bottom: 1px solid var(--ink); }
+.journal th.num { text-align: right; }
+.journal td { padding: var(--s3) var(--s2); border-bottom: 1px solid var(--rule); vertical-align: top; font-size: var(--t2); }
+.journal td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.journal td:first-child, .journal th:first-child { padding-left: 0; }
+.journal .date { white-space: nowrap; color: var(--ink-2); }
+.journal .date b { display: block; color: var(--ink); font-weight: 500; }
+.journal .entry summary { list-style: none; cursor: pointer; display: flex; gap: var(--s2); align-items: baseline; }
+.journal .entry summary::-webkit-details-marker { display: none; }
+.journal .entry summary::before { content: ''; width: 0; height: 0; border-left: 5px solid var(--ink-3); border-top: 4px solid transparent; border-bottom: 4px solid transparent; flex: none; transform: translateY(-1px); transition: transform .12s; }
+.journal .entry[open] summary::before { transform: rotate(90deg) translateX(-1px); }
+.journal .entry summary .title { font-weight: 500; }
+.journal .entry summary .sub { color: var(--ink-2); }
+.journal .entry .body { margin: var(--s3) 0 var(--s1) 13px; padding: var(--s3) var(--s4); background: var(--paper-2); display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3) var(--s6); }
+.journal .neg { color: var(--bad); }
+.journal .zero { color: var(--ink-3); }
+.progress { height: 4px; background: var(--paper-3); border-radius: 2px; overflow: hidden; margin-top: var(--s2); }
+.progress > span { display: block; height: 100%; background: var(--accent); }
+
+/* charts */
+.charts { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: var(--s6); margin-top: var(--s4); }
+.chart h3 { font-family: var(--sans); font-size: var(--t2); font-weight: 500; color: var(--ink-2); margin-bottom: var(--s2); }
+.chart svg { width: 100%; height: auto; display: block; font-family: var(--sans); }
+.chart .bar { fill: var(--ink); }
+.chart a:hover .bar, .chart a:focus-visible .bar { fill: var(--accent); }
+.chart a:focus-visible { outline: none; }
+.chart a:focus-visible .bar { stroke: var(--accent); stroke-width: 2px; }
+.chart .axis { stroke: var(--rule-2); }
+.chart .grid { stroke: var(--rule); }
+.chart a { text-decoration: none; }
+.chart text { fill: var(--ink-2); font-size: 12px; }
+.chart text.val { fill: var(--ink); font-variant-numeric: tabular-nums; }
+.chart .hbar { fill: var(--ink); }
+.chart .hrow:hover .hbar, .chart .hrow:focus-visible .hbar { fill: var(--accent); }
+.chart .foot { font-size: var(--t1); color: var(--ink-2); margin-top: var(--s2); }
+
+/* quality strip */
+.quality { display: flex; gap: var(--s6); flex-wrap: wrap; font-size: var(--t2); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: var(--s3) 0; margin-top: var(--s5); }
+.quality div b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.quality .warn b { color: var(--warn); }
+
+/* scope line */
+.scope { display: flex; gap: var(--s3); align-items: baseline; flex-wrap: wrap; font-size: var(--t2); color: var(--ink-2); }
+.scope b { font-weight: 500; color: var(--ink); }
+.scope-form { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s3); padding: var(--s4); border: 1px solid var(--rule-2); box-shadow: var(--shadow); background: var(--paper); position: absolute; z-index: 25; width: 640px; max-width: calc(100vw - 48px); }
+.scope-form .foot { grid-column: 1 / -1; display: flex; gap: var(--s2); justify-content: flex-end; }
+
+/* sheet (provenance) */
+dialog.sheet { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(600px, 100vw); max-width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-left: 1px solid var(--rule-2); background: var(--paper); color: var(--ink); padding: 0; box-shadow: var(--shadow); }
+dialog.sheet::backdrop { background: var(--scrim); }
+dialog.sheet[open] { animation: slide .18s ease-out; }
+@keyframes slide { from { transform: translateX(24px); opacity: 0; } }
+.sheet-head { display: flex; justify-content: space-between; align-items: baseline; padding: var(--s4) var(--s5); border-bottom: 1px solid var(--rule); position: sticky; top: 0; background: var(--paper); }
+.sheet-head h2 { font-size: var(--t5); }
+.sheet-body { padding: var(--s4) var(--s5) var(--s6); overflow: auto; height: calc(100dvh - 58px); }
+.chain { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+.chain > li { position: relative; padding: var(--s3) 0 var(--s3) 40px; border-bottom: 1px solid var(--rule); counter-increment: step; }
+.chain > li::before { content: counter(step); position: absolute; left: 0; top: 13px; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--rule-2); display: grid; place-items: center; font-size: var(--t1); color: var(--ink-2); background: var(--paper); font-variant-numeric: tabular-nums; }
+.chain > li[aria-current="step"]::before { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.chain > li::after { content: ''; position: absolute; left: 12px; top: 38px; bottom: -1px; border-left: 1px solid var(--rule); }
+.chain > li:last-child::after { display: none; }
+.chain h3 { font-family: var(--sans); font-size: var(--t2); font-weight: 600; }
+.chain h3 .what { font-weight: 400; color: var(--ink-2); }
+.chain .b { font-size: var(--t2); margin-top: var(--s1); line-height: 1.5; }
+.chain .b .kv { margin-top: var(--s2); font-size: var(--t1); }
+.chain li.compact .b { display: none; }
+.chain li.compact { padding-top: var(--s2); padding-bottom: var(--s2); }
+.chain li.compact h3 { font-weight: 400; color: var(--ink-2); }
+.raw { font-family: var(--mono); font-size: var(--t1); line-height: 1.5; white-space: pre; overflow: auto; background: var(--paper-2); border: 1px solid var(--rule); padding: var(--s3) var(--s4); margin: var(--s2) 0 0; max-height: 46vh; tab-size: 2; }
+.raw mark { background: var(--warn-wash); color: inherit; outline: 1px solid var(--warn); }
+
+/* rejects browser */
+details.payload summary { cursor: pointer; color: var(--accent); font-size: var(--t1); list-style: none; }
+details.payload summary::-webkit-details-marker { display: none; }
+details.payload pre { margin-top: var(--s2); max-height: 240px; }
+
+/* mapping assistant */
+.assist { display: grid; grid-template-columns: 1fr 332px; gap: var(--s6); align-items: start; }
+.convo { border: 1px solid var(--rule); background: var(--paper); position: sticky; top: var(--s4); display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
+.convo h2 { font-size: var(--t4); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--rule); }
+.convo .log { padding: var(--s3) var(--s4); overflow: auto; flex: 1; display: flex; flex-direction: column; gap: var(--s3); font-size: var(--t2); line-height: 1.5; }
+.convo .msg { padding: var(--s2) var(--s3); border-radius: var(--r); max-width: 92%; }
+.convo .msg.you { align-self: flex-end; background: var(--paper-2); }
+.convo .msg.asst { border-left: 2px solid var(--ink); padding-left: var(--s3); }
+.convo .msg .who { font-size: var(--t0); color: var(--ink-2); margin-bottom: 2px; }
+.convo .msg p + p { margin-top: var(--s2); }
+.convo form { padding: var(--s3) var(--s4); border-top: 1px solid var(--rule); display: grid; gap: var(--s2); }
+.convo textarea { resize: vertical; min-height: 56px; }
+.convo .foot { font-size: var(--t0); color: var(--ink-2); }
+.map td select, .map td input { min-height: 26px; padding: 2px 6px; font-size: var(--t1); font-family: var(--mono); }
+.map { table-layout: fixed; }
+.map col.c-target { width: 21%; } .map col.c-src { width: 31%; } .map col.c-tf { width: 17%; } .map col.c-why { width: 31%; }
+.map td { overflow-wrap: anywhere; }
+.map td.path { font-family: var(--mono); font-size: var(--t1); }
+.map .amb { color: var(--warn); font-weight: 500; }
+.map tr.bad td { background: var(--bad-wash); }
+.map .why { color: var(--ink-2); font-size: var(--t1); }
+.profile td.samp { font-family: var(--mono); font-size: var(--t0); color: var(--ink-2); }
+
+/* mockup control (not part of the product) */
+.mock { position: fixed; right: var(--s4); bottom: var(--s4); z-index: 40; background: var(--paper); border: 1px dashed var(--rule-2); padding: var(--s2) var(--s3); font-size: var(--t1); color: var(--ink-2); display: flex; gap: var(--s2); align-items: center; }
+.mock select { min-height: 24px; padding: 1px 20px 1px 6px; font-size: var(--t1); }
+
+/* empty states */
+.empty { padding: var(--s6) 0; max-width: var(--measure); }
+.empty h3 { font-size: var(--t5); }
+.empty p { margin-top: var(--s2); color: var(--ink-2); font-family: var(--serif); font-size: 15px; }
+.empty .actions { margin-top: var(--s4); }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1100px) {
+  .assist { grid-template-columns: 1fr; }
+  .convo { position: static; max-height: 480px; }
+  .charts { grid-template-columns: 1fr 1fr; }
+  .charts .chart:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 960px) {
+  main { padding: var(--s6) var(--s5) var(--s8); }
+  .masthead .in { padding: 0 var(--s5); gap: var(--s5); }
+  .masthead nav { gap: var(--s4); }
+  .figures { grid-template-columns: repeat(2, 1fr); }
+  .figure-cell:nth-child(2) { border-right: 0; }
+  .figure-cell:nth-child(n+3) { border-top: 1px solid var(--rule); }
+  .two { grid-template-columns: 1fr; }
+  .doc-head { grid-template-columns: 1fr; }
+  .doc-head .meta { text-align: left; }
+  .scope-form { grid-template-columns: 1fr 1fr; }
+  .journal .entry .body { grid-template-columns: 1fr; }
+  dialog.sheet { width: 100vw; border-left: 0; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="masthead">
+  <div class="in">
+    <a class="brand" href="#/dashboard">AgentScope <span>ledger</span></a>
+    <nav aria-label="Sections">
+      <a href="#/import" data-route="import">Import</a>
+      <a href="#/imports" data-route="imports">Imports</a>
+      <a href="#/dashboard" data-route="dashboard">Dashboard</a>
+      <a href="#/sessions" data-route="sessions">Sessions</a>
+      <a href="#/mapping" data-route="mapping">Mapping assistant</a>
+      <a href="#/definitions" data-route="definitions">Definitions</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" tabindex="-1"></main>
+
+<div class="vh" role="status" aria-live="polite" id="live"></div>
+
+<dialog class="sheet" id="sheet" aria-labelledby="sheet-title">
+  <div class="sheet-head">
+    <h2 id="sheet-title">Provenance</h2>
+    <button class="btn sm" type="button" data-close-sheet>Close</button>
+  </div>
+  <div class="sheet-body" id="sheet-body"></div>
+</dialog>
+
+<div class="mock" aria-label="Mockup controls">
+  <label for="mockstate">Mockup state</label>
+  <select id="mockstate">
+    <option value="normal">Normal</option>
+    <option value="loading">Loading</option>
+    <option value="error">Error</option>
+    <option value="empty">Empty</option>
+  </select>
+</div>
+
+<script>
+/* =====================================================================
+   Data (from the brief). Integers are exact; the UI never rounds them.
+   ===================================================================== */
+const SHA = 'd044a766e12c7eceae2eb1ed71e42d95cf0aec2f10c8d61a06cecc0381fb9897';
+const SHA_SWE = '7b2f9c31e0a4d8f6b5c2e19a3d7f04c8e6b1a29d5f3c7e8b0a4d6f2c1e9b3a57';
+const SHA_TC = '3e9a1c5d7b2f4e6a8c0d2b4f6e8a1c3d5f7b9e1a3c5d7f9b1e3a5c7d9f1b3e5a';
+
+const NOTES = {
+  sessions: { title: 'Sessions', text: 'Distinct sessions in scope. A session is derived by the fixed reducer from the identity key declared in the mapping, scoped by source namespace. Not a count of source records.' },
+  model_calls: { title: 'Model calls', text: 'Recorded model-call observations in scope. One source record may emit one observation; overlapping exports are not reconciled in v0.1, so the figure is a count of observations, not of distinct calls.' },
+  input_tokens: { title: 'Input tokens', text: 'Sum of input_tokens over model calls with a known value, per the token semantics recorded on each call (tracelab-claude, tracelab-codex). Values with different semantics are summed only because their unit is identical; comparability across semantics is not implied.' },
+  output_tokens: { title: 'Output tokens', text: 'Sum of output_tokens over model calls with a known value. Reasoning output tokens are kept separate and not included.' },
+  coverage: { title: 'Coverage', text: 'Known / total: the number of calls in scope whose value is present, over the number of calls in scope. A metric whose coverage is 0 is reported as Unavailable, never as 0.' },
+  observed: { title: 'Observed span', text: 'Earliest and latest accepted child timestamp in imported data. Describes the span present in the data, not active time. Declared intervals come from the source record and are shown separately.' },
+  records: { title: 'Source records and observations', text: 'Records count source records in the file; observations count entities emitted by the mapping. One record can emit several observations, which is why the two totals differ.' },
+  warnings: { title: 'Warnings', text: 'Field-level notes raised while applying the mapping: absent means the key was missing, null means the key was present with a null value. Both collapse to Unavailable in the entity; neither is ever stored as 0.' },
+  duplicate: { title: 'Duplicate', text: 'Bytes with the same SHA-256 were already committed for this source. The occurrence identity (file hash, locator, emission path) makes the re-import insert nothing; every record is reported as duplicate.' },
+  balance: { title: 'Sessions held', text: 'The number of sessions in the database after this entry committed, across all sources. Duplicate and failed entries leave the balance unchanged.' },
+  sha256: { title: 'SHA-256', text: 'Hash of the uploaded bytes as stored, before any decoding. Two uploads with the same hash are the same file to the ledger, whatever their filename.' },
+  redaction: { title: 'What leaves this machine', text: 'The assistant receives field names, inferred types, null rates, cardinalities and five example values per field, with strings cut to 24 characters and content fields replaced by their length. No raw record is sent. The assistant proposes; it never writes to the database.' },
+  revision: { title: 'Mapping revision', text: 'Mappings are immutable. Editing creates a new revision with a parent pointer; an import records the exact revision it used, so a report can always be re-read against the rules that produced it.' },
+  tool_calls: { title: 'Tool calls', text: 'Recorded tool-call observations in scope. A tool call whose parent model call could not be established is kept as unlinked and counted in the quality strip.' },
+  rejects: { title: 'Rejects', text: 'Source records that the mapping refused, each with the rule, the JSON path, a code and a message. A rejected record contributes nothing to any entity.' },
+  quality: { title: 'Quality strip', text: 'Counts of things that reduce trust in the figures above: rejected records, model calls with no usage, tool calls whose timestamps could not be parsed, tool calls without a parent model call. Each links to the affected rows.' },
+};
+
+const IMPORTS = [
+  { id: 'imp_0f3a5c7e9b1d2468ace0', at: '2026-09-07T11:58:02Z', status: 'running', file: 'trace-commons-decoded-0007.parquet', sha: SHA_TC, size: 22_918_406, format: 'parquet', source: 'trace-commons', mapping: { name: 'trace-commons-v1', rev: 1, id: 'map_a71c3e5f9d2b4068c1e2' }, records: { accepted: 12_400, partial: 0, duplicate: 0, rejected: 3, ignored: 0 }, total: 32_611, entities: {}, warnings: {}, balance: null, progress: 12_403 },
+  { id: 'imp_7c0e51a2b9d4e6f8a013', at: '2026-09-07T11:42:18Z', finished: '2026-09-07T11:42:31Z', status: 'committed', file: 'swe-chat-conversations.parquet', sha: SHA_SWE, size: 41_337_902, format: 'parquet', source: 'swe-chat', mapping: { name: 'swe-chat-v1', rev: 2, id: 'map_5b1e0c7d9a2f4e6b8d01' }, records: { accepted: 1_988, partial: 0, duplicate: 0, rejected: 12, ignored: 0 }, total: 2_000, entities: { session: 1_988, model_call: 9_412, tool_call: 3_207 }, warnings: { absent: 118, null: 12 }, balance: 2_068 },
+  { id: 'imp_b7d2c4e9f1a3058c6d24', at: '2026-09-07T10:04:31Z', finished: '2026-09-07T10:04:32Z', status: 'duplicate', file: 'tracelab-sample.jsonl.gz', sha: SHA, size: 681_057, format: 'jsonl', source: 'tracelab', mapping: { name: 'tracelab-v1', rev: 1, id: 'map_82934058a2f6af1cbfc6' }, records: { accepted: 0, partial: 0, duplicate: 4_770, rejected: 0, ignored: 0 }, total: 4_770, entities: {}, warnings: {}, balance: 80, of: 'imp_3e21f89dbaef419a8f60' },
+  { id: 'imp_3e21f89dbaef419a8f60', at: '2026-09-06T17:22:05Z', finished: '2026-09-06T17:22:19Z', status: 'committed', file: 'tracelab-sample.jsonl.gz', sha: SHA, size: 681_057, format: 'jsonl', source: 'tracelab', mapping: { name: 'tracelab-v1', rev: 1, id: 'map_82934058a2f6af1cbfc6' }, records: { accepted: 4_770, partial: 0, duplicate: 0, rejected: 0, ignored: 0 }, total: 4_770, entities: { session: 80, model_call: 4_770, tool_call: 5_723 }, warnings: { null: 11_168, absent: 14_633 }, balance: 80 },
+  { id: 'imp_e4f6a8c0d2b4196e7f35', at: '2026-09-05T09:13:47Z', finished: '2026-09-05T09:13:52Z', status: 'failed', file: 'tracelab-2026-05.jsonl.gz', sha: '91c4e2a7f0b3d6e9c8a1f4b7d0e3c6a9f2b5e8d1c4a7f0b3e6d9c2a5f8b1e4d7', size: 4_118_220, format: 'jsonl', source: 'tracelab', mapping: { name: 'tracelab-v1', rev: 1, id: 'map_82934058a2f6af1cbfc6' }, records: { accepted: 0, partial: 0, duplicate: 0, rejected: 0, ignored: 0 }, total: 21_004, entities: {}, warnings: {}, balance: 0, error: 'MappingExecutionError: rule tool_call exceeded bounded iteration (512 items) at line:2118; transaction rolled back' },
+];
+
+const REJECTS_SWE = [
+  { locator: 'row:1042', rule: 'model_call', path: '$.usage.prompt_tokens', code: 'invalid_type', field: 'input_tokens', message: "expected integer, got string '12,431'", payload: '{\n  "conversation_id": "c_4f1e9b20",\n  "model": "gpt-5.5-codex",\n  "usage": {\n    "prompt_tokens": "12,431",\n    "completion_tokens": 388\n  },\n  "created_at": 1717466821,\n  "repo": "org/repo-2211",\n  "turns": [ … 7 items … ]\n}' },
+  { locator: 'row:1043', rule: 'model_call', path: '$.usage.prompt_tokens', code: 'invalid_type', field: 'input_tokens', message: "expected integer, got string '9,882'", payload: '{\n  "conversation_id": "c_4f1e9b21",\n  "model": "gpt-5.5-codex",\n  "usage": {\n    "prompt_tokens": "9,882",\n    "completion_tokens": 122\n  },\n  "created_at": 1717466904,\n  "repo": "org/repo-2211",\n  "turns": [ … 4 items … ]\n}' },
+  { locator: 'row:1580', rule: 'session', path: '$.conversation_id', code: 'missing_required', field: 'identity_key', message: 'required identity field is absent', payload: '{\n  "model": "claude-opus-4-6",\n  "usage": { "prompt_tokens": 40211, "completion_tokens": 1503 },\n  "created_at": 1717470002,\n  "repo": "org/repo-0417",\n  "turns": [ … 12 items … ]\n}' },
+  { locator: 'row:1581', rule: 'session', path: '$.conversation_id', code: 'missing_required', field: 'identity_key', message: 'required identity field is absent', payload: '{\n  "model": "claude-opus-4-6",\n  "usage": { "prompt_tokens": 2044, "completion_tokens": 91 },\n  "created_at": 1717470098,\n  "repo": "org/repo-0417",\n  "turns": [ … 2 items … ]\n}' },
+  { locator: 'row:1902', rule: 'model_call', path: '$.created_at', code: 'invalid_value', field: 'started_at', message: 'epoch seconds out of declared range (value 17174700020000 looks like milliseconds)', payload: '{\n  "conversation_id": "c_9a0d31c7",\n  "model": "gpt-5.5-codex",\n  "usage": { "prompt_tokens": 7712, "completion_tokens": 204 },\n  "created_at": 17174700020000,\n  "repo": "org/repo-1188",\n  "turns": [ … 5 items … ]\n}' },
+];
+
+const DASH = {
+  all: {
+    label: 'all sources, all agents, all models, June 2026',
+    sessions: 80, model_calls: 4_770, tool_calls: 5_723,
+    input: { value: 553_447_877, known: 4_770, total: 4_770, by: { 'tracelab-claude': 510_825_014, 'tracelab-codex': 42_622_863 } },
+    output: { value: 1_204_331, known: 4_770, total: 4_770 },
+    days: [2,3,1,4,0,0,3,5,2,4,3,0,1,6,4,2,3,0,0,5,4,3,2,4,1,0,3,4,5,6],
+    models: [['claude-opus-4-6', 312_118_904], ['claude-opus-4-7', 198_706_110], ['gpt-5.5-codex', 42_622_863]],
+    tools: [['Bash', 1_842], ['Read', 1_516], ['Edit', 987], ['Grep', 614], ['Glob', 402], ['Agent', 231], ['WebFetch', 131]],
+    quality: { rejects: 0, missing_usage: 0, unknown_ts: 14, unlinked: 41 },
+  },
+  codex: {
+    label: 'source tracelab, agent codex, all models, June 2026',
+    sessions: 11, model_calls: 402, tool_calls: 388,
+    input: { value: 42_622_863, known: 402, total: 402, by: { 'tracelab-codex': 42_622_863 } },
+    output: { value: null, known: 0, total: 402 },
+    days: [0,1,0,1,0,0,0,1,0,1,1,0,0,2,0,0,1,0,0,1,0,0,0,1,0,0,0,0,1,0],
+    models: [['gpt-5.5-codex', 42_622_863]],
+    tools: [['Bash', 201], ['Read', 88], ['Edit', 61], ['Grep', 22], ['Glob', 16], ['Agent', 0], ['WebFetch', 0]],
+    quality: { rejects: 0, missing_usage: 402, unknown_ts: 0, unlinked: 3 },
+  },
+};
+
+const SESSIONS = [
+  { id: 'ses_c736618a4d2f4b9e8a17', ext: 'claude:781a3b4c-a1a5-9325-16d3-4029ecc3fe43', agent: 'claude-code', repo: 'project_8f998460', user: 'user_b87fa13e', start: '2026-06-04T02:51:06.901Z', end: '2026-06-04T02:52:00.698Z', mc: 2, tc: 3, input: 48_187, known: 2, total: 2 },
+  { id: 'ses_0d91f4a2c7e35b68d0a4', ext: 'claude:2f8c11d0-77b2-4c1e-9a55-0b3e6d2f8a91', agent: 'claude-code', repo: 'project_8f998460', user: 'user_b87fa13e', start: '2026-06-04T09:12:44.120Z', end: '2026-06-04T09:58:03.077Z', mc: 41, tc: 96, input: 6_204_118, known: 41, total: 41 },
+  { id: 'ses_5a7e2c9b1f4d8063e2b7', ext: 'codex:thr_0a3f9e2c1b7d4e6f', agent: 'codex', repo: 'project_2c41a9d0', user: 'user_31d9c0aa', start: '2026-06-04T13:05:10.003Z', end: '2026-06-04T13:41:52.910Z', mc: 27, tc: 38, input: 2_988_410, known: 27, total: 27 },
+  { id: 'ses_91b3d6f0a4c27e5d19f8', ext: 'claude:a4d0e7c2-1b9f-4e83-b6a2-7c5d1e0f9b34', agent: 'claude-code', repo: 'project_7a10bc3e', user: 'user_e2c47f01', start: '2026-06-04T21:30:18.556Z', end: '2026-06-04T23:02:41.209Z', mc: 118, tc: 214, input: 21_775_902, known: 118, total: 118 },
+  { id: 'ses_2e6c8a1d5f9b3047c6e1', ext: 'claude:5b7e2d90-c4a1-4f6e-8d2b-1e3a9c7f5d02', agent: 'claude-code', repo: 'project_8f998460', user: 'user_b87fa13e', start: '2026-06-02T08:14:02.000Z', end: '2026-06-02T08:40:19.442Z', mc: 19, tc: 27, input: 1_402_338, known: 19, total: 19 },
+  { id: 'ses_7f3b5d9e2a1c4680d3b9', ext: 'codex:thr_9c2e7b1a4d6f0e83', agent: 'codex', repo: 'project_2c41a9d0', user: 'user_31d9c0aa', start: '2026-06-02T15:22:51.771Z', end: '2026-06-02T15:29:06.014Z', mc: 5, tc: 4, input: 210_449, known: 5, total: 5 },
+  { id: 'ses_c1a9e3f7b5d24806e8c2', ext: 'claude:e8c3a1f4-9d2b-4c7e-a5f1-3b6d8e0c2a94', agent: 'claude-code', repo: 'project_7a10bc3e', user: 'user_e2c47f01', start: '2026-06-03T10:01:33.905Z', end: '2026-06-03T11:12:08.330Z', mc: 63, tc: 141, input: 9_871_155, known: 63, total: 63 },
+  { id: 'ses_4d8a2f6c0e1b3579a1d4', ext: 'claude:1c9f4e2a-7b3d-4a8c-9e5f-2d6b0c1a8e73', agent: 'claude-code', repo: 'project_8f998460', user: 'user_b87fa13e', start: '2026-06-01T07:45:00.112Z', end: '2026-06-01T07:46:12.980Z', mc: 1, tc: 0, input: 12_004, known: 1, total: 1 },
+];
+
+const SESSION_DETAIL = {
+  id: 'ses_c736618a4d2f4b9e8a17',
+  declared_start: '2026-06-04T02:51:06.000Z', declared_end: '2026-06-04T02:50:59.000Z',
+  imp: 'imp_3e21f89dbaef419a8f60',
+  model_calls: [
+    { id: 'mc_ce3dc3374a1b5e2f8d09', seq: 0, model: 'claude-opus-4-6', start: '2026-06-04T02:51:06.901Z', end: '2026-06-04T02:51:31.442Z', input: 16_147, output: 334, cache_read: 15_402, sem: 'tracelab-claude', loc: 'line:3117' },
+    { id: 'mc_a17f0b4e9c2d6538e1b6', seq: 1, model: 'claude-opus-4-6', start: '2026-06-04T02:51:33.010Z', end: '2026-06-04T02:52:00.698Z', input: 32_040, output: 867, cache_read: 31_119, sem: 'tracelab-claude', loc: 'line:3118' },
+  ],
+  tool_calls: [
+    { id: 'tc_1a94c2b1e7f30d5a8c62', mc: 'mc_ce3dc3374a1b5e2f8d09', tool: 'Read', start: '2026-06-04T02:51:31.502Z', end: '2026-06-04T02:51:31.611Z', ms: 109, err: false, loc: 'line:3117' },
+    { id: 'tc_8e2d5f7a1c94b036e7d1', mc: 'mc_ce3dc3374a1b5e2f8d09', tool: 'Grep', start: '2026-06-04T02:51:31.640Z', end: '2026-06-04T02:51:32.905Z', ms: 1_265, err: false, loc: 'line:3117' },
+    { id: 'tc_3c6b9e0d4a27f158b2e9', mc: 'mc_a17f0b4e9c2d6538e1b6', tool: 'Edit', start: '2026-06-04T02:52:00.101Z', end: '2026-06-04T02:52:00.688Z', ms: 587, err: null, loc: 'line:3118' },
+  ],
+  diagnostics: [
+    { code: 'reversed_interval', field: 'declared_ended_at', message: 'Declared end 02:50:59.000Z precedes declared start 02:51:06.000Z. The declared interval is kept as recorded and ignored for the span; the observed span is used.' },
+  ],
+};
+
+const RAW_3117 = `{
+  "provider": "claude",
+  "project": "project_8f998460",
+  "session_id": "781a3b4c-a1a5-9325-16d3-4029ecc3fe43",
+  "user": "user_b87fa13e",
+  "round_index": 0,
+  "round_id": "r_5d1e0b7a2c",
+  "model": "claude-opus-4-6",
+  "input_tokens_total": 16147,
+  "prefix_tokens": 15402,
+  "newly_append_tokens": 745,
+  "output_tokens": 334,
+  "cache_read_tokens": 15402,
+  "session_started_at": "2026-06-04T02:51:06.000Z",
+  "session_ended_at": "2026-06-04T02:50:59.000Z",
+  "timing_events": [
+    { "event": "request_sent", "ts": "2026-06-04T02:51:06.901Z" },
+    { "event": "first_token", "ts": "2026-06-04T02:51:09.377Z" },
+    { "event": "response_done", "ts": "2026-06-04T02:51:31.442Z" }
+  ],
+  "tools": [
+    { "name": "Read", "tool_call_id": "toolu_01KxQ2m8Vd", "emitted_at": "2026-06-04T02:51:31.502Z", "result_at": "2026-06-04T02:51:31.611Z", "is_error": false },
+    { "name": "Grep", "tool_call_id": "toolu_01Hn7pT4Ra", "emitted_at": "2026-06-04T02:51:31.640Z", "result_at": "2026-06-04T02:51:32.905Z", "is_error": false }
+  ]
+}`;
+
+const PROFILE = [
+  ['conversation_id', 'string', '0 %', '2,000', 'c_4f1e9b20, c_4f1e9b21, c_0a7d3e…'],
+  ['turns', 'list<struct>', '0 %', '—', 'avg 9.4 items, max 88'],
+  ['turns[].role', 'string', '0 %', '3', 'user, assistant, tool'],
+  ['turns[].content', 'string', '1.2 %', '—', '[length 38 – 41,207] not sent'],
+  ['turns[].tool_calls', 'list<struct>', '66 %', '—', 'avg 1.3 items when present'],
+  ['turns[].tool_calls[].function.name', 'string', '0 %', '14', 'bash, read_file, apply_patch, …'],
+  ['model', 'string', '0 %', '3', 'gpt-5.5-codex, claude-opus-4-6, …'],
+  ['usage.prompt_tokens', 'int64 | string', '0.6 %', '1,731', '12431, 9882, "12,431"'],
+  ['usage.completion_tokens', 'int64', '0.6 %', '1,102', '388, 122, 1503'],
+  ['created_at', 'int64', '0 %', '1,998', '1717466821, 1717466904'],
+  ['repo', 'string', '0 %', '412', 'org/repo-2211, org/repo-0417'],
+];
+
+const MAPPING_ROWS = [
+  { target: 'session.identity_key', src: '$.conversation_id', tf: 'trim', why: 'Unique per row (2,000 distinct in 2,000). Stable across turns.', amb: '' },
+  { target: 'session.repo', src: '$.repo', tf: '—', why: 'Repository slug; 412 distinct.', amb: '' },
+  { target: 'session.agent', src: 'literal "swe-chat"', tf: '—', why: 'The file does not name a harness. Set as a constant so the source is distinguishable.', amb: 'Assumed. Confirm or replace with a field.' },
+  { target: 'model_call.model', src: '$.model', tf: 'trim', why: 'One model per conversation, not per turn.', amb: 'Turns do not carry a model; all turns inherit the conversation model.' },
+  { target: 'model_call.input_tokens', src: '$.usage.prompt_tokens', tf: 'int (strict)', why: '12 rows hold a formatted string ("12,431"). Strict parsing rejects them instead of guessing.', amb: '' },
+  { target: 'model_call.output_tokens', src: '$.usage.completion_tokens', tf: 'int (strict)', why: 'Integer in every sampled row.', amb: '' },
+  { target: 'model_call.started_at', src: '$.created_at', tf: 'timestamp', why: 'Epoch integer. Magnitude (1.7e9) suggests seconds.', amb: 'Unit not declared in the file.', unit: true },
+  { target: 'model_call.token_semantics', src: 'literal "swe-chat-usage"', tf: '—', why: 'Usage is reported once per conversation; not comparable with per-call semantics.', amb: '' },
+  { target: 'tool_call ← $.turns[*].tool_calls[*]', src: 'bounded iteration, max 512', tf: 'each', why: 'Nested list; parent is the enclosing conversation’s model call.', amb: '' },
+  { target: 'tool_call.tool_name', src: '$.turns[*].tool_calls[*].function.name', tf: 'trim', why: '14 distinct names.', amb: '' },
+];
+
+/* =====================================================================
+   Helpers
+   ===================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const n = v => v == null ? '<span class="muted"><i>Unavailable</i></span>' : Number(v).toLocaleString('en-US');
+const ts = s => s ? s.replace('T', ' ').replace('Z', ' UTC') : '<span class="muted"><i>Unavailable</i></span>';
+const dateOnly = s => s.slice(0, 10);
+const timeOnly = s => s.slice(11, 19) + ' UTC';
+const hash = h => `<span class="hash" title="SHA-256, full">${h.match(/.{1,8}/g).map(g => `<span class="grp">${g}</span>`).join('')}</span>`;
+const shortId = id => `<span class="cell-id" title="${esc(id)}">${esc(id)}</span>`;
+const stamp = s => `<span class="stamp ${s}">${s[0].toUpperCase() + s.slice(1)}</span>`;
+const abbr = v => v >= 1e9 ? (v / 1e9).toFixed(1).replace(/\.0$/, '') + 'B' : v >= 1e6 ? (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'k' : String(v);
+const sum = a => a.reduce((x, y) => x + y, 0);
+
+/* Footnote registry per page: markers are numbered in order of first use. */
+function noteBook() {
+  const used = [];
+  return {
+    fn(key, extra = {}) {
+      let i = used.indexOf(key); if (i < 0) { used.push(key); i = used.length - 1; }
+      const cov = extra.cov ? ` data-cov="${esc(extra.cov)}"` : '';
+      const prov = extra.prov ? ` data-provkey="${esc(extra.prov)}"` : '';
+      return `<span class="pop-wrap"><button type="button" class="fn" data-note="${key}" aria-expanded="false" aria-label="Note ${i + 1}: ${esc(NOTES[key].title)}"${cov}${prov}>${i + 1}</button></span>`;
+    },
+    render() {
+      if (!used.length) return '';
+      return `<section class="notes" aria-labelledby="notes-h"><h2 id="notes-h">Notes</h2><ol>${used.map(k => `<li id="note-${k}"><b>${esc(NOTES[k].title)}.</b> ${esc(NOTES[k].text)}</li>`).join('')}</ol></section>`;
+    },
+  };
+}
+
+function docHead(title, lede, meta) {
+  return `<div class="doc-head"><div><h1>${title}</h1>${lede ? `<p class="lede">${lede}</p>` : ''}</div>${meta ? `<div class="meta">${meta}</div>` : ''}</div>`;
+}
+function skeleton(cols, rows = 5) {
+  return Array.from({ length: rows }, () => `<tr class="skel" aria-hidden="true">${Array.from({ length: cols }, () => '<td>&nbsp;</td>').join('')}</tr>`).join('');
+}
+function loadingDoc(title, what) {
+  return docHead(title) + `<p class="status-line" role="status">Loading ${what}…</p><div class="tbl-wrap" style="margin-top:24px"><table class="stmt" aria-hidden="true"><caption><span class="vh">Loading</span></caption><tbody>${skeleton(5, 6)}</tbody></table></div>`;
+}
+function errorDoc(title, code, message, details) {
+  return docHead(title) + `<div class="notice bad" role="alert"><p><b>Could not load this page.</b> ${esc(message)}</p><p class="code">error.code ${esc(code)}${details ? ' · ' + esc(details) : ''}</p><div class="actions" style="margin-top:12px"><button class="btn sm" type="button" onclick="render()">Try again</button><a class="btn sm" href="#/imports" style="text-decoration:none">Go to imports</a></div></div>`;
+}
+
+/* =====================================================================
+   Screens
+   ===================================================================== */
+const importUI = { stage: 'empty', mapping: 'map_82934058a2f6af1cbfc6' };
+
+function renderImport(mock) {
+  const N = noteBook();
+  if (mock === 'loading') return loadingDoc('New import', 'saved mappings');
+  if (mock === 'error') return docHead('New import') + `<div class="notice bad" role="alert"><p><b>The file was not stored.</b> tracelab-full.jsonl.gz is 31,204,918 bytes; the limit for one file is 25 MiB (26,214,400 bytes). Split the export or import a smaller excerpt.</p><p class="code">HTTP 413 · error.code file_too_large</p><div class="actions" style="margin-top:12px"><button class="btn sm" type="button" onclick="setMock('normal')">Choose another file</button></div></div>`;
+  const st = mock === 'empty' ? 'empty' : importUI.stage;
+  const meta = `Source <b>tracelab</b><br>Mapping <b>tracelab-v1</b>, revision 1<br>Ledger holds <b>2,068</b> sessions`;
+  let h = docHead('New import', 'Store the bytes, read the mapping’s preview, then commit the whole file in one transaction. Nothing is written until you confirm.', meta);
+
+  /* 1. file */
+  h += `<section class="part" aria-labelledby="h-file"><h2 id="h-file">File</h2>`;
+  if (st === 'empty' || st === 'reading') {
+    h += `<div class="drop"><div><p class="t">Drop a trace file here, or choose one.</p><p class="hint">JSONL, gzipped JSONL or Parquet, up to 25 MiB. The bytes are stored immutably and hashed before anything else happens.</p></div><button class="btn primary" type="button" data-act="choose" ${st === 'reading' ? 'disabled' : ''}>Choose file</button></div>`;
+    if (st === 'reading') h += `<p class="status-line" role="status" style="margin-top:12px">Storing and hashing tracelab-sample.jsonl.gz…</p>`;
+  } else {
+    h += `<div class="two"><dl class="kv">
+      <dt>Filename</dt><dd>tracelab-sample.jsonl.gz</dd>
+      <dt>Size</dt><dd class="num">681,057 bytes</dd>
+      <dt>Format</dt><dd>jsonl, gzip detected</dd>
+      <dt>Records</dt><dd class="num">4,770</dd>
+      <dt>SHA-256${N.fn('sha256')}</dt><dd>${hash(SHA)}</dd>
+    </dl>
+    <div class="notice"><p><b>These bytes have been imported before.</b> Entry <a href="#/imports/imp_3e21f89dbaef419a8f60">imp_3e21f89dbaef419a8f60</a> committed them for source tracelab on 2026-09-06 at 17:22 UTC, with tracelab-v1 revision 1. Importing again for the same source adds no observations and is recorded as a duplicate entry${N.fn('duplicate')}.</p><p><a href="#" data-act="reset">Choose a different file</a></p></div></div>`;
+  }
+  h += `</section>`;
+
+  /* 2. mapping */
+  if (st !== 'empty' && st !== 'reading') {
+    h += `<section class="part" aria-labelledby="h-map"><h2 id="h-map">Mapping</h2>
+      <div class="row"><div class="field-group"><label class="field" for="mapping">Saved mapping for jsonl</label>
+        <select id="mapping" ${st === 'previewing' || st === 'importing' ? 'disabled' : ''}>
+          <option value="map_82934058a2f6af1cbfc6" selected>tracelab-v1, revision 1, source tracelab</option>
+          <option value="map_1f2e3d4c5b6a79808f1e">tracelab-v1, revision 2 (draft), source tracelab</option>
+        </select><p class="hint">Revision${N.fn('revision')} map_82934058a2f6af1cbfc6, bundled. <a href="#/mapping">Open in the assistant</a> to inspect or revise.</p></div>
+        ${st === 'uploaded' ? `<button class="btn" type="button" data-act="preview">Preview on 200 records</button>` : ''}
+        ${st === 'previewing' ? `<p class="status-line" role="status">Applying tracelab-v1 to the first 200 records…</p>` : ''}
+      </div></section>`;
+  }
+
+  /* 3. preview */
+  if (st === 'previewed' || st === 'importing') {
+    h += `<section class="part" aria-labelledby="h-prev"><h2 id="h-prev">Preview <span class="aside">first 200 of 4,770 records, nothing persisted</span></h2>
+    <div class="two">
+      <table class="stmt"><caption>Source records${N.fn('records')}</caption>
+        <tbody><tr><td>Accepted</td><td class="num">200</td></tr><tr><td>Partial</td><td class="num">0</td></tr><tr><td>Rejected</td><td class="num">0</td></tr><tr class="total"><td>Sampled</td><td class="num">200</td></tr></tbody></table>
+      <table class="stmt"><caption>Observations emitted</caption>
+        <tbody><tr><td>Sessions</td><td class="num">7</td></tr><tr><td>Model calls</td><td class="num">200</td></tr><tr><td>Tool calls</td><td class="num">241</td></tr><tr class="total"><td>Observations</td><td class="num">448</td></tr></tbody></table>
+    </div>
+    <div class="two" style="margin-top:32px">
+      <table class="stmt"><caption>Warnings${N.fn('warnings')}<span class="sub">Field-level; each becomes Unavailable in the entity</span></caption>
+        <tbody><tr><td>absent <span class="desc">— key missing (mostly cache_creation_tokens)</span></td><td class="num">612</td></tr><tr><td>null <span class="desc">— key present, value null</span></td><td class="num">471</td></tr><tr class="total"><td>Warnings</td><td class="num">1,083</td></tr></tbody></table>
+      <div><table class="stmt"><caption>Rejects sample</caption><tbody><tr><td class="muted">No record in the sample was rejected.</td></tr></tbody></table></div>
+    </div>
+    <details style="margin-top:24px"><summary class="btn quiet" style="display:inline-block">Show emissions sample (20 rows)</summary>
+      <div class="tbl-wrap" style="margin-top:12px"><table class="stmt"><caption class="vh">Emissions sample</caption><thead><tr><th>Entity</th><th>Path</th><th>Locator</th><th>Fields</th></tr></thead><tbody>
+      <tr><td>session</td><td class="mono">session</td><td class="mono">line:1</td><td class="mono small">identity_key 781a3b4c-a1a5-…, agent claude-code, repo project_8f998460</td></tr>
+      <tr><td>model_call</td><td class="mono">model_call</td><td class="mono">line:1</td><td class="mono small">model claude-opus-4-6, input_tokens 16147, output_tokens 334, token_semantics tracelab-claude</td></tr>
+      <tr><td>tool_call</td><td class="mono">tools[0]</td><td class="mono">line:1</td><td class="mono small">tool_name Read, wall_latency_ms 109, is_error false</td></tr>
+      <tr><td>tool_call</td><td class="mono">tools[1]</td><td class="mono">line:1</td><td class="mono small">tool_name Grep, wall_latency_ms 1265, is_error false</td></tr>
+      <tr><td>model_call</td><td class="mono">model_call</td><td class="mono">line:2</td><td class="mono small">model claude-opus-4-6, input_tokens 32040, output_tokens 867, token_semantics tracelab-claude</td></tr>
+      </tbody></table></div></details>
+    </section>
+    <section class="part" aria-labelledby="h-confirm"><h2 id="h-confirm">Confirm</h2>
+      <div class="prose">Import all <b class="num">4,770</b> records of <b>tracelab-sample.jsonl.gz</b> into source <b>tracelab</b> with <b>tracelab-v1</b> revision 1 (map_82934058a2f6af1cbfc6). The full run may raise warnings the 200-record preview did not.</div>
+      <dl class="kv" style="margin-top:16px"><dt>File SHA-256</dt><dd>${hash(SHA)}</dd><dt>Expected outcome</dt><dd>Duplicate: these bytes are already committed for tracelab, so the entry will record 4,770 duplicate records and insert nothing.</dd></dl>
+      <div class="actions">${st === 'importing' ? `<p class="status-line" role="status">Importing 4,770 records in one transaction…</p>` : `<button class="btn primary" type="button" data-act="commit">Import 4,770 records</button><button class="btn" type="button" data-act="reset">Cancel</button>`}</div>
+    </section>`;
+  }
+  return h + N.render();
+}
+
+function renderImports(mock) {
+  const N = noteBook();
+  if (mock === 'loading') return loadingDoc('Imports', 'the import journal');
+  if (mock === 'error') return errorDoc('Imports', 'internal_error', 'The server could not read the import journal.', 'sqlite3.OperationalError: database is locked');
+  const list = mock === 'empty' ? [] : IMPORTS;
+  let h = docHead('Imports', 'Every import attempt, newest first, with what it committed. A duplicate or failed entry changes nothing and stays in the journal.', `<b>${list.length}</b> entries<br>Sessions held${N.fn('balance')} <b>2,068</b>`);
+  if (!list.length) {
+    return h + `<div class="empty"><h3>No imports yet.</h3><p>The journal fills as files are imported. Each entry records the bytes, the mapping revision and every outcome, and stays here even when nothing was inserted.</p><div class="actions"><a class="btn primary" href="#/import" style="text-decoration:none">Import a trace file</a></div></div>` + N.render();
+  }
+  h += `<div class="tbl-wrap"><table class="journal"><caption class="vh">Import attempts, newest first</caption><thead><tr>
+    <th scope="col">Date</th><th scope="col">Entry</th><th scope="col">Status</th><th scope="col" class="num">Accepted</th><th scope="col" class="num">Rejected</th><th scope="col" class="num">Observations</th><th scope="col" class="num">Sessions held${N.fn('balance')}</th></tr></thead><tbody>`;
+  for (const im of list) {
+    const obs = Object.values(im.entities).length ? sum(Object.values(im.entities)) : 0;
+    const acc = im.status === 'running' ? `${n(im.records.accepted)} <span class="muted">of ${n(im.total)}</span>` : n(im.records.accepted);
+    h += `<tr><td class="date"><b>${dateOnly(im.at)}</b>${timeOnly(im.at)}</td>
+      <td><details class="entry"><summary><span><span class="title">${esc(im.file)}</span> <span class="sub">${im.source}, ${im.mapping.name} rev ${im.mapping.rev}</span><br><a href="#/imports/${im.id}" class="cell-id" onclick="event.stopPropagation()">${im.id}</a></span></summary>
+        <div class="body">
+          <dl class="kv"><dt>SHA-256</dt><dd>${hash(im.sha)}</dd><dt>Size</dt><dd class="num">${n(im.size)} bytes, ${im.format}</dd><dt>Mapping</dt><dd><span class="mono">${im.mapping.id}</span></dd></dl>
+          <dl class="kv"><dt>Records</dt><dd class="num">accepted ${n(im.records.accepted)}, partial ${n(im.records.partial)}, duplicate ${n(im.records.duplicate)}, rejected ${n(im.records.rejected)}, ignored ${n(im.records.ignored)}</dd>
+          <dt>Entities</dt><dd class="num">${obs ? `sessions ${n(im.entities.session)}, model calls ${n(im.entities.model_call)}, tool calls ${n(im.entities.tool_call)}` : 'none emitted'}</dd>
+          ${im.error ? `<dt>Error</dt><dd class="mono small" style="color:var(--bad)">${esc(im.error)}</dd>` : ''}
+          ${im.of ? `<dt>Same bytes as</dt><dd><a href="#/imports/${im.of}">${im.of}</a></dd>` : ''}
+          ${im.status === 'running' ? `<dt>Progress</dt><dd class="num">${n(im.progress)} of ${n(im.total)} records read<div class="progress" role="progressbar" aria-valuenow="${im.progress}" aria-valuemin="0" aria-valuemax="${im.total}" aria-label="Import progress"><span style="width:${(im.progress / im.total * 100).toFixed(1)}%"></span></div></dd>` : ''}
+          <dt>Report</dt><dd><a href="#/imports/${im.id}">Open the full report</a></dd></dl>
+        </div></details></td>
+      <td>${stamp(im.status)}</td>
+      <td class="num">${acc}</td>
+      <td class="num ${im.records.rejected ? 'neg' : 'zero'}">${n(im.records.rejected)}</td>
+      <td class="num ${obs ? '' : 'zero'}">${n(obs)}</td>
+      <td class="num">${im.balance == null ? '<span class="muted">pending</span>' : n(im.balance)}</td></tr>`;
+  }
+  h += `</tbody></table></div>`;
+  return h + N.render();
+}
+
+function renderReport(id, mock) {
+  const N = noteBook();
+  if (mock === 'loading') return loadingDoc('Import report', 'the report');
+  if (mock === 'error' || !IMPORTS.some(i => i.id === id)) return errorDoc('Import report', 'not_found', `No import has the id ${id}.`);
+  const im = IMPORTS.find(i => i.id === id);
+  const rej = mock === 'empty' ? [] : (im.id === 'imp_7c0e51a2b9d4e6f8a013' ? REJECTS_SWE : []);
+  const meta = `${stamp(im.status).replace('class="stamp', 'class="stamp big')}<br>${im.finished ? `Finished ${ts(im.finished)}` : `Started ${ts(im.at)}`}`;
+  let h = docHead(`Import ${im.id}`, `${esc(im.file)} into source <b>${im.source}</b> with ${im.mapping.name} revision${N.fn('revision')} ${im.mapping.rev}.`, meta);
+
+  if (im.status === 'duplicate') h += `<div class="notice"><p><b>Nothing was inserted.</b> These bytes were already committed for ${im.source} by <a href="#/imports/${im.of}">${im.of}</a>. Every record is reported as duplicate${N.fn('duplicate')}; the ledger is unchanged.</p></div>`;
+  if (im.status === 'failed') h += `<div class="notice bad" role="alert"><p><b>The import failed and was rolled back.</b> Nothing was inserted.</p><p class="code">${esc(im.error)}</p><p>Records after line:2118 were not examined. Raise the bounded-iteration limit in a new mapping revision, or split the file.</p></div>`;
+  if (im.status === 'running') h += `<div class="notice"><p><b>Running.</b> <span class="num">${n(im.progress)}</span> of <span class="num">${n(im.total)}</span> records read. This page updates as the import proceeds; the entry will read committed or failed when the transaction closes.</p><div class="progress" role="progressbar" aria-valuenow="${im.progress}" aria-valuemin="0" aria-valuemax="${im.total}" aria-label="Import progress"><span style="width:${(im.progress / im.total * 100).toFixed(1)}%"></span></div></div>`;
+
+  const r = im.records;
+  const recTotal = r.accepted + r.partial + r.duplicate + r.rejected + r.ignored;
+  const e = im.entities;
+  const obs = Object.values(e).length ? sum(Object.values(e)) : 0;
+  h += `<section class="part" aria-labelledby="h-out"><h2 id="h-out">Outcome</h2><div class="two">
+    <table class="stmt"><caption>Source records${N.fn('records')}<span class="sub">Each record has exactly one outcome</span></caption><tbody>
+      <tr><td>Accepted</td><td class="num">${n(r.accepted)}</td></tr>
+      <tr><td>Partial <span class="desc">— accepted with some fields Unavailable</span></td><td class="num">${n(r.partial)}</td></tr>
+      <tr><td>Duplicate</td><td class="num">${n(r.duplicate)}</td></tr>
+      <tr><td>Rejected ${rej.length ? `<a href="#rejects" class="small">see below</a>` : ''}</td><td class="num ${r.rejected ? 'neg' : ''}" style="${r.rejected ? 'color:var(--bad)' : ''}">${n(r.rejected)}</td></tr>
+      <tr><td>Ignored <span class="desc">— matched no rule</span></td><td class="num">${n(r.ignored)}</td></tr>
+      <tr class="total"><td>Records${im.status === 'running' ? ' so far' : ''}</td><td class="num">${n(recTotal)}</td></tr></tbody></table>
+    <table class="stmt"><caption>Observations emitted<span class="sub">${obs ? 'One record can emit several observations' : 'None: nothing was committed'}</span></caption><tbody>
+      <tr><td>Sessions${N.fn('sessions')}</td><td class="num">${obs ? n(e.session) : '—'}</td></tr>
+      <tr><td>Model calls${N.fn('model_calls')}</td><td class="num">${obs ? n(e.model_call) : '—'}</td></tr>
+      <tr><td>Tool calls${N.fn('tool_calls')}</td><td class="num">${obs ? n(e.tool_call) : '—'}</td></tr>
+      <tr class="total"><td>Observations</td><td class="num">${obs ? n(obs) : '—'}</td></tr></tbody></table>
+  </div></section>`;
+
+  const w = im.warnings;
+  h += `<section class="part" aria-labelledby="h-warn"><h2 id="h-warn">Warnings${N.fn('warnings')} <span class="aside">field-level, not rejections</span></h2>`;
+  if (Object.keys(w).length) {
+    h += `<table class="stmt" style="max-width:560px"><caption class="vh">Warnings by code</caption><tbody>
+      ${w.absent != null ? `<tr><td>absent <span class="desc">— key missing; mostly cache_creation_tokens on codex rows</span></td><td class="num">${n(w.absent)}</td></tr>` : ''}
+      ${w.null != null ? `<tr><td>null <span class="desc">— key present, value null; mostly output_tokens on interrupted calls</span></td><td class="num">${n(w.null)}</td></tr>` : ''}
+      <tr class="total"><td>Warnings</td><td class="num">${n(sum(Object.values(w)))}</td></tr></tbody></table>`;
+  } else h += `<p class="prose muted">No warnings were raised${im.status === 'committed' ? '' : ' before the import stopped'}.</p>`;
+  h += `</section>`;
+
+  h += `<section class="part" aria-labelledby="h-files"><h2 id="h-files">Files</h2><div class="tbl-wrap"><table class="stmt"><caption class="vh">Imported files</caption>
+    <thead><tr><th scope="col">Filename</th><th scope="col">SHA-256${N.fn('sha256')}</th><th scope="col" class="num">Size</th><th scope="col">Format</th><th scope="col" class="num">Records</th></tr></thead>
+    <tbody><tr><td>${esc(im.file)}</td><td style="max-width:360px">${hash(im.sha)}</td><td class="num">${n(im.size)} bytes</td><td>${im.format}</td><td class="num">${n(im.total)}</td></tr></tbody></table></div></section>`;
+
+  h += `<section class="part" id="rejects" aria-labelledby="h-rej"><h2 id="h-rej">Rejects${N.fn('rejects')} <span class="aside">${n(r.rejected)} of ${n(recTotal)} records</span></h2>`;
+  if (!r.rejected) h += `<p class="prose muted">No record was rejected. Every source record contributed to at least one observation.</p>`;
+  else {
+    const codes = [...new Set(REJECTS_SWE.map(x => x.code))];
+    h += `<div class="row" style="margin-bottom:16px"><div class="field-group"><label class="field" for="rej-code">Code</label><select id="rej-code" data-act="rejfilter"><option value="">All codes (${r.rejected})</option>${codes.map(c => `<option value="${c}">${c} (${c === 'invalid_type' ? 9 : c === 'missing_required' ? 2 : 1})</option>`).join('')}</select></div><p class="hint" style="align-self:end">Showing the first ${rej.length} of ${r.rejected}. Payloads are the stored bytes, not re-serialised.</p></div>
+    <div class="tbl-wrap"><table class="stmt" id="rej-table"><caption class="vh">Rejected records</caption><thead><tr><th scope="col">Locator</th><th scope="col">Rule</th><th scope="col">Path</th><th scope="col">Code</th><th scope="col">Message</th><th scope="col">Payload</th></tr></thead><tbody>${rejectRows(rej)}</tbody></table></div>`;
+  }
+  h += `</section>`;
+  h += `<div class="actions"><a href="#/dashboard">Open the dashboard</a><a href="#/imports">Back to the journal</a></div>`;
+  return h + N.render();
+}
+function rejectRows(rows) {
+  if (!rows.length) return `<tr><td colspan="6" class="muted">No rejects with this code.</td></tr>`;
+  return rows.map(x => `<tr data-code="${x.code}"><td class="mono">${x.locator}</td><td>${x.rule}</td><td class="mono small">${esc(x.path)}</td><td class="mono small">${x.code}</td><td>${esc(x.message)}</td><td><details class="payload"><summary>Show payload</summary><pre class="raw">${esc(x.payload)}</pre></details></td></tr>`).join('');
+}
+
+const dashUI = { scope: 'all', open: false };
+function renderDashboard(mock) {
+  const N = noteBook();
+  if (mock === 'loading') return loadingDoc('Dashboard', 'metrics for the current scope');
+  if (mock === 'error') return errorDoc('Dashboard', 'invalid_input', 'The period is not a valid range.', 'details[0].path period.to, message "2026-06-31 is not a date"');
+  const d = DASH[dashUI.scope];
+  let h = docHead('Dashboard', 'Four figures, three charts, one quality strip. Every figure carries its definition and its coverage; click a bar to reach the sessions behind it.', `As at <b>2026-09-07 11:42 UTC</b><br>Last committed entry <a href="#/imports/imp_7c0e51a2b9d4e6f8a013">imp_7c0e51a2…</a>`);
+
+  if (mock === 'empty') return h + `<div class="empty"><h3>Nothing to report yet.</h3><p>The ledger holds no sessions. Import a trace file and the figures, charts and definitions appear here with their coverage.</p><div class="actions"><a class="btn primary" href="#/import" style="text-decoration:none">Import a trace file</a></div></div>` + N.render();
+
+  h += `<div class="scope" style="position:relative"><span>Scope</span><b>${d.label}</b><button class="btn quiet sm" type="button" data-act="scope" aria-expanded="${dashUI.open}" aria-controls="scope-form">Change</button>
+    ${dashUI.open ? `<form id="scope-form" class="scope-form" data-act="scopeform" style="top:28px;left:0">
+      <div><label class="field" for="f-src">Source</label><select id="f-src"><option>All</option><option ${dashUI.scope === 'codex' ? 'selected' : ''}>tracelab</option><option>swe-chat</option></select></div>
+      <div><label class="field" for="f-agent">Agent</label><select id="f-agent" name="agent"><option value="all">All</option><option value="claude-code">claude-code</option><option value="codex" ${dashUI.scope === 'codex' ? 'selected' : ''}>codex</option></select></div>
+      <div><label class="field" for="f-model">Model</label><select id="f-model"><option>All</option><option>claude-opus-4-6</option><option>claude-opus-4-7</option><option>gpt-5.5-codex</option></select></div>
+      <div><label class="field" for="f-from">Period</label><div style="display:flex;gap:6px"><input id="f-from" type="date" value="2026-06-01" aria-label="From"><input type="date" value="2026-06-30" aria-label="To"></div></div>
+      <div class="foot"><button class="btn sm" type="button" data-act="scopeclose">Cancel</button><button class="btn primary sm" type="submit">Apply scope</button></div></form>` : ''}</div>`;
+
+  const cov = (k, t) => `<p class="cov ${k === 0 ? 'zero' : ''}">Coverage${N.fn('coverage')} <span class="num">${n(k)} / ${n(t)}</span> calls</p>`;
+  h += `<div class="figures" style="margin-top:16px" role="list">
+    <div class="figure-cell" role="listitem"><h3>Sessions${N.fn('sessions', { prov: 'sessions' })}</h3><p class="figure num">${n(d.sessions)}</p><p class="cov">All sessions in scope</p></div>
+    <div class="figure-cell" role="listitem"><h3>Model calls${N.fn('model_calls', { prov: 'model_calls' })}</h3><p class="figure num">${n(d.model_calls)}</p><p class="cov">Recorded observations</p></div>
+    <div class="figure-cell" role="listitem"><h3>Input tokens${N.fn('input_tokens', { cov: `${n(d.input.known)} / ${n(d.input.total)} calls`, prov: 'input_tokens' })}</h3><p class="figure num">${n(d.input.value)}</p>${cov(d.input.known, d.input.total)}</div>
+    <div class="figure-cell" role="listitem"><h3>Output tokens${N.fn('output_tokens', { cov: `${n(d.output.known)} / ${n(d.output.total)} calls`, prov: 'output_tokens' })}</h3><p class="figure num ${d.output.value == null ? 'na' : ''}">${d.output.value == null ? 'Unavailable' : n(d.output.value)}</p>${cov(d.output.known, d.output.total)}</div>
+  </div>`;
+
+  /* charts */
+  const maxD = Math.max(...d.days, 1);
+  const W = 640, H = 170, padL = 22, padB = 22, top = 10, bw = (W - padL) / 30;
+  let bars = '';
+  d.days.forEach((v, i) => {
+    const x = padL + i * bw + 2, bh = v / maxD * (H - padB - top), y = H - padB - bh;
+    const day = `2026-06-${String(i + 1).padStart(2, '0')}`;
+    bars += `<a href="#/sessions?day=${day}" aria-label="${v} sessions on ${day}"><title>${day}: ${v} session${v === 1 ? '' : 's'}</title><rect class="bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw - 4).toFixed(1)}" height="${bh.toFixed(1)}" ${v === 0 ? 'fill-opacity="0.15" ' : ''}/></a>`;
+    if ((i + 1) % 5 === 0 || i === 0) bars += `<text x="${(x + (bw - 4) / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${i + 1}</text>`;
+  });
+  const gridY = [0, Math.ceil(maxD / 2), maxD].map(v => { const y = H - padB - v / maxD * (H - padB - top); return `<line class="grid" x1="${padL}" x2="${W}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/><text x="${padL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end">${v}</text>`; }).join('');
+  const hbars = (rows, key, total, fmtv) => {
+    const max = Math.max(...rows.map(r => r[1]), 1), rh = 24, lw = 96, vw = 70, w = 320;
+    return `<svg viewBox="0 0 ${w} ${rows.length * rh}" role="img" aria-label="${key} chart">${rows.map(([name, v], i) => {
+      const y = i * rh, bwid = (w - lw - vw) * v / max;
+      return `<a class="hrow" href="#/sessions?${key}=${encodeURIComponent(name)}" aria-label="${name}: ${v.toLocaleString('en-US')}"><title>${name}: ${v.toLocaleString('en-US')} (${((v / total) * 100).toFixed(1)} %)</title><text x="0" y="${y + 16}" font-size="11">${esc(name)}</text><rect class="hbar" x="${lw}" y="${y + 5}" width="${Math.max(bwid, v ? 2 : 0).toFixed(1)}" height="14" ${v === 0 ? 'fill-opacity="0.15"' : ''}/><text class="val" x="${w}" y="${y + 16}" text-anchor="end" font-size="11">${fmtv(v)}</text></a>`;
+    }).join('')}</svg>`;
+  };
+  h += `<div class="charts">
+    <div class="chart"><h3>Sessions by day, June 2026</h3><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sessions per day; each bar links to that day's sessions">${gridY}${bars}<line class="axis" x1="${padL}" x2="${W}" y1="${H - padB}" y2="${H - padB}"/></svg><p class="foot">Day of observed start${N.fn('observed')}. Bars are links.</p></div>
+    <div class="chart"><h3>Input tokens by model</h3>${hbars(d.models, 'model', d.input.value || 1, abbr)}<p class="foot">Abbreviated; exact values in the table below and on hover.</p></div>
+    <div class="chart"><h3>Tool calls by tool</h3>${hbars(d.tools, 'tool', d.tool_calls, v => v.toLocaleString('en-US'))}<p class="foot">${n(d.tool_calls)} recorded tool calls${N.fn('tool_calls')}.</p></div>
+  </div>`;
+
+  const q = d.quality;
+  h += `<div class="quality" role="list" aria-label="Quality strip">
+    <div role="listitem"><b>${n(q.rejects)}</b> rejected records${N.fn('quality')}</div>
+    <div role="listitem" class="${q.missing_usage ? 'warn' : ''}"><b>${n(q.missing_usage)}</b> model calls without usage${q.missing_usage ? ` <a href="#/sessions?issue=missing_usage" class="small">show</a>` : ''}</div>
+    <div role="listitem" class="${q.unknown_ts ? 'warn' : ''}"><b>${n(q.unknown_ts)}</b> tool calls with unknown timestamps${q.unknown_ts ? ` <a href="#/sessions?issue=unknown_ts" class="small">show</a>` : ''}</div>
+    <div role="listitem" class="${q.unlinked ? 'warn' : ''}"><b>${n(q.unlinked)}</b> unlinked tool calls${q.unlinked ? ` <a href="#/sessions?issue=unlinked" class="small">show</a>` : ''}</div>
+  </div>`;
+
+  h += `<section class="part" aria-labelledby="h-bymodel"><h2 id="h-bymodel">Input tokens by model <span class="aside">exact</span></h2><table class="stmt" style="max-width:560px"><caption class="vh">Input tokens by model, exact values</caption>
+    <thead><tr><th scope="col">Model</th><th scope="col">Semantics</th><th scope="col" class="num">Input tokens</th></tr></thead><tbody>
+    ${d.models.map(([m, v]) => `<tr><td>${m}</td><td class="muted small">${m.startsWith('gpt') ? 'tracelab-codex' : 'tracelab-claude'}</td><td class="num">${n(v)}</td></tr>`).join('')}
+    <tr class="total"><td>Input tokens</td><td></td><td class="num">${n(d.input.value)}</td></tr></tbody></table></section>`;
+  return h + N.render();
+}
+
+function renderSessions(query, mock) {
+  const N = noteBook();
+  if (mock === 'loading') return loadingDoc('Sessions', 'sessions');
+  if (mock === 'error') return errorDoc('Sessions', 'invalid_input', 'The filter is not valid.', 'details[0].path agent, message "unknown agent \'claud\'"');
+  const day = query.get('day'), model = query.get('model'), tool = query.get('tool'), issue = query.get('issue');
+  let rows = SESSIONS, why = 'all sessions in scope';
+  if (day) { rows = SESSIONS.filter(s => s.start.startsWith(day)); why = `sessions whose observed start${N.fn('observed')} falls on ${day}`; }
+  else if (model) { rows = model.startsWith('gpt') ? SESSIONS.filter(s => s.agent === 'codex') : SESSIONS.filter(s => s.agent === 'claude-code'); why = `sessions with at least one call to ${model}`; }
+  else if (tool) { rows = SESSIONS.filter(s => s.tc > 0); why = `sessions with at least one ${tool} tool call`; }
+  else if (issue) { rows = SESSIONS.filter(s => s.agent === 'codex'); why = { missing_usage: 'sessions with model calls lacking usage', unknown_ts: 'sessions with tool calls whose timestamps could not be parsed', unlinked: 'sessions with unlinked tool calls' }[issue]; }
+  if (mock === 'empty') rows = [];
+  let h = docHead('Sessions', `Listing ${why}. Figures per session are exact; coverage is per session.`, `<b>${rows.length}</b> of 80 sessions${day || model || tool || issue ? `<br><a href="#/sessions">Clear the filter</a>` : ''}`);
+  if (!rows.length) return h + `<div class="empty"><h3>No sessions match.</h3><p>Nothing in the ledger has ${why}. Widen the scope, or check the import journal for what was committed.</p><div class="actions"><a class="btn" href="#/sessions" style="text-decoration:none">Show all sessions</a><a href="#/imports">Open the journal</a></div></div>` + N.render();
+  h += `<div class="tbl-wrap"><table class="stmt"><caption class="vh">Sessions</caption><thead><tr>
+    <th scope="col">Session</th><th scope="col">Agent</th><th scope="col">Observed start</th><th scope="col">Observed end</th><th scope="col" class="num">Model calls</th><th scope="col" class="num">Tool calls</th><th scope="col" class="num">Input tokens${N.fn('input_tokens')}</th><th scope="col" class="num">Coverage${N.fn('coverage')}</th></tr></thead><tbody>
+    ${rows.map(s => `<tr><td><a href="#/sessions/${s.id}" class="cell-id">${esc(s.ext)}</a><br><span class="muted small">${s.repo}</span></td><td>${s.agent}</td><td class="num small">${ts(s.start)}</td><td class="num small">${ts(s.end)}</td><td class="num">${n(s.mc)}</td><td class="num">${n(s.tc)}</td><td class="num">${n(s.input)}</td><td class="num small">${s.known} / ${s.total}</td></tr>`).join('')}
+  </tbody></table></div>`;
+  return h + N.render();
+}
+
+function renderSession(id, mock) {
+  const N = noteBook();
+  if (mock === 'loading') return loadingDoc('Session', 'the session');
+  const s = SESSIONS.find(x => x.id === id);
+  if (mock === 'error' || !s) return errorDoc('Session', 'not_found', `No session has the id ${id}.`);
+  const det = SESSION_DETAIL;
+  const isMain = id === det.id;
+  let h = docHead(`Session <span class="mono" style="font-size:.7em;letter-spacing:0">${esc(s.ext)}</span>`, `Observed in <b>${'tracelab'}</b> by <b>${s.agent}</b>, imported by <a href="#/imports/${det.imp}">${det.imp}</a> with tracelab-v1 revision 1.`, `Session id <b class="mono">${s.id}</b><br><button class="btn sm" type="button" data-prov="session">Trace to source</button>`);
+
+  h += `<section class="part" aria-labelledby="h-id"><h2 id="h-id">Identity</h2><div class="two">
+    <dl class="kv"><dt>External id</dt><dd class="mono">${esc(s.ext)}</dd><dt>Source</dt><dd>tracelab</dd><dt>Agent</dt><dd>${s.agent}</dd><dt>Repository</dt><dd class="mono">${s.repo}</dd><dt>User</dt><dd class="mono">${s.user}</dd></dl>
+    <table class="stmt"><caption class="vh">Intervals</caption><thead><tr><th scope="col">Interval</th><th scope="col">Start</th><th scope="col">End</th></tr></thead><tbody>
+      <tr><td>Observed${N.fn('observed')}</td><td class="num small">${ts(s.start)}</td><td class="num small">${ts(s.end)}</td></tr>
+      <tr><td>Declared ${isMain ? `<span class="small" style="color:var(--warn)">reversed, see diagnostics</span>` : ''}</td><td class="num small">${isMain ? ts(det.declared_start) : ts(null)}</td><td class="num small">${isMain ? ts(det.declared_end) : ts(null)}</td></tr>
+    </tbody></table></div></section>`;
+
+  h += `<section class="part" aria-labelledby="h-tok"><h2 id="h-tok">Tokens</h2><table class="stmt" style="max-width:620px"><caption class="vh">Token totals for this session</caption>
+    <thead><tr><th scope="col">Measure</th><th scope="col" class="num">Value</th><th scope="col" class="num">Coverage${N.fn('coverage')}</th><th scope="col">Semantics</th></tr></thead><tbody>
+    <tr><td>Input tokens${N.fn('input_tokens', { cov: `${s.known} / ${s.total} calls`, prov: 'session' })}</td><td class="num">${n(s.input)}</td><td class="num">${s.known} / ${s.total} calls</td><td class="small">tracelab-claude</td></tr>
+    <tr><td>Output tokens${N.fn('output_tokens')}</td><td class="num">${isMain ? n(334 + 867) : n(null)}</td><td class="num">${isMain ? '2 / 2' : '0 / ' + s.total} calls</td><td class="small">tracelab-claude</td></tr>
+    <tr><td>Cache read tokens</td><td class="num">${isMain ? n(15_402 + 31_119) : n(null)}</td><td class="num">${isMain ? '2 / 2' : '0 / ' + s.total} calls</td><td class="small">tracelab-claude only</td></tr>
+  </tbody></table></section>`;
+
+  const mcs = isMain ? det.model_calls : [];
+  const tcs = isMain ? det.tool_calls : [];
+  h += `<section class="part" aria-labelledby="h-mc"><h2 id="h-mc">Model-call observations${N.fn('model_calls')} <span class="aside">${n(s.mc)} recorded</span></h2>`;
+  h += mcs.length ? `<div class="tbl-wrap"><table class="stmt"><caption class="vh">Model calls</caption><thead><tr><th scope="col">Sequence</th><th scope="col">Model</th><th scope="col">Started</th><th scope="col">Ended</th><th scope="col" class="num">Input</th><th scope="col" class="num">Output</th><th scope="col" class="num">Cache read</th><th scope="col">Semantics</th><th scope="col">Source</th></tr></thead><tbody>
+    ${mcs.map(m => `<tr><td class="num">${m.seq}</td><td>${m.model}<br><span class="cell-id muted">${m.id}</span></td><td class="num small">${ts(m.start)}</td><td class="num small">${ts(m.end)}</td><td class="num">${n(m.input)}</td><td class="num">${n(m.output)}</td><td class="num">${n(m.cache_read)}</td><td class="small">${m.sem}</td><td><button class="btn sm" type="button" data-prov="observation" data-loc="${m.loc}" data-obs="${m.id}" aria-label="Source record for model call ${m.seq}">Source record</button></td></tr>`).join('')}
+  </tbody></table></div>` : `<p class="prose muted">${n(s.mc)} observations; this mockup carries rows for one session only. <a href="#/sessions/ses_c736618a4d2f4b9e8a17">Open the worked session</a>.</p>`;
+  h += `</section>`;
+
+  h += `<section class="part" aria-labelledby="h-tc"><h2 id="h-tc">Tool-call observations${N.fn('tool_calls')} <span class="aside">${n(s.tc)} recorded</span></h2>`;
+  h += tcs.length ? `<div class="tbl-wrap"><table class="stmt"><caption class="vh">Tool calls</caption><thead><tr><th scope="col">Tool</th><th scope="col">Model call</th><th scope="col">Emitted</th><th scope="col">Result</th><th scope="col" class="num">Wall latency</th><th scope="col">Error</th><th scope="col">Source</th></tr></thead><tbody>
+    ${tcs.map(t => `<tr><td>${t.tool}<br><span class="cell-id muted">${t.id}</span></td><td class="cell-id">${t.mc.slice(0, 11)}…</td><td class="num small">${ts(t.start)}</td><td class="num small">${ts(t.end)}</td><td class="num">${n(t.ms)} ms</td><td>${t.err === null ? '<span class="muted"><i>Unavailable</i></span>' : t.err ? 'Yes' : 'No'}</td><td><button class="btn sm" type="button" data-prov="observation" data-loc="${t.loc}" data-obs="${t.id}" aria-label="Source record for tool call ${t.tool}">Source record</button></td></tr>`).join('')}
+  </tbody></table></div>` : `<p class="prose muted">${s.tc ? `${n(s.tc)} observations; rows are carried for the worked session only.` : 'This session recorded no tool calls.'}</p>`;
+  h += `</section>`;
+
+  h += `<section class="part" aria-labelledby="h-diag"><h2 id="h-diag">Diagnostics <span class="aside">${isMain ? det.diagnostics.length : 0} raised</span></h2>`;
+  h += isMain ? `<table class="stmt" style="max-width:820px"><caption class="vh">Diagnostics</caption><thead><tr><th scope="col">Code</th><th scope="col">Field</th><th scope="col">Message</th></tr></thead><tbody>${det.diagnostics.map(dg => `<tr><td class="mono small">${dg.code}</td><td class="mono small">${dg.field}</td><td>${esc(dg.message)}</td></tr>`).join('')}</tbody></table>` : `<p class="prose muted">No diagnostics. Declared and observed values agree where both exist.</p>`;
+  h += `</section>`;
+  return h + N.render();
+}
+
+const mapUI = { unit: '', messages: [
+  { who: 'asst', html: '<p>I profiled 2,000 rows of <b>swe-chat-conversations.parquet</b>. Each row is one conversation; usage is reported once per conversation, so I propose one model call per row and one tool call per <code>turns[].tool_calls[]</code> item.</p><p>Two things I could not settle: the harness (no field names it) and the unit of <code>created_at</code>. The mapping table marks both.</p>' },
+  { who: 'you', html: '<p>Is usage per conversation or per turn?</p>' },
+  { who: 'asst', html: '<p>Per conversation. <code>usage</code> sits at the row root and there is no per-turn usage object; 9.4 turns on average share one <code>prompt_tokens</code>. I tagged the semantics <code>swe-chat-usage</code> so the dashboard never sums them with per-call tracelab values as if they were comparable.</p>' },
+] };
+function renderMapping(mock) {
+  const N = noteBook();
+  if (mock === 'loading') return loadingDoc('Mapping assistant', 'the field profile');
+  if (mock === 'error') return errorDoc('Mapping assistant', 'assistant_unavailable', 'The assistant did not answer within 60 seconds. The profile and your edits are kept; validation and preview work without the assistant.', 'provider openai_compatible, base_url https://openrouter.ai/api/v1');
+  if (mock === 'empty') return docHead('Mapping assistant') + `<div class="empty"><h3>No file to map.</h3><p>Upload a file the ledger does not recognise and the assistant will profile it, explain what it sees and propose a mapping for you to edit.</p><div class="actions"><a class="btn primary" href="#/import" style="text-decoration:none">Upload a file</a></div></div>`;
+  let h = docHead('Mapping assistant', 'Profile of <b>swe-chat-conversations.parquet</b> (excerpt, 2,000 of an estimated 1.3 GB) and a proposed mapping. The assistant proposes; you edit, validate and decide. Nothing is written until you import.', `Draft of <b>swe-chat-v1</b>, revision${N.fn('revision')} 3<br>Parent map_5b1e0c7d9a2f4e6b8d01`);
+  h += `<div class="assist"><div>`;
+  h += `<div class="notice"><p><b>What left this machine${N.fn('redaction')}.</b> Field names, inferred types, null rates, cardinalities and five example values per field, strings cut to 24 characters; <code>turns[].content</code> was replaced by its length. Sent to openrouter.ai, model anthropic/claude-opus-4-7, at 11:39:02 UTC. <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--accent)">Show the exact payload</summary><pre class="raw" style="margin-top:8px;max-height:160px">{
+  "fields": [
+    { "path": "conversation_id", "type": "string", "null_rate": 0.0, "distinct": 2000, "examples": ["c_4f1e9b20", "c_4f1e9b21", "c_0a7d3e11", "c_9a0d31c7", "c_5e6f7a80"] },
+    { "path": "turns[].content", "type": "string", "null_rate": 0.012, "length": { "min": 38, "max": 41207 } },
+    …
+  ]
+}</pre></details></p></div>`;
+
+  h += `<section class="part" aria-labelledby="h-prof"><h2 id="h-prof">Field profile <span class="aside">2,000 rows</span></h2><div class="tbl-wrap"><table class="stmt profile"><caption class="vh">Field profile</caption><thead><tr><th scope="col">Path</th><th scope="col">Type</th><th scope="col" class="num">Null</th><th scope="col" class="num">Distinct</th><th scope="col">Examples</th></tr></thead><tbody>
+    ${PROFILE.map(r => `<tr><td class="mono small">${esc(r[0])}</td><td class="small">${esc(r[1])}</td><td class="num small">${r[2]}</td><td class="num small">${r[3]}</td><td class="samp">${esc(r[4])}</td></tr>`).join('')}
+  </tbody></table></div></section>`;
+
+  h += `<section class="part" aria-labelledby="h-prop"><h2 id="h-prop">Proposed mapping <span class="aside">${MAPPING_ROWS.filter(r => r.amb).length} ambiguities, ${mapUI.unit ? 0 : 1} validation error</span></h2>
+  <div class="tbl-wrap"><table class="stmt map"><caption class="vh">Proposed mapping, editable</caption><colgroup><col class="c-target"><col class="c-src"><col class="c-tf"><col class="c-why"></colgroup><thead><tr><th scope="col">Target</th><th scope="col">Source</th><th scope="col">Transform</th><th scope="col">Why</th></tr></thead><tbody>
+  ${MAPPING_ROWS.map((r, i) => {
+    const bad = r.unit && !mapUI.unit;
+    return `<tr class="${bad ? 'bad' : ''}"><td class="mono small">${esc(r.target)}</td><td class="path"><input type="text" value="${esc(r.src)}" aria-label="Source for ${esc(r.target)}" style="width:100%"></td>
+      <td>${r.unit ? `<div style="display:flex;gap:6px;align-items:center"><span class="mono small">timestamp</span><select data-act="unit" aria-label="Timestamp unit" class="${bad ? 'invalid' : ''}"><option value="">unit…</option><option value="s" ${mapUI.unit === 's' ? 'selected' : ''}>seconds</option><option value="ms" ${mapUI.unit === 'ms' ? 'selected' : ''}>milliseconds</option></select></div>${bad ? `<p class="err" id="unit-err">Unit must be declared for integer timestamps.</p>` : ''}` : `<span class="mono small">${esc(r.tf)}</span>`}</td>
+      <td><span class="why">${esc(r.why)}</span>${r.amb ? `<br><span class="amb">Ambiguous</span> <span class="why">${esc(r.amb)}</span>` : ''}</td></tr>`;
+  }).join('')}
+  </tbody></table></div>
+  <div class="actions"><button class="btn" type="button" data-act="validate">Validate</button><button class="btn" type="button" data-act="mpreview" ${mapUI.unit ? '' : 'disabled'}>Preview on 200 rows</button><span class="spacer"></span><button class="btn" type="button" ${mapUI.unit ? '' : 'disabled'}>Save as revision 3</button><button class="btn primary" type="button" ${mapUI.unit ? '' : 'disabled'} onclick="location.hash='#/import'">Import 2,000 rows</button></div>
+  <p class="hint" id="map-status" role="status">${mapUI.unit ? 'Valid. 2 ambiguities remain; they do not block a preview.' : 'Preview, save and import unlock when validation passes.'}</p>
+  ${mapUI.previewed ? `<div class="two" style="margin-top:24px"><table class="stmt"><caption>Preview, 200 rows</caption><tbody><tr><td>Accepted</td><td class="num">198</td></tr><tr><td>Rejected <span class="desc">— invalid_type on usage.prompt_tokens</span></td><td class="num" style="color:var(--bad)">2</td></tr><tr class="total"><td>Sampled</td><td class="num">200</td></tr></tbody></table><table class="stmt"><caption>Observations emitted</caption><tbody><tr><td>Sessions</td><td class="num">198</td></tr><tr><td>Model calls</td><td class="num">198</td></tr><tr><td>Tool calls</td><td class="num">312</td></tr><tr class="total"><td>Observations</td><td class="num">708</td></tr></tbody></table></div>` : ''}
+  </section></div>`;
+
+  h += `<aside class="convo" aria-labelledby="h-convo"><h2 id="h-convo">Conversation</h2><div class="log" id="convo-log" aria-live="polite">${mapUI.messages.map(m => `<div class="msg ${m.who}"><p class="who">${m.who === 'you' ? 'You' : 'Assistant'}</p>${m.html}</div>`).join('')}</div>
+    <form data-act="ask"><label class="vh" for="ask">Ask the assistant</label><textarea id="ask" placeholder="Ask about a field or request a change to the mapping"></textarea><div style="display:flex;justify-content:space-between;align-items:center"><span class="foot">Replies revise the table above; they never write to the ledger.</span><button class="btn primary sm" type="submit">Send</button></div></form></aside></div>`;
+  return h + N.render();
+}
+
+function renderDefinitions(mock) {
+  const N = noteBook();
+  if (mock === 'loading') return loadingDoc('Definitions', 'metric definitions');
+  if (mock === 'error') return errorDoc('Definitions', 'internal_error', 'Definitions could not be read.');
+  const rows = [
+    ['Sessions', 'sessions', 'count', 'derived; reducer', 'Comparable across sources when both declare a session identity key.'],
+    ['Model calls', 'model_calls', 'count', 'observation', 'Counts observations, not distinct calls; overlapping exports inflate it.'],
+    ['Tool calls', 'tool_calls', 'count', 'observation', 'Includes unlinked tool calls; see quality strip.'],
+    ['Input tokens', 'input_tokens', 'tokens', 'tracelab-claude, tracelab-codex, swe-chat-usage', 'Summable within one semantics; sums across semantics are shown with by-semantics breakdown.'],
+    ['Output tokens', 'output_tokens', 'tokens', 'per call', 'Excludes reasoning output tokens, kept as a separate measure.'],
+    ['Coverage', 'coverage', 'known / total', 'per metric', 'A ratio; a metric with coverage 0 is Unavailable.'],
+    ['Observed span', 'observed', 'timestamps', 'per session', 'Not active time. Declared intervals are separate and never override it.'],
+  ];
+  let h = docHead('Definitions', 'Every figure in this ledger is computed from one of these definitions. The superscripts on other pages link here.', `Metric layer <b>v0.1</b><br>${rows.length} definitions`);
+  h += `<div class="tbl-wrap"><table class="stmt"><caption class="vh">Metric definitions</caption><thead><tr><th scope="col">Metric</th><th scope="col">Definition</th><th scope="col">Unit</th><th scope="col">Semantics</th><th scope="col">Comparability</th></tr></thead><tbody>
+    ${rows.map(r => `<tr id="def-${r[1]}"><td style="white-space:nowrap">${r[0]}</td><td style="max-width:380px">${esc(NOTES[r[1]].text)}</td><td class="small">${r[2]}</td><td class="small">${r[3]}</td><td class="small">${r[4]}</td></tr>`).join('')}
+  </tbody></table></div>`;
+  return h;
+}
+
+/* =====================================================================
+   Provenance sheet
+   ===================================================================== */
+function openProvenance(level, ctx = {}) {
+  const key = ctx.key || 'input_tokens';
+  const loc = ctx.loc || 'line:3117';
+  const obs = ctx.obs || 'mc_ce3dc3374a1b5e2f8d09';
+  const order = ['metric', 'session', 'observation'];
+  const cur = order.indexOf(level);
+  const d = DASH[dashUI.scope];
+  const metricValue = { sessions: n(d.sessions), model_calls: n(d.model_calls), input_tokens: n(d.input.value), output_tokens: d.output.value == null ? '<i>Unavailable</i>' : n(d.output.value) }[key] || n(d.input.value);
+  const steps = [
+    { lvl: 0, t: 'Figure', w: NOTES[key].title, b: `<span class="figure num" style="font-size:20px;font-family:var(--serif)">${metricValue}</span> for ${d.label}.` },
+    { lvl: 0, t: 'Definition', w: NOTES[key].title, b: `${esc(NOTES[key].text)}<dl class="kv"><dt>Unit</dt><dd>${key.includes('tokens') ? 'tokens' : 'count'}</dd><dt>Coverage</dt><dd class="num">${key === 'output_tokens' ? `${n(d.output.known)} / ${n(d.output.total)} calls` : `${n(d.input.known)} / ${n(d.input.total)} calls`}</dd><dt>Semantics</dt><dd>${Object.keys(d.input.by).join(', ')}</dd></dl><p style="margin-top:8px"><a href="#/definitions">All definitions</a></p>` },
+    { lvl: 0, t: 'Contributing sessions', w: `${n(d.sessions)} in scope`, b: `Every session in scope contributes its own exact total. <a href="#/sessions">List them</a>; the largest contributor is <a href="#/sessions/ses_91b3d6f0a4c27e5d19f8">claude:a4d0e7c2…</a> with 21,775,902 input tokens. Below, the worked example.` },
+    { lvl: 1, t: 'Session', w: 'claude:781a3b4c-a1a5-9325-16d3-4029ecc3fe43', b: `<a href="#/sessions/ses_c736618a4d2f4b9e8a17">ses_c736618a4d2f4b9e8a17</a>, agent claude-code, repo project_8f998460. Input tokens <span class="num">48,187</span>, coverage 2 / 2 calls, semantics tracelab-claude. Observed 2026-06-04 02:51:06.901 to 02:52:00.698 UTC.` },
+    { lvl: 2, t: 'Observation', w: obs, b: `Emitted by rule <span class="mono">${obs.startsWith('tc') ? 'tool_call' : 'model_call'}</span> of <a href="#/mapping">tracelab-v1 revision 1</a> (map_82934058a2f6af1cbfc6) during <a href="#/imports/imp_3e21f89dbaef419a8f60">imp_3e21f89dbaef419a8f60</a>.<dl class="kv">${obs.startsWith('tc') ? `<dt>tool_name</dt><dd>from <span class="mono">$.tools[i].name</span></dd><dt>wall_latency_ms</dt><dd>result_at minus emitted_at, integer ms</dd>` : `<dt>input_tokens</dt><dd class="num">16,147 from <span class="mono">$.input_tokens_total</span>, strict integer</dd><dt>token_semantics</dt><dd>tracelab-claude, from <span class="mono">$.provider</span> via enum map</dd><dt>started_at</dt><dd>from <span class="mono">$.timing_events[event = request_sent].ts</span></dd>`}</dl>` },
+    { lvl: 2, t: 'Source record', w: `${loc} of tracelab-sample.jsonl.gz`, b: `<dl class="kv"><dt>File SHA-256</dt><dd>${hash(SHA)}</dd><dt>Locator</dt><dd class="mono">${loc}</dd><dt>Stored</dt><dd>2026-09-06 17:22:05 UTC, 681,057 bytes</dd></dl><p style="margin-top:8px" class="small muted">Bytes as stored, pretty-printed by the server; numbers are not re-parsed by the browser.</p><pre class="raw">${esc(RAW_3117).replace('"input_tokens_total": 16147', '<mark>"input_tokens_total": 16147</mark>')}</pre><div class="actions" style="margin-top:12px"><button class="btn sm" type="button" data-act="copyhash">Copy SHA-256</button><button class="btn sm" type="button" data-act="copyraw">Copy record</button></div>` },
+  ];
+  $('#sheet-body').innerHTML = `<p class="small muted" style="margin-bottom:12px">From the figure to the bytes. Steps above the one you opened are folded; open any of them.</p><ol class="chain">${steps.map((s, i) => `<li class="${s.lvl < cur ? 'compact' : ''}" ${(s.lvl === cur && (i === steps.length - 1 || steps[i + 1].lvl !== cur)) ? 'aria-current="step"' : ''}><h3><button type="button" class="fn" style="vertical-align:baseline;font-size:12px;padding:0;margin:0 6px 0 0" data-act="expandstep" aria-expanded="${s.lvl >= cur}" aria-label="${s.lvl < cur ? 'Expand' : 'Collapse'} ${s.t}">${s.lvl < cur ? '+' : '–'}</button>${s.t} <span class="what">${esc(s.w)}</span></h3><div class="b">${s.b}</div></li>`).join('')}</ol>`;
+  const dlg = $('#sheet');
+  dlg.returnFocus = document.activeElement;
+  if (!dlg.open) dlg.showModal();
+  const focusTarget = $('#sheet [aria-current="step"] .b a, #sheet [aria-current="step"] .b button') || $('#sheet [data-close-sheet]');
+  requestAnimationFrame(() => { const cur = $('#sheet [aria-current="step"]'); if (cur) cur.scrollIntoView({ block: 'start' }); focusTarget.focus(); });
+  $('#live').textContent = 'Provenance sheet opened.';
+}
+function closeSheet() { const dlg = $('#sheet'); if (dlg.open) dlg.close(); if (dlg.returnFocus && dlg.returnFocus.isConnected) dlg.returnFocus.focus(); }
+
+/* =====================================================================
+   Popovers (footnotes)
+   ===================================================================== */
+function closePops() { document.querySelectorAll('.pop').forEach(p => p.remove()); document.querySelectorAll('.fn[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false')); }
+function togglePop(btn) {
+  const open = btn.getAttribute('aria-expanded') === 'true';
+  closePops();
+  if (open) return;
+  const key = btn.dataset.note, note = NOTES[key];
+  const pop = document.createElement('div');
+  pop.className = 'pop'; pop.setAttribute('role', 'group'); pop.setAttribute('aria-label', `Note: ${note.title}`);
+  pop.innerHTML = `<h4>${esc(note.title)}</h4><p>${esc(note.text)}</p>${btn.dataset.cov ? `<dl><dt>Coverage</dt><dd class="num">${esc(btn.dataset.cov)}</dd></dl>` : ''}<div class="links"><a href="#note-${key}" data-act="tonote">Read note ${btn.textContent} below</a>${btn.dataset.provkey ? `<a href="#" data-prov="metric" data-key="${btn.dataset.provkey}">Trace to source</a>` : ''}<a href="#/definitions">Definitions</a></div>`;
+  btn.parentElement.appendChild(pop);
+  const r = pop.getBoundingClientRect();
+  if (r.right > window.innerWidth - 16) pop.classList.add('right');
+  btn.setAttribute('aria-expanded', 'true');
+}
+
+/* =====================================================================
+   Router and events
+   ===================================================================== */
+let mockState = 'normal';
+function setMock(v) { mockState = v; $('#mockstate').value = v; render(); }
+function render() {
+  closePops();
+  const hashv = location.hash.replace(/^#\/?/, '') || 'dashboard';
+  const [pathPart, qs] = hashv.split('?');
+  const query = new URLSearchParams(qs || '');
+  const parts = pathPart.split('/');
+  const main = $('#main');
+  let html, route = parts[0];
+  if (route === 'import') html = renderImport(mockState);
+  else if (route === 'imports' && parts[1]) html = renderReport(parts[1], mockState);
+  else if (route === 'imports') html = renderImports(mockState);
+  else if (route === 'sessions' && parts[1]) html = renderSession(parts[1], mockState);
+  else if (route === 'sessions') html = renderSessions(query, mockState);
+  else if (route === 'mapping') html = renderMapping(mockState);
+  else if (route === 'definitions') html = renderDefinitions(mockState);
+  else { route = 'dashboard'; html = renderDashboard(mockState); }
+  main.innerHTML = html;
+  document.querySelectorAll('.masthead nav a').forEach(a => a.toggleAttribute('aria-current', false) || (a.dataset.route === route ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
+  const h1 = $('#main h1');
+  document.title = `${h1 ? h1.textContent.replace(/\s+/g, ' ').trim() : 'AgentScope'} · AgentScope ledger`;
+  $('#live').textContent = `${h1 ? h1.textContent : ''} loaded.`;
+  if (render.lastRoute !== route) { window.scrollTo(0, 0); main.focus({ preventScroll: true }); }
+  render.lastRoute = route;
+}
+
+function later(ms, fn) { setTimeout(fn, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ms); }
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-note], [data-prov], [data-act], [data-close-sheet]');
+  if (!t) { if (!e.target.closest('.pop')) closePops(); return; }
+  if (t.hasAttribute('data-close-sheet')) { closeSheet(); return; }
+  if (t.dataset.note != null) { e.preventDefault(); togglePop(t); return; }
+  if (t.dataset.prov) { e.preventDefault(); closePops(); openProvenance(t.dataset.prov, { key: t.dataset.key || t.closest('[data-provkey]')?.dataset.provkey, loc: t.dataset.loc, obs: t.dataset.obs }); return; }
+  const act = t.dataset.act;
+  if (act === 'tonote') { e.preventDefault(); const li = document.getElementById(t.getAttribute('href').slice(1)); closePops(); if (li) { document.querySelectorAll('.notes .hilite').forEach(x => x.classList.remove('hilite')); li.classList.add('hilite'); li.tabIndex = -1; li.scrollIntoView({ block: 'center' }); li.focus({ preventScroll: true }); } return; }
+  if (act === 'choose') { importUI.stage = 'reading'; render(); later(900, () => { importUI.stage = 'uploaded'; render(); $('#mapping')?.focus(); }); }
+  if (act === 'preview') { importUI.stage = 'previewing'; render(); later(1100, () => { importUI.stage = 'previewed'; render(); $('#h-prev')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }); }
+  if (act === 'commit') { importUI.stage = 'importing'; render(); later(1200, () => { importUI.stage = 'empty'; location.hash = '#/imports/imp_b7d2c4e9f1a3058c6d24'; }); }
+  if (act === 'reset') { e.preventDefault(); importUI.stage = 'empty'; render(); }
+  if (act === 'scope') { dashUI.open = !dashUI.open; render(); if (dashUI.open) $('#f-agent')?.focus(); else $('[data-act="scope"]')?.focus(); }
+  if (act === 'scopeclose') { dashUI.open = false; render(); $('[data-act="scope"]')?.focus(); }
+  if (act === 'validate') { $('#map-status').textContent = mapUI.unit ? 'Valid. 2 ambiguities remain; they do not block a preview.' : 'One error: model_call.started_at needs a timestamp unit.'; if (!mapUI.unit) $('[data-act="unit"]')?.focus(); }
+  if (act === 'mpreview') { mapUI.previewed = true; render(); }
+  if (act === 'expandstep') { const li = t.closest('li'); li.classList.toggle('compact'); const open = !li.classList.contains('compact'); t.setAttribute('aria-expanded', String(open)); t.textContent = open ? '–' : '+'; }
+  if (act === 'copyhash' || act === 'copyraw') { const text = act === 'copyhash' ? SHA : RAW_3117; navigator.clipboard?.writeText(text).catch(() => {}); t.textContent = 'Copied'; $('#live').textContent = act === 'copyhash' ? 'SHA-256 copied.' : 'Record copied.'; later(1500, () => { t.textContent = act === 'copyhash' ? 'Copy SHA-256' : 'Copy record'; }); }
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'mockstate') { mockState = e.target.value; render(); }
+  if (e.target.dataset.act === 'rejfilter') { const code = e.target.value; $('#rej-table tbody').innerHTML = rejectRows(REJECTS_SWE.filter(r => !code || r.code === code)); $('#live').textContent = code ? `Filtered to ${code}.` : 'Showing all codes.'; }
+  if (e.target.dataset.act === 'unit') { mapUI.unit = e.target.value; render(); $('[data-act="unit"]')?.focus(); }
+});
+document.addEventListener('submit', e => {
+  if (e.target.dataset.act === 'scopeform') { e.preventDefault(); dashUI.scope = $('#f-agent').value === 'codex' ? 'codex' : 'all'; dashUI.open = false; render(); $('[data-act="scope"]')?.focus(); }
+  if (e.target.dataset.act === 'ask') {
+    e.preventDefault(); const q = $('#ask').value.trim(); if (!q) return;
+    mapUI.messages.push({ who: 'you', html: `<p>${esc(q)}</p>` });
+    mapUI.messages.push({ who: 'asst', html: `<p>Noted. I re-read the profile for that: the change is applied in the table above as a draft edit and marked for validation. Nothing has been saved or imported.</p>` });
+    render(); const log = $('#convo-log'); log.scrollTop = log.scrollHeight; $('#ask').focus();
+  }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if ($('.pop')) { const b = $('.fn[aria-expanded="true"]'); closePops(); b?.focus(); } else if (dashUI.open) { dashUI.open = false; render(); $('[data-act="scope"]')?.focus(); } } });
+$('#sheet').addEventListener('cancel', e => { e.preventDefault(); closeSheet(); });
+$('#sheet').addEventListener('click', e => { if (e.target === e.currentTarget) closeSheet(); });
+$('#sheet').addEventListener('click', e => { if (e.target.closest('a[href^="#/"]')) closeSheet(); });
+window.addEventListener('hashchange', render);
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,925 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentScope · Passage (guided variant)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ---------- tokens ---------- */
+:root{
+  --ground:#F2F4F6; --surface:#FFFFFF; --surface-2:#F7F8FA; --surface-3:#EDF0F3;
+  --line:#DCE1E6; --line-strong:#B4BDC7;
+  --ink:#1C2733; --ink-2:#465360; --ink-3:#5F6C79;
+  --accent:#0F6B5C; --accent-strong:#0B5346; --accent-soft:#E1F0EA; --accent-line:#9CCBBC;
+  --warn:#7E5200; --warn-soft:#FFF3D6; --warn-line:#E8C46B;
+  --danger:#B3261E; --danger-soft:#FBEAE8; --danger-line:#EBA39D;
+  --info:#2C5AA6; --info-soft:#E7EEF9;
+  --focus:#2456C8;
+  --c1:#0F6B5C; --c2:#4E6FA6; --c3:#C48A2C; --c-muted:#CFD6DD;
+  --sans:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --t12:.75rem; --t13:.8125rem; --t14:.875rem; --t16:1rem; --t20:1.25rem; --t26:1.625rem; --t34:2.125rem;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
+  --r1:4px; --r2:8px;
+  --rail:248px; --stage:760px; --chat:300px;
+  --shadow:0 1px 2px rgba(28,39,51,.06),0 10px 28px -14px rgba(28,39,51,.22);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html{font-family:var(--sans);font-size:16px;color:var(--ink);background:var(--ground);-webkit-text-size-adjust:100%}
+body{margin:0;font-size:var(--t14);line-height:1.5;font-synthesis:none;text-rendering:optimizeLegibility}
+h1,h2,h3,h4{margin:0;font-weight:600;line-height:1.25;letter-spacing:-.005em}
+h1{font-size:var(--t26)}
+h2{font-size:var(--t16)}
+h3{font-size:var(--t14)}
+p{margin:0}
+a{color:var(--accent);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:.18em}
+a:hover{color:var(--accent-strong)}
+code,.mono{font-family:var(--mono);font-size:.92em}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:2px}
+[hidden]{display:none!important}
+.skip{position:absolute;left:var(--s4);top:-60px;background:var(--surface);padding:var(--s2) var(--s3);border:1px solid var(--line);z-index:20}
+.skip:focus{top:var(--s2)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.muted{color:var(--ink-3)}
+.small{font-size:var(--t13)}
+.tabular{font-variant-numeric:tabular-nums}
+
+/* ---------- top bar ---------- */
+.top{display:flex;align-items:center;gap:var(--s6);height:52px;padding:0 var(--s6);background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{font-weight:600;color:var(--ink);text-decoration:none;font-size:var(--t16);letter-spacing:-.01em}
+.top nav{display:flex;gap:var(--s5);height:100%}
+.top nav a{display:flex;align-items:center;height:52px;color:var(--ink-2);text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px}
+.top nav a[aria-current=page]{color:var(--ink);border-bottom-color:var(--accent)}
+.top nav a:hover{color:var(--ink)}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:var(--s3);font-size:var(--t13);color:var(--ink-3)}
+.top-right select{height:28px;padding:0 var(--s2);border:1px solid var(--line-strong);border-radius:var(--r1);background:var(--surface);font-size:var(--t13)}
+
+/* ---------- page shells ---------- */
+main{padding:var(--s6) var(--s6) var(--s8);max-width:1440px;margin:0 auto}
+.crumbs{font-size:var(--t13);color:var(--ink-3);margin-bottom:var(--s3);display:flex;gap:var(--s2);flex-wrap:wrap}
+.crumbs a{color:var(--ink-3)}
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s5);margin-bottom:var(--s5);flex-wrap:wrap}
+.page-head .lede{color:var(--ink-2);margin-top:var(--s1);max-width:64ch}
+.wizard{display:grid;grid-template-columns:var(--rail) minmax(0,1fr);gap:var(--s7);align-items:start}
+.stage{max-width:var(--stage)}
+.stage.wide{max-width:none}
+.stage-head{margin-bottom:var(--s5)}
+.stage-head .lede{color:var(--ink-2);margin-top:var(--s1);max-width:66ch}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:var(--s3);margin-top:var(--s6);padding-top:var(--s4);border-top:1px solid var(--line)}
+.bar .right{display:flex;gap:var(--s2);align-items:center;margin-left:auto}
+main section{margin-top:var(--s6)}
+.stage-head+section,.page-head+section{margin-top:0}
+.section-title{display:flex;align-items:baseline;gap:var(--s3);margin-bottom:var(--s3)}
+.section-title .muted{font-size:var(--t13)}
+
+/* ---------- rail (the route) ---------- */
+.rail{position:sticky;top:var(--s5)}
+.rail ol{list-style:none;margin:0;padding:0}
+.stop{position:relative;padding:0 0 var(--s5) 36px}
+.stop::before{content:"";position:absolute;left:11px;top:26px;bottom:0;width:2px;background:var(--line)}
+.stop:last-child::before{display:none}
+.stop.done::before{background:var(--accent-line)}
+.stop .dot{position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;border:2px solid var(--line-strong);background:var(--surface);display:grid;place-items:center;font-size:var(--t12);font-weight:500;color:var(--ink-3)}
+.stop.current .dot{border-color:var(--accent);background:var(--accent);color:#fff}
+.stop.done .dot{border-color:var(--accent);color:var(--accent);background:var(--surface)}
+.stop .name{display:block;font-weight:500;color:var(--ink-3);line-height:26px}
+.stop.current .name,.stop.done .name{color:var(--ink)}
+.stop button.name{background:none;border:0;padding:0;cursor:pointer;text-align:left;font-weight:500}
+.stop .fact{display:block;font-family:var(--mono);font-size:var(--t12);color:var(--ink-3);margin-top:2px;overflow-wrap:anywhere;line-height:1.45}
+.stop .fact b{font-weight:500;color:var(--ink-2)}
+.rail-foot{margin-top:var(--s2);padding-top:var(--s4);border-top:1px solid var(--line);font-size:var(--t13);color:var(--ink-3)}
+
+/* ---------- buttons & controls ---------- */
+.btn{display:inline-flex;align-items:center;gap:var(--s2);height:36px;padding:0 var(--s4);border:1px solid var(--line-strong);border-radius:var(--r1);background:var(--surface);color:var(--ink);font-weight:500;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent-strong);border-color:var(--accent-strong)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--accent)}
+.btn.quiet:hover{background:var(--accent-soft)}
+.btn.sm{height:28px;padding:0 var(--s3);font-size:var(--t13)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.danger{color:var(--danger)}
+.field{display:flex;flex-direction:column;gap:var(--s1)}
+.field>span{font-size:var(--t13);color:var(--ink-2);font-weight:500}
+input[type=text],input[type=search],select,textarea{height:36px;padding:0 var(--s3);border:1px solid var(--line-strong);border-radius:var(--r1);background:var(--surface);min-width:0;max-width:100%}
+textarea{height:auto;padding:var(--s2) var(--s3);resize:vertical}
+input.mono{font-family:var(--mono);font-size:var(--t13)}
+input[aria-invalid=true]{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger) inset}
+.filters{display:flex;gap:var(--s3);flex-wrap:wrap;align-items:flex-end}
+.filters .field{min-width:150px}
+.inline-check{display:inline-flex;align-items:center;gap:var(--s2)}
+
+/* ---------- notes, badges ---------- */
+.note{padding:var(--s3) var(--s4);border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:var(--r1);background:var(--surface);display:flex;gap:var(--s3);align-items:flex-start}
+.note.ok{border-left-color:var(--accent);background:var(--accent-soft);border-color:var(--accent-line)}
+.note.warn{border-left-color:var(--warn);background:var(--warn-soft);border-color:var(--warn-line)}
+.note.danger{border-left-color:var(--danger);background:var(--danger-soft);border-color:var(--danger-line)}
+.note.info{border-left-color:var(--info);background:var(--info-soft)}
+.note .body{flex:1;min-width:0}
+.note .body p+p{margin-top:var(--s1)}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 var(--s2);border-radius:999px;font-size:var(--t12);font-weight:500;background:var(--surface-3);color:var(--ink-2);white-space:nowrap}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ink-3)}
+.badge.committed{background:var(--accent-soft);color:var(--accent-strong)}.badge.committed::before{background:var(--accent)}
+.badge.duplicate{background:var(--info-soft);color:var(--info)}.badge.duplicate::before{background:var(--info)}
+.badge.failed{background:var(--danger-soft);color:var(--danger)}.badge.failed::before{background:var(--danger)}
+.badge.running{background:var(--warn-soft);color:var(--warn)}.badge.running::before{background:var(--warn)}
+.badge.ok{background:var(--accent-soft);color:var(--accent-strong)}.badge.ok::before{background:var(--accent)}
+.badge.amb{background:var(--warn-soft);color:var(--warn)}.badge.amb::before{background:var(--warn)}
+.badge.err{background:var(--danger-soft);color:var(--danger)}.badge.err::before{background:var(--danger)}
+.chip{display:inline-flex;align-items:center;gap:var(--s2);height:26px;padding:0 var(--s1) 0 var(--s3);border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent-strong);border-radius:999px;font-size:var(--t13)}
+.chip button{border:0;background:none;width:20px;height:20px;border-radius:50%;cursor:pointer;color:inherit;display:grid;place-items:center}
+.chip button:hover{background:rgba(15,107,92,.15)}
+
+/* ---------- facts (dl) ---------- */
+.facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:var(--s2) var(--s5);margin:0}
+.facts dt{color:var(--ink-3);font-size:var(--t13);padding-top:2px}
+.facts dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.facts dd.mono{font-size:var(--t13)}
+.facts.tight{gap:var(--s1) var(--s4)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);padding:var(--s4) var(--s5)}
+.panel+.panel{margin-top:var(--s3)}
+.receipt{background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);padding:var(--s5)}
+.receipt .facts{gap:var(--s3) var(--s5)}
+.stats{display:flex;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden}
+.stats>div{flex:1;padding:var(--s3) var(--s4);border-left:1px solid var(--line);min-width:0}
+.stats>div:first-child{border-left:0}
+.stats .k{font-size:var(--t13);color:var(--ink-2)}
+.stats .v{font-size:var(--t20);font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+.stats .v.na{color:var(--ink-3);font-weight:500;font-size:var(--t16)}
+.stats .c{font-size:var(--t12);color:var(--ink-3);margin-top:2px}
+
+/* ---------- dropzone ---------- */
+.drop{border:1.5px dashed var(--line-strong);border-radius:var(--r2);padding:var(--s7) var(--s5);text-align:center;background:var(--surface)}
+.drop h2{font-size:var(--t16);font-weight:500}
+.drop p{color:var(--ink-3);margin-top:var(--s1)}
+.drop .acts{display:flex;gap:var(--s2);justify-content:center;margin-top:var(--s4)}
+.progress{height:6px;border-radius:999px;background:var(--surface-3);overflow:hidden}
+.progress>span{display:block;height:100%;background:var(--accent);transition:width .25s}
+
+/* ---------- tables ---------- */
+.tbl{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r2)}
+table{border-collapse:collapse;width:100%;font-size:var(--t13)}
+caption{text-align:left;font-weight:500;font-size:var(--t14);padding:var(--s3) var(--s4);border-bottom:1px solid var(--line);color:var(--ink)}
+caption .muted{font-weight:400;font-size:var(--t13)}
+th{font-weight:500;color:var(--ink-2);text-align:left;background:var(--surface-2);padding:var(--s2) var(--s3);border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:var(--s2) var(--s3);border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.mono{font-family:var(--mono);font-size:var(--t12);overflow-wrap:anywhere}
+td.nw{white-space:nowrap}
+.tbl td.mono a{white-space:nowrap}
+td .mono{font-size:var(--t12)}
+tbody tr.link{cursor:pointer}
+tbody tr.link:hover td{background:var(--surface-2)}
+.tbl.compact td,.tbl.compact th{padding:6px var(--s3)}
+.tbl-empty{padding:var(--s5) var(--s4);color:var(--ink-3);text-align:center}
+.na{color:var(--ink-3)}
+.row-msg td{padding-top:0;border-top:0}
+.row-msg .msg{font-size:var(--t12);padding:0 0 var(--s2) 0;display:flex;gap:var(--s2);align-items:flex-start}
+.row-msg .msg.err{color:var(--danger)}.row-msg .msg.amb{color:var(--warn)}
+.row-msg .msg .tag{font-family:var(--mono);font-size:11px;padding:1px 5px;border-radius:3px;background:var(--surface-3);color:var(--ink-2);white-space:nowrap}
+.pager{display:flex;gap:var(--s3);align-items:center;justify-content:flex-end;font-size:var(--t13);color:var(--ink-3);margin-top:var(--s2)}
+
+/* ---------- popover & drawer ---------- */
+.pop{position:absolute;z-index:30;width:min(360px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);box-shadow:var(--shadow);padding:var(--s4)}
+.pop h3{margin-bottom:var(--s2)}
+.pop p+p{margin-top:var(--s2)}
+.pop .foot{margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid var(--line);font-size:var(--t13)}
+.help{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-3);font-size:11px;font-weight:500;cursor:pointer;vertical-align:middle;line-height:1}
+.help:hover{border-color:var(--ink-3);color:var(--ink)}
+.help[aria-expanded=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+dialog.drawer{position:fixed;inset:0 0 0 auto;margin:0;width:min(720px,92vw);height:100dvh;max-height:100dvh;border:0;border-left:1px solid var(--line);background:var(--surface);color:var(--ink);padding:0;display:flex;flex-direction:column}
+dialog.drawer:not([open]){display:none}
+dialog.drawer::backdrop{background:rgba(28,39,51,.4)}
+.drawer-head{display:flex;align-items:center;gap:var(--s3);padding:var(--s4) var(--s5);border-bottom:1px solid var(--line)}
+.drawer-head h2{flex:1;min-width:0}
+.drawer-body{padding:var(--s5);overflow:auto;flex:1}
+.drawer-body pre{margin:0;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r1);padding:var(--s3) var(--s4);font-family:var(--mono);font-size:var(--t12);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.drawer-body .facts{margin-bottom:var(--s4)}
+.x{width:32px;height:32px;border:1px solid transparent;border-radius:var(--r1);background:none;cursor:pointer;display:grid;place-items:center;color:var(--ink-2)}
+.x:hover{background:var(--surface-2);border-color:var(--line)}
+
+/* ---------- dashboard ---------- */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border:1px solid var(--line);border-radius:var(--r2)}
+.kpi{padding:var(--s4) var(--s5);border-left:1px solid var(--line);min-width:0}
+.kpi:first-child{border-left:0}
+.kpi .k{display:flex;align-items:center;gap:var(--s2);font-size:var(--t13);color:var(--ink-2)}
+.kpi .v{font-size:var(--t34);font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;margin-top:var(--s1);line-height:1.15;overflow-wrap:anywhere}
+.kpi .v.na{font-size:var(--t20);font-weight:500;color:var(--ink-3);padding:6px 0}
+.kpi .c{font-size:var(--t12);color:var(--ink-3);margin-top:var(--s1)}
+.kpi .c b{font-weight:500;color:var(--ink-2)}
+.charts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s4)}
+figure.chart{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);padding:var(--s4) var(--s4) var(--s3)}
+figure.chart figcaption{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2);font-weight:500;margin-bottom:var(--s2)}
+figure.chart figcaption .muted{font-size:var(--t12);font-weight:400}
+figure.chart svg{width:100%;height:auto;display:block}
+.chart text{font-family:var(--sans);font-size:11px;fill:var(--ink-3)}
+.chart .lbl{fill:var(--ink-2)}
+.chart .bar{cursor:pointer}
+.chart .bar:hover rect,.chart .bar:focus-visible rect{opacity:.75}
+.chart .bar:focus-visible{outline:2px solid var(--focus)}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .axis{stroke:var(--line-strong)}
+.chart-foot{font-size:var(--t12);color:var(--ink-3);margin-top:var(--s2)}
+.quality{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center}
+.quality a{display:inline-flex;align-items:center;gap:var(--s2);height:30px;padding:0 var(--s3);border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink-2);text-decoration:none;font-size:var(--t13)}
+.quality a b{font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
+.quality a.flag{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
+.quality a.flag b{color:var(--warn)}
+.quality a:hover{border-color:var(--line-strong)}
+.quality .lead{font-size:var(--t13);color:var(--ink-3);margin-right:var(--s1)}
+
+/* ---------- outcomes bar (report) ---------- */
+.outcomes{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--surface-3);margin:var(--s3) 0 var(--s2)}
+.outcomes span{display:block;height:100%}
+.outcomes span[style*="width:0%"]{display:none}
+.outcomes span{min-width:4px}
+.legend{display:flex;gap:var(--s4);flex-wrap:wrap;font-size:var(--t13);color:var(--ink-2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+/* ---------- assistant ---------- */
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,var(--chat));gap:var(--s5);align-items:start}
+.chat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);display:flex;flex-direction:column;position:sticky;top:var(--s5);max-height:calc(100dvh - 120px)}
+.chat-head{padding:var(--s3) var(--s4);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:var(--s2)}
+.chat-head .muted{font-size:var(--t12);margin-left:auto}
+.chat-log{padding:var(--s4);overflow:auto;flex:1;display:flex;flex-direction:column;gap:var(--s4);min-height:200px}
+.msg-a,.msg-u{font-size:var(--t13);line-height:1.5}
+.msg-a .who,.msg-u .who{font-size:var(--t12);color:var(--ink-3);margin-bottom:2px}
+.msg-u{background:var(--surface-2);border-radius:var(--r2);padding:var(--s2) var(--s3)}
+.msg-a p+p{margin-top:var(--s2)}
+.msg-a ul{margin:var(--s1) 0 0;padding-left:18px}
+.msg-a .ref{font-family:var(--mono);font-size:11px;background:var(--surface-3);padding:1px 5px;border-radius:3px}
+.msg-a .change{margin-top:var(--s2);border-left:2px solid var(--accent-line);padding-left:var(--s2);color:var(--ink-2);font-size:var(--t12)}
+.chat-sugg{padding:0 var(--s4) var(--s3);display:flex;flex-wrap:wrap;gap:var(--s2)}
+.chat-sugg button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 10px;font-size:var(--t12);cursor:pointer;color:var(--ink-2)}
+.chat-sugg button:hover{border-color:var(--line-strong);color:var(--ink)}
+.chat-in{border-top:1px solid var(--line);padding:var(--s3) var(--s4);display:flex;gap:var(--s2);align-items:flex-end}
+.chat-in textarea{flex:1;min-height:36px;max-height:120px}
+.chat-foot{padding:var(--s2) var(--s4) var(--s3);font-size:var(--t12);color:var(--ink-3)}
+.mtable input.mono{height:30px;width:100%;min-width:0;padding:0 var(--s2);border-color:transparent;background:transparent}
+.mtable input.mono:hover{border-color:var(--line)}
+.mtable input.mono:focus{border-color:var(--line-strong);background:var(--surface)}
+.mtable select{height:30px;padding:0 var(--s2);font-size:var(--t13);border-color:transparent;background:transparent}
+.mtable select:hover,.mtable select:focus{border-color:var(--line-strong);background:var(--surface)}
+.mtable td.tgt{font-weight:500;white-space:nowrap}
+.mtable td:nth-child(3){font-size:var(--t12)}
+.mtable .badge{padding:0 6px}
+.mtable td.tgt .ent{color:var(--ink-3);font-weight:400}
+.mtable tr.rule td{background:var(--surface-2);font-weight:500;color:var(--ink-2)}
+.mtable tr.rule td .mono{font-weight:400;color:var(--ink)}
+.validate-line{display:flex;align-items:center;gap:var(--s3);margin-top:var(--s3);font-size:var(--t13);color:var(--ink-2)}
+.redact{display:grid;grid-template-columns:1fr 1fr;gap:var(--s4)}
+.redact .panel h3{margin-bottom:var(--s2)}
+.redact ul{margin:0;padding-left:18px}
+.redact li+li{margin-top:var(--s1)}
+
+/* ---------- states ---------- */
+.skel{background:linear-gradient(90deg,var(--surface-3) 25%,var(--surface-2) 50%,var(--surface-3) 75%);background-size:200% 100%;animation:sh 1.3s infinite;border-radius:var(--r1);height:14px}
+.skel.lg{height:28px}.skel.row{height:38px;border-radius:0;border-bottom:1px solid var(--line)}
+@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.empty{padding:var(--s7) var(--s5);text-align:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r2)}
+.empty h2{font-weight:500;font-size:var(--t16)}
+.empty p{color:var(--ink-3);margin:var(--s1) auto var(--s4);max-width:48ch}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--line-strong);border-top-color:var(--accent);animation:sp .8s linear infinite;display:inline-block;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.skel,.spin{animation:none}.progress>span{transition:none}}
+
+/* ---------- responsive ---------- */
+@media (max-width:1100px){
+  .charts{grid-template-columns:1fr 1fr}
+  .split{grid-template-columns:1fr}
+  .chat{position:static;max-height:none}
+}
+@media (max-width:960px){
+  main{padding:var(--s5) var(--s4) var(--s7)}
+  .top{padding:0 var(--s4);gap:var(--s4)}
+  .wizard{grid-template-columns:1fr;gap:var(--s5)}
+  .rail{position:static}
+  .rail ol{display:flex;gap:var(--s4);overflow-x:auto;padding-bottom:var(--s2)}
+  .stop{padding:0 0 0 30px;flex:0 0 auto;min-width:130px}
+  .stop::before{display:none}
+  .stop .fact{display:none}
+  .rail-foot{display:none}
+  .kpis{grid-template-columns:1fr 1fr}
+  .kpi:nth-child(3){border-left:0}
+  .kpi:nth-child(n+3){border-top:1px solid var(--line)}
+  .redact{grid-template-columns:1fr}
+  .stats{flex-wrap:wrap}.stats>div{flex:1 1 40%}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <a class="brand" href="#/dashboard">AgentScope</a>
+  <nav aria-label="Main">
+    <a href="#/import" data-nav="import">Import</a>
+    <a href="#/imports" data-nav="imports">Imports</a>
+    <a href="#/dashboard" data-nav="dashboard">Dashboard</a>
+  </nav>
+  <div class="top-right">
+    <label for="demo">Demo data</label>
+    <select id="demo">
+      <option value="sample">Sample (happy path)</option>
+      <option value="duplicate">Bytes seen before</option>
+      <option value="empty">Empty database</option>
+      <option value="loading">Loading</option>
+      <option value="error">Backend error</option>
+    </select>
+  </div>
+</header>
+<main id="main" tabindex="-1"></main>
+<dialog id="drawer" class="drawer" aria-labelledby="drawer-title"></dialog>
+<div id="pop" class="pop" role="dialog" aria-modal="false" hidden></div>
+<script>
+/* =========================================================
+   Data (from the brief). Numbers are exact; formatting only
+   inserts thousands separators, never rounds.
+   ========================================================= */
+const FILE={name:'tracelab-sample.jsonl.gz',bytes:681057,sha:'d044a766e12c7eceae2eb1ed71e42d95cf0aec2f10c8d61a06cecc0381fb9897',records:4770,format:'jsonl',gz:true,upload:'upl_01J9KX4P2C7Q8ZR3VN6M0T'};
+const MAP={id:'map_82934058a2f6af1cbfc6',name:'tracelab-v1',source:'tracelab',revision:1,format:'jsonl',by:'bundled'};
+const MAP_OLD={id:'map_1f0c7be4a9d2436e8b51',name:'tracelab-v0',source:'tracelab',revision:0,format:'jsonl',by:'bundled',superseded:true};
+const MAP_SWE={id:'map_6d8a1c3e5f7b492ab0e4',name:'swe-chat-v1',source:'swe-chat',revision:1,format:'parquet',by:'assistant'};
+const PREVIEW={records:{sampled:200,accepted:200,partial:0,rejected:0},entities:{session:9,model_call:200,tool_call:241},warnings:{null:468,absent:613},rejects:[],
+  emissions:[
+   {entity:'session',path:'session',loc:'line:1',fields:'identity_key: "781a3b4c-a1a5-9325-16d3-4029ecc3fe43", agent: "claude-code", repo: "project_8f998460"'},
+   {entity:'model_call',path:'model_call',loc:'line:1',fields:'model: "claude-opus-4-6", input_tokens: 21904, output_tokens: 412, token_semantics: "tracelab-claude"'},
+   {entity:'tool_call',path:'model_call.tools[0]',loc:'line:1',fields:'tool_name: "Read", wall_latency_ms: 209, is_error: false'},
+   {entity:'model_call',path:'model_call',loc:'line:2',fields:'model: "claude-opus-4-6", input_tokens: 26283, output_tokens: 1127, token_semantics: "tracelab-claude"'},
+   {entity:'tool_call',path:'model_call.tools[0]',loc:'line:2',fields:'tool_name: "Bash", wall_latency_ms: 12755, is_error: false'},
+  ]};
+const IMPORTS=[
+ {id:'imp_3e21f89dbaef419a8f60',status:'committed',source:'tracelab',file:FILE,map:MAP,started:'2026-09-07T09:41:12.204Z',finished:'2026-09-07T09:41:19.877Z',
+  records:{accepted:4770,partial:0,duplicate:0,rejected:0,ignored:0},entities:{session:80,model_call:4770,tool_call:5723},warnings:{null:11168,absent:14633},rejects:[]},
+ {id:'imp_7c04d1a2b9ee4f3c8d15',status:'duplicate',source:'tracelab',file:FILE,map:MAP,started:'2026-09-07T09:58:03.011Z',finished:'2026-09-07T09:58:03.640Z',
+  records:{accepted:0,partial:0,duplicate:4770,rejected:0,ignored:0},entities:{},warnings:{},rejects:[]},
+ {id:'imp_a91be2c4f0d74e6a9b32',status:'failed',source:'tracelab',file:{name:'tracelab-full.jsonl.gz',bytes:24911776,sha:'5b1e0c9f3a7d42e6b8a1c4f0d2e9b7a3c6f1e8d4b0a7c2e5f9d3b6a1c8e4f7b2',records:null,format:'jsonl'},map:MAP,started:'2026-09-06T17:22:40.552Z',finished:'2026-09-06T17:22:44.108Z',
+  records:{accepted:0,partial:0,duplicate:0,rejected:0,ignored:0},entities:{},warnings:{},rejects:[],error:'ReaderError: gzip stream truncated at byte 412,003 (member 1 of 1)'},
+ {id:'imp_58c2d7e1a3f94b0c6e27',status:'committed',source:'tracelab',file:{name:'tracelab-2026-05-excerpt.jsonl',bytes:1874402,sha:'9c3b7a1e5d2f48c0b6a4e8d1f3c7b9a2e5d0c4f8b1a6e3d7c2f9b5a0e4d8c1f6',records:640,format:'jsonl'},map:{...MAP,revision:0,id:MAP_OLD.id,name:'tracelab-v0'},started:'2026-09-06T14:03:51.930Z',finished:'2026-09-06T14:03:53.412Z',
+  records:{accepted:637,partial:0,duplicate:0,rejected:3,ignored:0},entities:{session:12,model_call:637,tool_call:0},warnings:{null:1402,absent:1911},
+  rejects:[
+   {loc:'line:1042',rule:'model_call',path:'$.usage.input_tokens',code:'invalid_type',field:'input_tokens',msg:"expected integer, got string '12,431'",payload:'{\n  "provider": "claude",\n  "project": "project_8f998460",\n  "session_id": "781a3b4c-a1a5-9325-16d3-4029ecc3fe43",\n  "round_index": 14,\n  "round_id": "r_0b7e2f",\n  "model": "claude-opus-4-6",\n  "usage": {\n    "input_tokens": "12,431",\n    "output_tokens": 388\n  },\n  "timing_events": [\n    {"name": "request_start", "at": "2026-05-19T08:14:02.118Z"},\n    {"name": "response_end", "at": "2026-05-19T08:14:31.402Z"}\n  ]\n}'},
+   {loc:'line:2210',rule:'model_call',path:'$.timing_events[1].at',code:'invalid_timestamp',field:'ended_at',msg:"cannot parse '2026-05-19 08:31' with timestamp_format iso8601",payload:'{\n  "provider": "claude",\n  "project": "project_3c1d02aa",\n  "session_id": "9d7b6a10-4c3e-4f2a-b8e1-5a0d2c7f9e31",\n  "round_index": 3,\n  "model": "claude-opus-4-7",\n  "usage": {"input_tokens": 9110, "output_tokens": 201},\n  "timing_events": [\n    {"name": "request_start", "at": "2026-05-19T08:30:44.006Z"},\n    {"name": "response_end", "at": "2026-05-19 08:31"}\n  ]\n}'},
+   {loc:'line:2977',rule:'session',path:'$.session_id',code:'missing_required',field:'identity_key',msg:'required identity field absent',payload:'{\n  "provider": "codex",\n  "project": "project_51e7f0b3",\n  "round_index": 0,\n  "model": "gpt-5.5-codex",\n  "usage": {"input_tokens": 3021, "output_tokens": 77}\n}'}
+  ]},
+];
+const SWE_IMPORT={id:'imp_5b7e0c9a4d2f4e1b8c73',status:'committed',source:'swe-chat',file:{name:'swe-chat-conversations.parquet',bytes:38221904,sha:'e7a2c4f9b1d3e8a6c0f5b2d9e4a7c1f3b8d6e0a5c9f2b7d4e1a8c3f6b0d5e9a2',records:2000,format:'parquet'},map:MAP_SWE,started:'2026-09-07T11:06:40.117Z',finished:'2026-09-07T11:06:52.508Z',
+  records:{accepted:1940,partial:60,duplicate:0,rejected:0,ignored:0},entities:{session:2000,model_call:7412,tool_call:13186},warnings:{null:869,absent:13186},rejects:[]};
+const SES_ID='ses_c736618a4d1e4f0b9a2c';
+const SESSION={id:SES_ID,ext:'claude:781a3b4c-a1a5-9325-16d3-4029ecc3fe43',source:'tracelab',agent:'claude-code',repo:'project_8f998460',user:'user_b87fa13e',
+  obsStart:'2026-06-04T02:51:06.901Z',obsEnd:'2026-06-04T02:52:00.698Z',declStart:null,declEnd:null,input:48187,output:1539,cov:{known:2,total:2},
+  calls:[
+   {id:'mc_ce3dc3371b9e4a0f8d26',seq:0,model:'claude-opus-4-6',start:'2026-06-04T02:51:06.901Z',end:'2026-06-04T02:51:31.244Z',inp:21904,out:412,sem:'tracelab-claude',loc:'line:188728'},
+   {id:'mc_4f81a2d9c7e34b6a1e05',seq:1,model:'claude-opus-4-6',start:'2026-06-04T02:51:33.010Z',end:'2026-06-04T02:52:00.698Z',inp:26283,out:1127,sem:'tracelab-claude',loc:'line:188729'}],
+  tools:[
+   {id:'tc_1a94c2b1e7d04f3a9b58',mc:'mc_ce3dc3371b9e4a0f8d26',tool:'Read',start:'2026-06-04T02:51:12.402Z',end:'2026-06-04T02:51:12.611Z',ms:209,err:false,loc:'line:188728'},
+   {id:'tc_7e2d0f6a3c914b8d5a17',mc:'mc_4f81a2d9c7e34b6a1e05',tool:'Bash',start:'2026-06-04T02:51:40.115Z',end:'2026-06-04T02:51:52.870Z',ms:12755,err:false,loc:'line:188729'},
+   {id:'tc_b30c5e9d1f7a4c2e8d64',mc:'mc_4f81a2d9c7e34b6a1e05',tool:'Edit',start:'2026-06-04T02:51:54.002Z',end:'2026-06-04T02:51:54.318Z',ms:316,err:false,loc:'line:188729'}],
+  diags:[{code:'conflicting_value',field:'agent',msg:"line:188729 declares provider 'anthropic'; line:188728 declared 'claude'. First accepted value kept, both records linked."}]};
+const RAW={'line:188728':'{\n  "provider": "claude",\n  "project": "project_8f998460",\n  "user": "user_b87fa13e",\n  "session_id": "781a3b4c-a1a5-9325-16d3-4029ecc3fe43",\n  "round_index": 0,\n  "round_id": "r_3e9a1c47",\n  "model": "claude-opus-4-6",\n  "input_tokens_total": 21904,\n  "prefix_tokens": 19870,\n  "newly_append_tokens": 2034,\n  "output_tokens": 412,\n  "cache_read_input_tokens": 19870,\n  "timing_events": [\n    {"name": "request_start", "at": "2026-06-04T02:51:06.901Z"},\n    {"name": "first_token", "at": "2026-06-04T02:51:09.377Z"},\n    {"name": "response_end", "at": "2026-06-04T02:51:31.244Z"}\n  ],\n  "tools": [\n    {"name": "Read", "id": "toolu_01Hb7Q", "emitted_at": "2026-06-04T02:51:12.402Z", "result_at": "2026-06-04T02:51:12.611Z", "is_error": false}\n  ]\n}',
+ 'line:188729':'{\n  "provider": "anthropic",\n  "project": "project_8f998460",\n  "user": "user_b87fa13e",\n  "session_id": "781a3b4c-a1a5-9325-16d3-4029ecc3fe43",\n  "round_index": 1,\n  "round_id": "r_3e9a1c48",\n  "model": "claude-opus-4-6",\n  "input_tokens_total": 26283,\n  "prefix_tokens": 22316,\n  "newly_append_tokens": 3967,\n  "output_tokens": 1127,\n  "cache_read_input_tokens": 22316,\n  "timing_events": [\n    {"name": "request_start", "at": "2026-06-04T02:51:33.010Z"},\n    {"name": "first_token", "at": "2026-06-04T02:51:35.902Z"},\n    {"name": "response_end", "at": "2026-06-04T02:52:00.698Z"}\n  ],\n  "tools": [\n    {"name": "Bash", "id": "toolu_01Hc2Z", "emitted_at": "2026-06-04T02:51:40.115Z", "result_at": "2026-06-04T02:51:52.870Z", "is_error": false, "exit_code": 0},\n    {"name": "Edit", "id": "toolu_01Hd8K", "emitted_at": "2026-06-04T02:51:54.002Z", "result_at": "2026-06-04T02:51:54.318Z", "is_error": false}\n  ]\n}'};
+const METRICS={sessions:{v:80,def:'Distinct sessions in scope. A session is one source identity key (scoped by source namespace and harness) with at least one accepted observation.'},
+ model_calls:{v:4770,def:'Recorded model-call observations in scope. Counts observations, not requests: overlapping exports are not reconciled in v0.1.'},
+ input_tokens:{v:553447877,unit:'tokens',cov:{known:4770,total:4770},def:'Sum of input_tokens over model calls with a known value. Semantics follow token_semantics; values with different semantics are summed only inside the same tag.',sem:{'tracelab-claude':479945445,'tracelab-codex':73502432}},
+ output_tokens:{v:1204331,unit:'tokens',cov:{known:4741,total:4770},def:'Sum of output_tokens over model calls with a known value. 29 calls carry no usage block and are excluded from the sum, not counted as 0.',sem:{'tracelab-claude':1034789,'tracelab-codex':169542}}};
+const DAYS=[['2026-05-28',212],['2026-05-29',348],['2026-05-30',401],['2026-05-31',155],['2026-06-01',98],['2026-06-02',377],['2026-06-03',462],['2026-06-04',419],['2026-06-05',388],['2026-06-06',296],['2026-06-07',133],['2026-06-08',441],['2026-06-09',520],['2026-06-10',520]];
+const BY_MODEL=[['claude-opus-4-6',291205114,612884,2431],['claude-opus-4-7',188740331,421905,1702],['gpt-5.5-codex',73502432,169542,637]];
+const TOOLS=[['Bash',1842],['Read',1517],['Edit',1033],['Grep',561],['Glob',402],['Agent',214],['WebFetch',154]];
+const QUALITY=[{k:'rejects',n:0,label:'rejects',to:'#/imports/imp_3e21f89dbaef419a8f60/rejects'},{k:'missing',n:29,label:'calls without usage',to:'#/dashboard?quality=missing_usage'},{k:'ts',n:46,label:'unknown timestamps',to:'#/dashboard?quality=unknown_ts'},{k:'unlinked',n:12,label:'tools without a model call',to:'#/dashboard?quality=unlinked'}];
+const SESSIONS=[
+ {id:SES_ID,ext:'claude:781a3b4c-a1a5-9325-16d3-4029ecc3fe43',agent:'claude-code',model:'claude-opus-4-6',day:'2026-06-04',start:'2026-06-04T02:51:06.901Z',end:'2026-06-04T02:52:00.698Z',mc:2,tc:3,inp:48187,cov:[2,2]},
+ {id:'ses_9d7b6a10f4c3e42f8a1b',ext:'claude:9d7b6a10-4c3e-4f2a-b8e1-5a0d2c7f9e31',agent:'claude-code',model:'claude-opus-4-7',day:'2026-06-04',start:'2026-06-04T05:12:44.006Z',end:'2026-06-04T06:03:19.510Z',mc:47,tc:118,inp:6120334,cov:[47,47]},
+ {id:'ses_2b4e8c1d9a7f4e3c5b60',ext:'codex:51e7f0b3-2a9c-4d8e-9f1b-7c3a5e2d8b40',agent:'codex',model:'gpt-5.5-codex',day:'2026-06-04',start:'2026-06-04T09:40:02.113Z',end:'2026-06-04T09:58:47.220Z',mc:19,tc:24,inp:1904772,cov:[19,19]},
+ {id:'ses_e17a3c5f2d9b4a6e8c02',ext:'claude:e17a3c5f-2d9b-4a6e-8c02-1f4b7d9e3a50',agent:'claude-code',model:'claude-opus-4-6',day:'2026-06-04',start:'2026-06-04T13:05:31.874Z',end:'2026-06-04T14:41:02.339Z',mc:112,tc:301,inp:14902118,cov:[112,112]},
+ {id:'ses_7f0d2b9e4c1a48e3b5d7',ext:'claude:7f0d2b9e-4c1a-48e3-b5d7-3e6a9c1f2d84',agent:'claude-code',model:'claude-opus-4-7',day:'2026-06-04',start:'2026-06-04T17:22:10.001Z',end:'2026-06-04T17:29:55.480Z',mc:6,tc:9,inp:388012,cov:[5,6]},
+ {id:'ses_4a6c8e0b2d1f47a9c3e5',ext:'codex:4a6c8e0b-2d1f-47a9-c3e5-8b0d2f4a6c19',agent:'codex',model:'gpt-5.5-codex',day:'2026-06-04',start:'2026-06-04T21:03:58.652Z',end:'2026-06-04T22:15:06.007Z',mc:63,tc:88,inp:5410223,cov:[63,63]},
+ {id:'ses_b8d0f2a4c6e14b3d5f79',ext:'claude:b8d0f2a4-c6e1-4b3d-5f79-2a4c6e8b0d13',agent:'claude-code',model:'claude-opus-4-6',day:'2026-06-05',start:'2026-06-05T01:14:20.330Z',end:'2026-06-05T03:02:41.912Z',mc:134,tc:402,inp:21377401,cov:[134,134]},
+ {id:'ses_c1e3a5b7d9f24c6e8a04',ext:'claude:c1e3a5b7-d9f2-4c6e-8a04-6b8d0f2a4c67',agent:'claude-code',model:'claude-opus-4-7',day:'2026-06-05',start:'2026-06-05T08:47:03.115Z',end:'2026-06-05T08:51:12.006Z',mc:3,tc:2,inp:71204,cov:[3,3]},
+ {id:'ses_d5f7b9a1c3e04d2f6b81',ext:'codex:d5f7b9a1-c3e0-4d2f-6b81-0c2e4a6c8e15',agent:'codex',model:'gpt-5.5-codex',day:'2026-06-06',start:'2026-06-06T10:30:00.482Z',end:'2026-06-06T11:56:38.771Z',mc:81,tc:110,inp:7228906,cov:[81,81]},
+ {id:'ses_f9b1d3e5a7c24f0e2d93',ext:'claude:f9b1d3e5-a7c2-4f0e-2d93-4e6a8c0e2a17',agent:'claude-code',model:'claude-opus-4-6',day:'2026-06-09',start:'2026-06-09T15:02:17.208Z',end:'2026-06-09T16:48:59.633Z',mc:96,tc:255,inp:12833177,cov:[96,96]},
+];
+const DEFS=[
+ ['Sessions','Distinct sessions in scope','count','session','Comparable across sources when the identity key is a stable native id; TraceLab sessions come from session_id scoped by provider.'],
+ ['Model calls','Recorded model-call observations in scope','count','observation','Counts observations, not requests. Overlapping exports of the same period are not reconciled; totals may double count until reconciliation ships.'],
+ ['Input tokens','Sum of input_tokens over calls with a known value','tokens','tracelab-claude, tracelab-codex','Only summed inside one semantics tag. tracelab-claude includes cache-read tokens in input_tokens_total; tracelab-codex does not expose cache reads.'],
+ ['Output tokens','Sum of output_tokens over calls with a known value','tokens','tracelab-claude, tracelab-codex','Reasoning tokens are included where the provider counts them in output; not separable in TraceLab.'],
+ ['Cache read tokens','Sum of cache_read_input_tokens over calls with a known value','tokens','tracelab-claude','Unavailable for tracelab-codex (field absent), so the KPI reports coverage 0 for codex scopes and shows "Unavailable".'],
+ ['Tool calls','Recorded tool-call observations in scope','count','observation','A tool call with no enclosing model call is kept (session-level) and counted in the quality strip as unlinked.'],
+ ['Observed span','observed_end_at minus observed_start_at over accepted child timestamps','milliseconds','interval','Describes the span of imported data, never active time. Declared intervals (when the source has them) are shown separately and never merged.'],
+ ['Coverage','Calls with a known value over calls in scope','ratio','coverage','Shown next to every summed measure. A measure with coverage 0 is Unavailable, never 0.'],
+];
+const PROFILE=[
+ ['conversation_id','string','2,000 / 2,000','2,000','"conv_5f1c9a2e"'],
+ ['turns','list<struct>','2,000 / 2,000','avg 7.4 items','role, content, tool_calls[]'],
+ ['model','string','2,000 / 2,000','3','"gpt-5.5-codex"'],
+ ['usage.prompt_tokens','int64','1,982 / 2,000','1,761','18443'],
+ ['usage.completion_tokens','int64','1,982 / 2,000','1,240','912'],
+ ['created_at','int64','2,000 / 2,000','1,998','1717469466'],
+ ['repo','string','1,913 / 2,000','311','"octo/infra"'],
+];
+const COLS=['conversation_id','turns','turns[*].role','turns[*].content','turns[*].tool_calls','turns[*].tool_calls[*].name','turns[*].tool_calls[*].arguments','model','usage.prompt_tokens','usage.completion_tokens','created_at','repo'];
+
+/* ---------- state ---------- */
+const S={demo:'sample',
+ imp:{step:1,upload:null,uploading:false,progress:0,mapping:null,previewing:false,preview:null,running:false,runProgress:0},
+ dash:{source:'',agent:'',model:'',period:'all',chip:null},
+ rep:{code:''},
+ asst:{step:1,sending:false,got:false,rows:null,msgs:[],validated:false,saving:false},
+ justImported:null};
+
+/* ---------- helpers ---------- */
+const $=(s,r=document)=>r.querySelector(s);
+const fmt=n=>n==null?'Unavailable':Number(n).toLocaleString('en-US');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const abbr=n=>{const a=Math.abs(n);if(a>=1e9)return (n/1e9).toFixed(2).replace(/\.?0+$/,'')+'B';if(a>=1e6)return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M';if(a>=1e3)return (n/1e3).toFixed(1).replace(/\.0$/,'')+'k';return String(n)};
+const short=(h,n=8)=>h.slice(0,n)+'…';
+const when=iso=>iso?iso.replace('T',' ').replace(/\.\d+Z$/,' UTC').replace(/Z$/,' UTC'):'Unavailable';
+const dur=(a,b)=>{const ms=new Date(b)-new Date(a);return fmt(ms)+' ms ('+(ms/1000).toFixed(3)+' s)'};
+const na=v=>v==null?'<span class="na">Unavailable</span>':esc(v);
+const badge=s=>`<span class="badge ${s}">${s[0].toUpperCase()+s.slice(1)}</span>`;
+const help=(id,label)=>`<button type="button" class="help" data-act="pop" data-pop="${id}" aria-expanded="false" aria-label="${esc(label||'Definition')}">?</button>`;
+function skeleton(rows=5){let s='<div class="tbl" aria-busy="true" aria-live="polite" aria-label="Loading"><div style="padding:12px 16px"><div class="skel" style="width:32%"></div></div>';for(let i=0;i<rows;i++)s+='<div class="skel row"></div>';return s+'</div>'};
+function errorNote(what,retry=true){return `<div class="note danger" role="alert"><div class="body"><p><b>Could not load ${what}.</b> The backend answered 503 <code>backend_unavailable</code>: “database is locked by another import; retry in a few seconds”.</p>${retry?`<p><button type="button" class="btn sm" data-act="retry" style="margin-top:8px">Retry</button></p>`:''}</div></div>`}
+function counts(obj){return Object.entries(obj).map(([k,v])=>`<div><div class="k">${esc(k.replace(/_/g,' '))}</div><div class="v">${fmt(v)}</div></div>`).join('')}
+
+/* ---------- router ---------- */
+/* Reviewer deep links: #/import?step=3 or #/assistant?step=3 preload the state of that stop. */
+function deepLink(head,q){const st=Number(q.get('step'));if(!st)return;
+  if(head==='import'){const I=S.imp;I.upload={...FILE};I.mapping=MAP;if(st>=3)I.preview=PREVIEW;I.step=Math.min(4,st)}
+  if(head==='assistant'){const A=S.asst;if(st>=3){A.got=true;if(!A.rows){A.rows=proposalRows();A.msgs=[{who:'assistant',html:REPLIES.intro}]}}A.step=Math.min(5,st)}
+  history.replaceState(null,'','#/'+head)}
+function parse(){const h=(location.hash||'#/import').slice(1);const [p,q]=h.split('?');const parts=p.split('/').filter(Boolean);return {parts,q:new URLSearchParams(q||'')}}
+function go(h){location.hash=h}
+function route(){
+  closePop();
+  const {parts,q}=parse();
+  deepLink(parts[0],q);
+  const main=$('#main');const head=parts[0]||'import';
+  let html='',nav=head;
+  if(head==='import')html=importPage();
+  else if(head==='imports'&&parts[1])html=reportPage(parts[1],parts[2]);
+  else if(head==='imports')html=historyPage();
+  else if(head==='dashboard'){html=dashboardPage(q)}
+  else if(head==='sessions'){html=sessionPage(parts[1]);nav='dashboard'}
+  else if(head==='assistant'){html=assistantPage();nav='import'}
+  else if(head==='definitions'){html=definitionsPage();nav='dashboard'}
+  else html=`<div class="empty"><h2>Nothing at this address</h2><p>The route <code>${esc(location.hash)}</code> does not exist.</p><a class="btn" href="#/import">Import a trace file</a></div>`;
+  main.innerHTML=html;
+  document.querySelectorAll('[data-nav]').forEach(a=>{if(a.dataset.nav===nav)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+  document.title='AgentScope · '+({import:'Import',imports:'Imports',dashboard:'Dashboard',sessions:'Session',assistant:'Mapping assistant',definitions:'Definitions'}[head]||'Passage');
+  const focus=main.querySelector('[data-autofocus]');if(focus)focus.focus();
+}
+function rerender(){route()}
+
+/* =========================================================
+   Screen 1 · Import (four stops)
+   ========================================================= */
+const IMP_STOPS=['File','Mapping','Preview','Confirm'];
+function rail(stops,current,facts,act){
+  return `<aside class="rail" aria-label="Progress"><ol>${stops.map((n,i)=>{const k=i+1;const st=k<current?'done':k===current?'current':'todo';
+    const name=st==='done'?`<button type="button" class="name" data-act="${act}" data-step="${k}">${n}</button>`:`<span class="name">${n}</span>`;
+    return `<li class="stop ${st}" ${st==='current'?'aria-current="step"':''}><span class="dot" aria-hidden="true">${st==='done'?'✓':k}</span>${name}${facts[i]?`<span class="fact">${facts[i]}</span>`:''}</li>`}).join('')}</ol>
+    <div class="rail-foot">Nothing is written until the last stop.</div></aside>`}
+function importPage(){
+  const I=S.imp;const u=I.upload;
+  const facts=[u?`${fmt(u.bytes)} B · <b>${short(u.sha,10)}</b>`:'',I.mapping?`${I.mapping.name} · rev ${I.mapping.revision}`:'',I.preview?`200 sampled · ${I.preview.records.rejected} rejected`:'', ''];
+  let stage='';
+  if(I.step===1)stage=stepFile();
+  else if(I.step===2)stage=stepMapping();
+  else if(I.step===3)stage=stepPreview();
+  else stage=stepConfirm();
+  return `<div class="wizard">${rail(IMP_STOPS,I.step,facts,'imp-goto')}<div class="stage">${stage}</div></div>`;
+}
+function stepFile(){
+  const I=S.imp;const u=I.upload;
+  let body;
+  if(I.uploading){
+    body=`<div class="panel" aria-live="polite" role="status"><p><span class="spin" aria-hidden="true"></span>&nbsp; Reading ${esc(FILE.name)} — ${I.progress<50?'storing bytes':I.progress<85?'computing SHA-256':'counting records'}</p><div class="progress" style="margin-top:12px"><span style="width:${I.progress}%"></span></div><p class="small muted" style="margin-top:8px">${fmt(Math.round(FILE.bytes*I.progress/100))} of ${fmt(FILE.bytes)} bytes</p></div>`;
+  }else if(!u){
+    body=`<div class="drop" id="drop"><h2>Drop a trace file here</h2><p>JSONL, gzipped JSONL or Parquet, up to 25 MiB. The file is stored as-is and hashed before anything else happens.</p>
+      <div class="acts"><button type="button" class="btn primary" data-act="imp-upload" data-autofocus>Choose a file</button><button type="button" class="btn quiet" data-act="imp-upload">Use the sample file</button></div></div>
+      ${S.demo==='error'?`<div style="margin-top:16px">${errorNote('the upload service',false)}</div>`:''}`;
+  }else{
+    const seen=S.demo==='duplicate';
+    body=`<dl class="facts receipt">
+      <dt>File</dt><dd>${esc(u.name)}</dd>
+      <dt>Size</dt><dd class="tabular">${fmt(u.bytes)} bytes</dd>
+      <dt>SHA-256</dt><dd class="mono">${u.sha}</dd>
+      <dt>Format</dt><dd>JSONL, gzip-compressed ${help('fmt-sniff','How the format was detected')}</dd>
+      <dt>Records</dt><dd class="tabular">${fmt(u.records)} decoded, 0 undecodable</dd>
+      <dt>Seen before</dt><dd>${seen?`Yes — imported as <a href="#/imports/imp_3e21f89dbaef419a8f60">imp_3e21f89d…</a> on ${when(IMPORTS[0].started)}`:'No — these bytes have not been imported'}</dd>
+    </dl>
+    ${seen?`<div class="note info" style="margin-top:16px"><div class="body"><p><b>Re-importing adds nothing.</b> The same bytes for source <code>tracelab</code> are already committed; running again produces a report where every record is marked duplicate and no observation is inserted.</p><p><a href="#/imports/imp_3e21f89dbaef419a8f60">Open the earlier report</a> or continue if you want the ledger entry.</p></div></div>`:''}
+    <details style="margin-top:16px"><summary class="small" style="cursor:pointer;color:var(--accent)">Show the first 20 decoded records</summary>
+      <div class="tbl compact" style="margin-top:8px"><table><caption>First decoded records <span class="muted">· 20 of ${fmt(u.records)}</span></caption><thead><tr><th>Locator</th><th>Payload (truncated to one line)</th></tr></thead><tbody>
+      ${[1,2,3,4,5].map(i=>`<tr><td class="mono">line:${i}</td><td class="mono">{"provider": "claude", "project": "project_8f998460", "session_id": "781a3b4c-a1a5-9325-16d3-4029ecc3fe43", "round_index": ${i-1}, "model": "claude-opus-4-6", …}</td></tr>`).join('')}
+      <tr><td colspan="2" class="muted small">15 more rows in the full preview</td></tr></tbody></table></div></details>
+    <p class="small muted" style="margin-top:16px"><button type="button" class="btn quiet sm" data-act="imp-reset">Choose a different file</button></p>`;
+  }
+  return `<header class="stage-head"><h1>Import a trace file</h1><p class="lede">One file becomes one import. You will see what was detected, pick a mapping, check a dry run, then confirm with the file hash.</p></header>
+    ${body}
+    <div class="bar"><span class="small muted">${u?'Stop 1 of 4 · file stored, nothing imported':''}</span><div class="right"><button type="button" class="btn primary" data-act="imp-next" ${u?'':'disabled'}>Continue to mapping</button></div></div>`;
+}
+function stepMapping(){
+  const I=S.imp;const sel=I.mapping?I.mapping.id:MAP.id;
+  const opt=(m,note)=>`<label class="panel" style="display:flex;gap:12px;align-items:flex-start;cursor:pointer;${sel===m.id?'border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset':''}">
+      <input type="radio" name="mapping" value="${m.id}" ${sel===m.id?'checked':''} data-act="imp-pick" style="margin-top:3px">
+      <span style="flex:1;min-width:0"><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${m.name}</b> <span class="muted small">revision ${m.revision} · source ${m.source} · ${m.by}</span> ${m.superseded?'<span class="badge">Superseded</span>':''}</span>
+      <span class="small muted" style="display:block;margin-top:2px">${note}</span><span class="mono small muted" style="display:block;margin-top:2px">${m.id}</span></span></label>`;
+  return `<header class="stage-head"><h1>Choose how to read it</h1><p class="lede">Two saved mappings accept JSONL. The recommended one was checked against the first 20 records: every required field is present.</p></header>
+    <fieldset style="border:0;padding:0;margin:0"><legend class="sr">Mapping</legend>
+      ${opt(MAP,'Recommended. Root record → session and model call; <code>tools[*]</code> → tool calls. Tokens read from <code>input_tokens_total</code> with semantics tracelab-claude / tracelab-codex.')}
+      <div style="height:12px"></div>
+      ${opt(MAP_OLD,'Earlier revision without tool calls. Kept so old imports stay reproducible.')}
+    </fieldset>
+    <p class="small" style="margin-top:20px">Neither fits? <a href="#/assistant">Set up a new mapping with the assistant</a> — it profiles the file, proposes a mapping and explains each field; nothing is imported until you confirm.</p>
+    <div class="bar"><button type="button" class="btn" data-act="imp-back">Back</button><div class="right"><span class="small muted" ${I.previewing?'role="status"':''}>${I.previewing?'<span class="spin" aria-hidden="true"></span>&nbsp; Applying the mapping to 200 records, nothing written':''}</span><button type="button" class="btn primary" data-act="imp-preview" ${I.previewing?'disabled':''}>Run a dry run</button></div></div>`;
+}
+function previewBlock(P,sample=200){
+  return `<div class="stats"><div><div class="k">Records sampled</div><div class="v">${fmt(P.records.sampled)}</div><div class="c">first ${fmt(sample)} of the file</div></div>
+     <div><div class="k">Accepted</div><div class="v">${fmt(P.records.accepted)}</div><div class="c">${P.records.partial} partial</div></div>
+     <div><div class="k">Rejected</div><div class="v ${P.records.rejected?'':''}">${fmt(P.records.rejected)}</div><div class="c">each with a reason</div></div></div>
+    <section><div class="section-title"><h2>What the sample emits</h2><span class="muted">one record can emit several observations ${help('def-entities','What counts as an observation')}</span></div>
+     <div class="stats"><div><div class="k">Sessions</div><div class="v">${fmt(P.entities.session)}</div></div><div><div class="k">Model calls</div><div class="v">${fmt(P.entities.model_call)}</div></div><div><div class="k">Tool calls</div><div class="v">${fmt(P.entities.tool_call)}</div></div></div></section>
+    <section><div class="section-title"><h2>Warnings</h2><span class="muted">fields the mapping tolerates ${help('def-warnings','What null and absent mean')}</span></div>
+     <div class="stats">${counts(P.warnings)}</div></section>
+    <section><div class="section-title"><h2>Rejects in the sample</h2></div>
+     ${P.rejects.length?rejectsTable(P.rejects,false):`<div class="tbl"><div class="tbl-empty">No record was rejected in this sample. The full run can still reject; the report lists each rejection with its rule, path and reason.</div></div>`}</section>
+    <section><div class="section-title"><h2>Emissions sample</h2><span class="muted">first five, as they will be stored</span></div>
+     <div class="tbl compact"><table><caption class="sr">Emissions sample</caption><thead><tr><th>Entity</th><th>Path</th><th>Locator</th><th>Fields</th></tr></thead><tbody>
+     ${P.emissions.map(e=>`<tr><td>${e.entity}</td><td class="mono">${e.path}</td><td class="mono">${e.loc}</td><td class="mono">${esc(e.fields)}</td></tr>`).join('')}</tbody></table></div></section>`;
+}
+function stepPreview(){
+  const I=S.imp;
+  return `<header class="stage-head"><h1>Dry run on 200 records</h1><p class="lede">${MAP.name} revision ${MAP.revision} applied to the first 200 records of ${esc(FILE.name)}. Nothing was written.</p></header>
+    ${previewBlock(I.preview)}
+    <div class="bar"><button type="button" class="btn" data-act="imp-back">Back</button><div class="right"><button type="button" class="btn primary" data-act="imp-next">Looks right, continue</button></div></div>`;
+}
+function stepConfirm(){
+  const I=S.imp;const seen=S.demo==='duplicate';
+  if(I.running)return `<header class="stage-head"><h1>Importing</h1><p class="lede">Applying the mapping to every record inside one transaction. If anything fails, nothing is kept.</p></header>
+    <div class="panel" role="status" aria-live="polite"><p><span class="spin" aria-hidden="true"></span>&nbsp; ${fmt(Math.round(FILE.records*I.runProgress/100))} of ${fmt(FILE.records)} records applied</p><div class="progress" style="margin-top:12px"><span style="width:${I.runProgress}%"></span></div></div>`;
+  return `<header class="stage-head"><h1>Confirm and run</h1><p class="lede">This is exactly what will be written. The file hash and mapping revision are stored with the import so it can be audited later.</p></header>
+    <div class="receipt"><dl class="facts">
+      <dt>Import</dt><dd>${fmt(FILE.records)} records from <b>${esc(FILE.name)}</b> into source <b>tracelab</b></dd>
+      <dt>File SHA-256</dt><dd class="mono">${FILE.sha}</dd>
+      <dt>Mapping</dt><dd>${MAP.name} revision ${MAP.revision} <span class="mono muted small">${MAP.id}</span></dd>
+      <dt>Dry run</dt><dd>200 records: 200 accepted, 0 rejected, ${fmt(I.preview.warnings.null+I.preview.warnings.absent)} field warnings</dd>
+      <dt>Outcome</dt><dd>${seen?'Every record marked <b>duplicate</b>; no observation inserted (bytes already committed for this source).':'On success the dashboard scope switches to this import. On failure nothing is kept and the reason is shown.'}</dd>
+    </dl></div>
+    <div class="bar"><button type="button" class="btn" data-act="imp-back">Back</button><div class="right"><button type="button" class="btn primary" data-act="imp-run" data-autofocus>Import ${fmt(FILE.records)} records</button></div></div>`;
+}
+function impActions(act,el){
+  const I=S.imp;
+  if(act==='imp-upload'){I.uploading=true;I.progress=0;rerender();const t=setInterval(()=>{I.progress=Math.min(100,I.progress+17);if(I.progress>=100){clearInterval(t);I.uploading=false;I.upload={...FILE}}rerender()},180)}
+  else if(act==='imp-reset'){I.upload=null;I.mapping=null;I.preview=null;rerender()}
+  else if(act==='imp-next'){if(I.step===1&&!I.mapping)I.mapping=MAP;I.step=Math.min(4,I.step+1);rerender()}
+  else if(act==='imp-back'){I.step=Math.max(1,I.step-1);rerender()}
+  else if(act==='imp-goto'){I.step=Number(el.dataset.step);rerender()}
+  else if(act==='imp-pick'){I.mapping=el.value===MAP.id?MAP:MAP_OLD;rerender()}
+  else if(act==='imp-preview'){if(!I.mapping)I.mapping=MAP;I.previewing=true;rerender();setTimeout(()=>{I.previewing=false;I.preview=PREVIEW;I.step=3;rerender()},900)}
+  else if(act==='imp-run'){I.running=true;I.runProgress=0;rerender();const t=setInterval(()=>{I.runProgress=Math.min(100,I.runProgress+9);rerender();if(I.runProgress>=100){clearInterval(t);I.running=false;const id=S.demo==='duplicate'?IMPORTS[1].id:IMPORTS[0].id;S.justImported=id;Object.assign(I,{step:1,upload:null,mapping:null,preview:null});go('#/imports/'+id)}},140)}
+}
+/* =========================================================
+   Screen 2 · Import report
+   ========================================================= */
+function rejectsTable(rows,withPayload=true,total){
+  return `<div class="tbl"><table><caption>Rejected records ${total!=null?`<span class="muted">· ${fmt(rows.length)} of ${fmt(total)}</span>`:''}</caption>
+   <thead><tr><th>Locator</th><th>Rule</th><th>Path</th><th>Code</th><th>Field</th><th>Reason</th>${withPayload?'<th><span class="sr">Payload</span></th>':''}</tr></thead><tbody>
+   ${rows.map((r,i)=>`<tr><td class="mono">${r.loc}</td><td class="mono">${r.rule}</td><td class="mono">${esc(r.path)}</td><td class="mono">${r.code}</td><td class="mono">${r.field?esc(r.field):'<span class="na">—</span>'}</td><td>${esc(r.msg)}</td>${withPayload?`<td><button type="button" class="btn quiet sm" data-act="reject-payload" data-i="${i}">Raw payload</button></td>`:''}</tr>`).join('')}
+   </tbody></table></div>`;
+}
+function reportPage(id,sub){
+  const imp=[...IMPORTS,SWE_IMPORT].find(x=>x.id===id);
+  const crumbs=`<nav class="crumbs" aria-label="Breadcrumb"><a href="#/imports">Imports</a><span aria-hidden="true">/</span><span class="mono">${esc(id)}</span></nav>`;
+  if(S.demo==='loading')return crumbs+`<div class="page-head"><div><div class="skel lg" style="width:360px"></div><div class="skel" style="width:220px;margin-top:10px"></div></div></div>${skeleton(4)}`;
+  if(S.demo==='error')return crumbs+`<div class="page-head"><h1>Import report</h1></div>${errorNote('this import report')}`;
+  if(!imp)return crumbs+`<div class="empty"><h2>No import with id ${esc(id)}</h2><p>It may have been deleted, or the id was copied incompletely. Ids are 24 characters and start with <code>imp_</code>.</p><a class="btn" href="#/imports">Back to imports</a></div>`;
+  const just=S.justImported===id;S.justImported=null;
+  const r=imp.records,tot=Object.values(r).reduce((a,b)=>a+b,0)||1;
+  const seg=[['accepted','var(--c1)'],['partial','var(--c3)'],['duplicate','var(--c2)'],['rejected','var(--danger)'],['ignored','var(--c-muted)']];
+  const statusLine={committed:`Committed. ${fmt(imp.entities.session)} sessions, ${fmt(imp.entities.model_call)} model calls and ${fmt(imp.entities.tool_call||0)} tool calls were inserted in one transaction.`,
+    duplicate:'Duplicate. These bytes were already committed for this source; every record is marked duplicate and nothing was inserted.',
+    failed:`Failed. Nothing was inserted. <code>${esc(imp.error)}</code>`}[imp.status];
+  const rejects=imp.rejects.filter(x=>!S.rep.code||x.code===S.rep.code);
+  const codes=[...new Set(imp.rejects.map(x=>x.code))];
+  return crumbs+`
+  ${just?`<div class="note ${imp.status==='committed'?'ok':'info'}" role="status" style="margin-bottom:24px"><div class="body"><p><b>${imp.status==='committed'?'Import committed.':'Nothing to import.'}</b> ${imp.status==='committed'?`${fmt(imp.entities.session)} sessions are on the dashboard, scoped to this import.`:'The earlier import of these bytes is still the one on the dashboard.'}</p></div>${imp.status==='committed'?`<a class="btn primary" href="#/dashboard?import=${imp.id}">Open dashboard</a>`:`<a class="btn" href="#/imports/imp_3e21f89dbaef419a8f60">Open the earlier import</a>`}</div>`:''}
+  <div class="page-head"><div><h1 style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="mono" style="font-weight:500;font-size:var(--t20)">${imp.id}</span> ${badge(imp.status)}</h1><p class="lede">${statusLine}</p></div>
+    ${imp.status==='committed'&&!just?`<a class="btn" href="#/dashboard?import=${imp.id}">Open dashboard for this import</a>`:''}</div>
+  <div class="receipt"><dl class="facts">
+    <dt>Source</dt><dd>${imp.source}</dd>
+    <dt>File</dt><dd>${esc(imp.file.name)} · ${fmt(imp.file.bytes)} bytes · ${imp.file.format}${imp.file.records!=null?` · ${fmt(imp.file.records)} records`:''}</dd>
+    <dt>SHA-256</dt><dd class="mono">${imp.file.sha}</dd>
+    <dt>Mapping</dt><dd>${imp.map.name} revision ${imp.map.revision} <span class="mono muted small">${imp.map.id}</span></dd>
+    <dt>Started</dt><dd class="tabular">${when(imp.started)}</dd>
+    <dt>Finished</dt><dd class="tabular">${when(imp.finished)} · ${dur(imp.started,imp.finished)}</dd>
+  </dl></div>
+  <section><div class="section-title"><h2>Source records</h2><span class="muted">${fmt(tot===1&&!r.accepted?0:tot)} records, one outcome each ${help('def-outcomes','Record outcomes')}</span></div>
+    <div class="outcomes" aria-hidden="true">${seg.map(([k,c])=>`<span style="width:${(r[k]/tot*100)}%;background:${c}"></span>`).join('')}</div>
+    <div class="legend">${seg.map(([k,c])=>`<span><i style="background:${c}"></i>${k} <b class="tabular">${fmt(r[k])}</b></span>`).join('')}</div></section>
+  ${imp.status==='committed'?`<section><div class="section-title"><h2>Observations inserted</h2></div><div class="stats"><div><div class="k">Sessions</div><div class="v">${fmt(imp.entities.session)}</div></div><div><div class="k">Model calls</div><div class="v">${fmt(imp.entities.model_call)}</div></div><div><div class="k">Tool calls</div><div class="v">${fmt(imp.entities.tool_call||0)}</div>${imp.entities.tool_call?'':'<div class="c">mapping revision 0 emits no tool calls</div>'}</div></div></section>
+  <section><div class="section-title"><h2>Field warnings</h2><span class="muted">tolerated by the mapping, stored as missing ${help('def-warnings','What null and absent mean')}</span></div><div class="stats">${counts(imp.warnings)}</div></section>`:''}
+  <section id="rejects"><div class="section-title"><h2>Rejects</h2><span class="muted">${fmt(imp.rejects.length)} record${imp.rejects.length===1?'':'s'} refused with a reason</span></div>
+    ${imp.rejects.length?`<div class="filters" style="margin-bottom:12px"><label class="field"><span>Code</span><select data-act="reject-code"><option value="">All codes</option>${codes.map(c=>`<option ${S.rep.code===c?'selected':''}>${c}</option>`).join('')}</select></label></div>${rejectsTable(rejects,true,imp.rejects.length)}`
+    :`<div class="tbl"><div class="tbl-empty">${imp.status==='failed'?'The reader failed before any record was evaluated, so there are no per-record rejects.':'No record was rejected.'}</div></div>`}</section>`;
+}
+
+/* =========================================================
+   Screen 3 · Imports history
+   ========================================================= */
+function historyPage(){
+  const head=`<div class="page-head"><div><h1>Imports</h1><p class="lede">Every attempt, including the ones that inserted nothing. Newest first.</p></div><a class="btn primary" href="#/import">Import a file</a></div>`;
+  if(S.demo==='loading')return head+skeleton(5);
+  if(S.demo==='error')return head+errorNote('the imports list');
+  if(S.demo==='empty')return head+`<div class="empty"><h2>Nothing imported yet</h2><p>Import a TraceLab JSONL file to see sessions, model calls and tokens with provenance back to each record.</p><a class="btn primary" href="#/import">Import a file</a></div>`;
+  const rows=[SWE_IMPORT,...IMPORTS];
+  return head+`<div class="tbl"><table><caption class="sr">Import attempts, newest first</caption><thead><tr><th>Import</th><th>Status</th><th>Source</th><th>File</th><th>Mapping</th><th class="num">Accepted</th><th class="num">Rejected</th><th class="num">Sessions</th><th class="num">Model calls</th><th class="num">Tool calls</th><th>Started</th></tr></thead><tbody>
+   ${rows.map(i=>`<tr class="link" data-href="#/imports/${i.id}"><td class="mono"><a href="#/imports/${i.id}">${i.id}</a></td><td>${badge(i.status)}</td><td>${i.source}</td><td>${esc(i.file.name)}<div class="mono muted" style="font-size:11px">${short(i.file.sha,12)} · ${fmt(i.file.bytes)} B</div></td><td>${i.map.name} <span class="muted">rev ${i.map.revision}</span></td>
+     <td class="num">${fmt(i.records.accepted)}${i.records.partial?`<div class="muted" style="font-size:11px">${fmt(i.records.partial)} partial</div>`:''}${i.records.duplicate?`<div class="muted" style="font-size:11px">${fmt(i.records.duplicate)} duplicate</div>`:''}</td><td class="num">${fmt(i.records.rejected)}</td>
+     <td class="num">${i.status==='committed'?fmt(i.entities.session):'<span class="na">—</span>'}</td><td class="num">${i.status==='committed'?fmt(i.entities.model_call):'<span class="na">—</span>'}</td><td class="num">${i.status==='committed'?fmt(i.entities.tool_call||0):'<span class="na">—</span>'}</td><td class="tabular" style="white-space:nowrap">${when(i.started)}</td></tr>`).join('')}
+  </tbody></table></div><div class="pager"><span>5 of 5</span><button type="button" class="btn sm" disabled>Previous</button><button type="button" class="btn sm" disabled>Next</button></div>`;
+}
+
+/* =========================================================
+   Screen 4 · Dashboard
+   ========================================================= */
+function barChart({id,data,label,value,color,onKey,fmtAxis,total}){
+  const W=380,H=190,pl=40,pr=8,pt=10,pb=28;const max=Math.max(...data.map(value));const iw=W-pl-pr,ih=H-pt-pb;const n=data.length;const bw=Math.min(28,iw/n*0.68);const gap=iw/n;
+  const ticks=[0,.5,1].map(t=>Math.round(max*t));
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}"><title>${esc(label)}</title>
+   ${ticks.map(t=>{const y=pt+ih-(t/max)*ih;return `<line class="grid" x1="${pl}" x2="${W-pr}" y1="${y}" y2="${y}"/><text x="${pl-6}" y="${y+4}" text-anchor="end">${fmtAxis(t)}</text>`}).join('')}
+   <line class="axis" x1="${pl}" x2="${W-pr}" y1="${pt+ih}" y2="${pt+ih}"/>
+   ${data.map((d,i)=>{const v=value(d);const h=v/max*ih;const x=pl+gap*i+(gap-bw)/2;const y=pt+ih-h;const key=onKey(d);const lab=d[0];
+     return `<g class="bar" tabindex="0" role="button" data-act="chart" data-kind="${id}" data-key="${esc(key)}" aria-label="${esc(lab)}: ${fmt(v)}${total?' of '+fmt(total):''}. Show matching sessions"><title>${esc(lab)} · ${fmt(v)}</title><rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="2" fill="${color(d,i)}"/>${n<=8||i%2===0?`<text class="lbl" x="${x+bw/2}" y="${H-10}" text-anchor="middle">${esc(id==='day'?lab.slice(5):lab.replace(/^claude-/,''))}</text>`:''}</g>`}).join('')}</svg>`;
+}
+function kpi(label,m,defId,extra){
+  const naV=m.cov&&m.cov.known===0;
+  return `<div class="kpi"><div class="k">${label} ${help(defId,'Definition of '+label)}</div><div class="v ${naV?'na':''}" ${naV?'':`title="${fmt(m.v)} ${m.unit||''}"`}>${naV?'Unavailable':fmt(m.v)}</div><div class="c">${m.cov?`coverage <b>${fmt(m.cov.known)} / ${fmt(m.cov.total)}</b> calls${m.cov.known<m.cov.total?' · '+fmt(m.cov.total-m.cov.known)+' excluded, not zeroed':''}`:extra||''}</div></div>`;
+}
+function dashboardPage(q){
+  const D=S.dash;const imp=q.get('import');
+  const head=`<div class="page-head"><div><h1>Dashboard</h1><p class="lede">${imp?`Scoped to import <a class="mono" href="#/imports/${esc(imp)}">${esc(imp)}</a> · <a href="#/dashboard">all imports</a>`:'All committed imports.'} Every number carries its definition and its coverage; click a bar to reach the sessions behind it.</p></div><a class="btn" href="#/definitions">Definitions</a></div>`;
+  if(S.demo==='loading')return head+`<div class="kpis">${[1,2,3,4].map(()=>`<div class="kpi"><div class="skel" style="width:40%"></div><div class="skel lg" style="width:70%;margin-top:10px"></div><div class="skel" style="width:55%;margin-top:10px"></div></div>`).join('')}</div><div style="height:16px"></div>${skeleton(6)}`;
+  if(S.demo==='error')return head+errorNote('metrics');
+  if(S.demo==='empty')return head+`<div class="kpis">${['Sessions','Model calls','Input tokens','Output tokens'].map(k=>`<div class="kpi"><div class="k">${k}</div><div class="v na">Unavailable</div><div class="c">coverage 0 / 0</div></div>`).join('')}</div><div class="empty" style="margin-top:16px"><h2>No committed import in scope</h2><p>KPIs stay “Unavailable” rather than showing 0, because no observation backs them yet.</p><a class="btn primary" href="#/import">Import a file</a></div>`;
+  const sel=(name,label,opts)=>`<label class="field"><span>${label}</span><select data-act="dash-filter" data-name="${name}">${opts.map(([v,t])=>`<option value="${v}" ${D[name]===v?'selected':''}>${t}</option>`).join('')}</select></label>`;
+  let rows=SESSIONS;const chip=D.chip;
+  if(D.agent)rows=rows.filter(s=>s.agent===D.agent);if(D.model)rows=rows.filter(s=>s.model===D.model);
+  if(chip){if(chip.kind==='day')rows=rows.filter(s=>s.day===chip.key);else if(chip.kind==='model')rows=rows.filter(s=>s.model===chip.key);else if(chip.kind==='tool')rows=rows.filter(s=>s.tc>0)}
+  const chipLabel=chip?({day:'Day '+chip.key,model:'Model '+chip.key,tool:'Used tool '+chip.key})[chip.kind]:'';
+  return head+`
+  <form class="filters" style="margin-bottom:16px" onsubmit="return false">${sel('source','Source',[['','All sources'],['tracelab','tracelab'],['swe-chat','swe-chat']])}${sel('agent','Agent',[['','All agents'],['claude-code','claude-code'],['codex','codex']])}${sel('model','Model',[['','All models'],...BY_MODEL.map(m=>[m[0],m[0]])])}${sel('period','Period',[['all','All time'],['30d','Last 30 days'],['7d','Last 7 days']])}</form>
+  <div class="kpis">${kpi('Sessions',METRICS.sessions,'def-sessions','80 identity keys · 61 claude-code, 19 codex')}${kpi('Model calls',METRICS.model_calls,'def-model-calls','observations, not deduplicated requests')}${kpi('Input tokens',METRICS.input_tokens,'def-input')}${kpi('Output tokens',METRICS.output_tokens,'def-output')}</div>
+  <div class="charts" style="margin-top:16px">
+    <figure class="chart"><figcaption>Model calls by day <span class="muted">2026-05-28 to 06-10</span></figcaption>${barChart({id:'day',data:DAYS,label:'Model calls by day',value:d=>d[1],color:()=>'var(--c1)',onKey:d=>d[0],fmtAxis:abbr})}<div class="chart-foot">14 days · ${fmt(4770)} calls · click a day for its sessions</div></figure>
+    <figure class="chart"><figcaption>Input tokens by model <span class="muted">exact on hover</span></figcaption>${barChart({id:'model',data:BY_MODEL,label:'Input tokens by model',value:d=>d[1],color:(d,i)=>['var(--c1)','var(--c1)','var(--c2)'][i],onKey:d=>d[0],fmtAxis:abbr,total:553447877})}<div class="chart-foot">summed inside one semantics tag; opus 4.6 and 4.7 are tracelab-claude, codex is tracelab-codex</div></figure>
+    <figure class="chart"><figcaption>Tool calls by tool <span class="muted">${fmt(5723)} total</span></figcaption>${barChart({id:'tool',data:TOOLS,label:'Tool calls by tool',value:d=>d[1],color:()=>'var(--c3)',onKey:d=>d[0],fmtAxis:abbr,total:5723})}<div class="chart-foot">12 tool calls have no enclosing model call and are counted here</div></figure>
+  </div>
+  <div class="quality" style="margin-top:16px"><span class="lead">Quality ${help('def-quality','What the quality strip counts')}</span>${QUALITY.map(qq=>`<a href="${qq.to}" class="${qq.n?'flag':''}"><b>${fmt(qq.n)}</b> ${qq.label}</a>`).join('')}</div>
+  <section style="margin-top:24px"><div class="section-title"><h2>Sessions</h2><span class="muted">${chip?`${rows.length} matching`:`10 of 80`}</span>${chip?`<span class="chip">${esc(chipLabel)}<button type="button" data-act="chip-clear" aria-label="Remove filter ${esc(chipLabel)}">×</button></span>`:''}</div>
+   ${rows.length?`<div class="tbl"><table id="sessions"><caption class="sr">Sessions in scope</caption><thead><tr><th>Session</th><th>Agent</th><th>Observed start</th><th>Observed end</th><th class="num">Model calls</th><th class="num">Tool calls</th><th class="num">Input tokens</th><th>Coverage</th></tr></thead><tbody>
+   ${rows.map(s=>`<tr class="link" data-href="#/sessions/${s.id}"><td class="mono"><a href="#/sessions/${s.id}">${s.ext}</a></td><td class="nw">${s.agent}</td><td class="tabular" style="white-space:nowrap">${when(s.start)}</td><td class="tabular" style="white-space:nowrap">${when(s.end)}</td><td class="num">${fmt(s.mc)}</td><td class="num">${fmt(s.tc)}</td><td class="num">${fmt(s.inp)}</td><td class="tabular ${s.cov[0]<s.cov[1]?'':'muted'}">${s.cov[0]} / ${s.cov[1]} calls${s.cov[0]<s.cov[1]?' <span class="badge amb">partial</span>':''}</td></tr>`).join('')}
+   </tbody></table></div><div class="pager"><span>Page 1 of 8</span><button type="button" class="btn sm" disabled>Previous</button><button type="button" class="btn sm">Next</button></div>`
+   :`<div class="empty"><h2>No session matches</h2><p>The current filters and the chart selection exclude every session in scope.</p><button type="button" class="btn" data-act="chip-clear">Clear the chart selection</button></div>`}</section>`;
+}
+/* =========================================================
+   Screen 5 · Session detail
+   ========================================================= */
+function sessionPage(id){
+  const crumbs=`<nav class="crumbs" aria-label="Breadcrumb"><a href="#/dashboard">Dashboard</a><span aria-hidden="true">/</span><a href="#/dashboard#sessions">Sessions</a><span aria-hidden="true">/</span><span class="mono">${esc(id||'')}</span></nav>`;
+  if(S.demo==='loading')return crumbs+`<div class="page-head"><div><div class="skel lg" style="width:420px"></div><div class="skel" style="width:260px;margin-top:10px"></div></div></div>${skeleton(3)}`;
+  if(S.demo==='error')return crumbs+`<div class="page-head"><h1>Session</h1></div>${errorNote('this session')}`;
+  const s=SESSION;const row=SESSIONS.find(x=>x.id===id);
+  if(!row)return crumbs+`<div class="empty"><h2>No session with id ${esc(id)}</h2><p>Sessions are addressed by their AgentScope id (<code>ses_…</code>), not by the source's external id.</p><a class="btn" href="#/dashboard">Back to dashboard</a></div>`;
+  const ext=row.ext;
+  return crumbs+`<div class="page-head"><div><h1 class="mono" style="font-weight:500;font-size:var(--t20);overflow-wrap:anywhere">${esc(ext)}</h1><p class="lede">Session ${esc(id)} · ${row.agent} on ${s.source} · imported by <a class="mono" href="#/imports/imp_3e21f89dbaef419a8f60">imp_3e21f89d…</a></p></div></div>
+  <div class="receipt"><dl class="facts">
+    <dt>Source</dt><dd>${s.source} <span class="muted small">(namespace of the external id)</span></dd>
+    <dt>External id</dt><dd class="mono">${esc(ext)}</dd>
+    <dt>Agent</dt><dd>${row.agent}</dd>
+    <dt>Repository</dt><dd class="mono">${s.repo}</dd>
+    <dt>User</dt><dd class="mono">${s.user}</dd>
+  </dl></div>
+  <section><div class="section-title"><h2>Interval</h2><span class="muted">declared and observed are never merged ${help('def-span','Declared vs observed')}</span></div>
+   <div class="stats"><div><div class="k">Declared start</div><div class="v na">Unavailable</div><div class="c">TraceLab records carry no session-level interval</div></div><div><div class="k">Declared end</div><div class="v na">Unavailable</div></div>
+   <div><div class="k">Observed start</div><div class="v" style="font-size:var(--t14);font-family:var(--mono);font-weight:500">${s.obsStart}</div><div class="c">earliest accepted child timestamp</div></div><div><div class="k">Observed end</div><div class="v" style="font-size:var(--t14);font-family:var(--mono);font-weight:500">${s.obsEnd}</div><div class="c">span ${dur(s.obsStart,s.obsEnd)}</div></div></div></section>
+  <section><div class="section-title"><h2>Tokens</h2><span class="muted">summed only over calls with a known value</span></div>
+   <div class="stats"><div><div class="k">Input tokens</div><div class="v">${fmt(row.inp)}</div><div class="c">coverage ${row.cov[0]} / ${row.cov[1]} calls · tracelab-claude</div></div><div><div class="k">Output tokens</div><div class="v">${fmt(s.output)}</div><div class="c">coverage 2 / 2 calls</div></div><div><div class="k">Cache read tokens</div><div class="v">${fmt(42186)}</div><div class="c">coverage 2 / 2 · known for tracelab-claude only</div></div><div><div class="k">Cache creation tokens</div><div class="v na">Unavailable</div><div class="c">coverage 0 / 2 · field absent in source</div></div></div></section>
+  <section><div class="tbl"><table><caption>Model-call observations <span class="muted">· ${s.calls.length}</span></caption><thead><tr><th>Sequence</th><th>Id</th><th>Model</th><th>Started</th><th>Ended</th><th class="num">Input tokens</th><th class="num">Output tokens</th><th>Semantics</th><th><span class="sr">Source</span></th></tr></thead><tbody>
+   ${s.calls.map(c=>`<tr><td class="num">${c.seq}</td><td class="mono nw">${c.id}</td><td class="nw">${c.model}</td><td class="mono nw">${c.start}</td><td class="mono nw">${c.end}</td><td class="num">${fmt(c.inp)}</td><td class="num">${fmt(c.out)}</td><td class="mono">${c.sem}</td><td><button type="button" class="btn quiet sm" data-act="source" data-loc="${c.loc}" aria-label="Source record for model call ${c.id}">Source record</button></td></tr>`).join('')}
+  </tbody></table></div></section>
+  <section><div class="tbl"><table><caption>Tool-call observations <span class="muted">· ${s.tools.length}</span></caption><thead><tr><th>Id</th><th>Model call</th><th>Tool</th><th>Started</th><th>Ended</th><th class="num">Wall latency</th><th>Error</th><th><span class="sr">Source</span></th></tr></thead><tbody>
+   ${s.tools.map(t=>`<tr><td class="mono nw">${t.id}</td><td class="mono nw">${t.mc.slice(0,11)}…</td><td>${t.tool}</td><td class="mono nw">${t.start}</td><td class="mono nw">${t.end}</td><td class="num">${fmt(t.ms)} ms</td><td>${t.err===null?'<span class="na">Unavailable</span>':t.err?'Yes':'No'}</td><td><button type="button" class="btn quiet sm" data-act="source" data-loc="${t.loc}" aria-label="Source record for tool call ${t.id}">Source record</button></td></tr>`).join('')}
+  </tbody></table></div></section>
+  <section><div class="section-title"><h2>Diagnostics</h2><span class="muted">${s.diags.length} noted during import, nothing was altered</span></div>
+   <div class="tbl"><table><caption class="sr">Session diagnostics</caption><thead><tr><th>Code</th><th>Field</th><th>Message</th></tr></thead><tbody>${s.diags.map(d=>`<tr><td class="mono">${d.code}</td><td class="mono">${d.field||'—'}</td><td>${esc(d.msg)}</td></tr>`).join('')}</tbody></table></div></section>`;
+}
+function openSource(loc){
+  const d=$('#drawer');
+  d.innerHTML=`<div class="drawer-head"><h2 id="drawer-title">Source record</h2><button type="button" class="x" data-act="drawer-close" aria-label="Close">✕</button></div>
+   <div class="drawer-body"><dl class="facts tight"><dt>File</dt><dd>${esc(FILE.name)}</dd><dt>SHA-256</dt><dd class="mono">${FILE.sha}</dd><dt>Locator</dt><dd class="mono">${esc(loc)}</dd><dt>Import</dt><dd><a class="mono" href="#/imports/imp_3e21f89dbaef419a8f60" data-act="drawer-close">imp_3e21f89dbaef419a8f60</a></dd></dl>
+   <p class="small muted" style="margin-bottom:8px">Shown as stored (<code>payload_text</code>), numbers exactly as in the file.</p>
+   <pre tabindex="0">${esc(RAW[loc]||'{}')}</pre></div>`;
+  d.showModal();
+}
+function openPayload(imp,i){
+  const r=imp.rejects[i];const d=$('#drawer');
+  d.innerHTML=`<div class="drawer-head"><h2 id="drawer-title">Rejected record <span class="mono muted" style="font-weight:400">${r.loc}</span></h2><button type="button" class="x" data-act="drawer-close" aria-label="Close">✕</button></div>
+   <div class="drawer-body"><div class="note danger" style="margin-bottom:16px"><div class="body"><p><b>${r.code}</b> at <code>${esc(r.path)}</code> in rule <code>${r.rule}</code></p><p>${esc(r.msg)}</p></div></div>
+   <dl class="facts tight"><dt>File</dt><dd>${esc(imp.file.name)}</dd><dt>SHA-256</dt><dd class="mono">${imp.file.sha}</dd><dt>Locator</dt><dd class="mono">${r.loc}</dd><dt>Mapping</dt><dd>${imp.map.name} revision ${imp.map.revision}</dd></dl>
+   <pre tabindex="0">${esc(r.payload)}</pre></div>`;
+  d.showModal();
+}
+
+/* =========================================================
+   Screen 6 · Mapping assistant (five stops)
+   ========================================================= */
+const ASST_STOPS=['Profile','Send','Mapping','Dry run','Save and import'];
+function proposalRows(){return [
+ {rule:'session',sel:'$',key:'conversation_id'},
+ {t:'session.identity_key',ent:'session',src:'$.conversation_id',tr:'string',st:'ok',why:'Unique in the excerpt (2,000 distinct); scoped by source swe-chat.'},
+ {t:'session.agent',ent:'session',src:'"unknown"',tr:'literal',st:'amb',why:'No column names the harness. Set a constant here or leave unknown; the dashboard will show it as its own agent.'},
+ {t:'session.repo',ent:'session',src:'$.repo',tr:'string · nullable',st:'ok',why:'87 rows are null; stored as missing, never as an empty string.'},
+ {rule:'model_call',sel:'$.turns[*] where role == "assistant"',key:'conversation_id + turn index'},
+ {t:'model_call.model',ent:'model_call',src:'$.model',tr:'string',st:'ok',why:'One model per conversation, applied to each assistant turn.'},
+ {t:'model_call.started_at',ent:'model_call',src:'$.created_at',tr:'timestamp · epoch s',st:'amb',why:'created_at is the conversation start; turns carry no time. Every call in a conversation gets the same start and the session span is 0 ms.'},
+ {t:'model_call.input_tokens',ent:'model_call',src:'$.usage.prompt_tokens',tr:'int · conversation total',st:'amb',why:'usage is per conversation, not per turn. Proposed: assign to the last assistant turn, null on the others, so sums stay exact.'},
+ {t:'model_call.output_tokens',ent:'model_call',src:'$.usage.completion_tokens',tr:'int · conversation total',st:'ok',why:'Same placement as input_tokens.'},
+ {rule:'tool_call',sel:'$.turns[*].tool_calls[*]',key:'parent model_call + index'},
+ {t:'tool_call.tool_name',ent:'tool_call',src:'$.name',tr:'string',st:'ok',why:'Relative to the tool_calls[*] element.'},
+ {t:'tool_call.started_at',ent:'tool_call',src:'—',tr:'absent · nullable',st:'ok',why:'Not in the source. Counted in the quality strip as unknown timestamps.'},
+]}
+function validatePath(p,row){
+  if(row.tr==='literal')return null;if(p==='—'||p==='')return null;
+  if(!p.startsWith('$.'))return 'A source path starts with $. (or is a quoted literal).';
+  const bare=p.slice(2).replace(/\[\*\]/g,'[*]');
+  const ok=COLS.some(c=>c===bare||c.endsWith('.'+bare)||('turns[*].tool_calls[*].'+bare)===c);
+  if(!ok){const near=COLS.map(c=>[c,lev(bare,c)]).sort((a,b)=>a[1]-b[1])[0];return `Unknown column ${bare} — nearest in the profile: ${near[0]}`}
+  return null;
+}
+function lev(a,b){const m=[];for(let i=0;i<=a.length;i++){m[i]=[i]}for(let j=0;j<=b.length;j++)m[0][j]=j;for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)m[i][j]=Math.min(m[i-1][j]+1,m[i][j-1]+1,m[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return m[a.length][b.length]}
+function assistantPage(){
+  const A=S.asst;if(!A.rows)A.rows=proposalRows();
+  const errs=A.rows.filter(r=>r.st==='err').length,ambs=A.rows.filter(r=>r.st==='amb').length;
+  const facts=['2,000 rows · 7 columns',A.got?'profile + 12 values / col':'',A.got?`${A.rows.filter(r=>r.t).length} fields · ${errs} errors · ${ambs} open`:'',A.step>4?'200 rows · 0 rejected':'',''];
+  let stage;
+  if(A.step===1)stage=asstProfile();else if(A.step===2)stage=asstSend();else if(A.step===3)stage=asstMapping(errs,ambs);else if(A.step===4)stage=asstPreview();else stage=asstSave();
+  return `<div class="wizard">${rail(ASST_STOPS,A.step,facts,'asst-goto')}<div class="stage ${A.step===3?'wide':''}">${stage}</div></div>`;
+}
+function asstProfile(){
+  return `<header class="stage-head"><h1>Profile of an unknown file</h1><p class="lede">swe-chat-conversations.parquet · excerpt of 2,000 rows from a 1.3 GB upstream file. Read locally; nothing has left this machine.</p></header>
+   <div class="tbl compact"><table><caption>Columns <span class="muted">· 7 top-level, nested fields under turns</span></caption><thead><tr><th>Column</th><th>Type</th><th>Non-null</th><th>Distinct</th><th>Example</th></tr></thead><tbody>
+   ${PROFILE.map(r=>`<tr><td class="mono">${r[0]}</td><td class="mono muted">${r[1]}</td><td class="tabular">${r[2]}</td><td class="tabular">${r[3]}</td><td class="mono">${esc(r[4])}</td></tr>`).join('')}</tbody></table></div>
+   <p class="small muted" style="margin-top:12px">No saved mapping accepts Parquet with these columns. The assistant can propose one from this profile.</p>
+   <div class="bar"><a class="btn" href="#/import">Back to import</a><div class="right"><button type="button" class="btn primary" data-act="asst-next" data-autofocus>Continue to what gets sent</button></div></div>`;
+}
+function asstSend(){
+  const A=S.asst;
+  if(A.sending)return `<header class="stage-head"><h1>Waiting for a proposal</h1></header><div class="panel" role="status" aria-live="polite"><p><span class="spin" aria-hidden="true"></span>&nbsp; Sent 1,412 tokens of profile to openrouter · anthropic/claude-opus-4-7. Proposals usually take 10 to 20 seconds.</p></div>`;
+  return `<header class="stage-head"><h1>What leaves this machine</h1><p class="lede">The assistant sees a redacted profile, never the file. Review it before sending.</p></header>
+   ${S.demo==='error'?`<div class="note danger" role="alert" style="margin-bottom:16px"><div class="body"><p><b>Provider unreachable.</b> openrouter answered 502 after 30 s. Nothing was sent twice; the profile is unchanged.</p><p>Check <code>AGENTSCOPE_LLM_BASE_URL</code> in <code>backend/.env</code>, or continue without the assistant and write the mapping by hand.</p></div></div>`:''}
+   <div class="redact"><div class="panel"><h3>Sent</h3><ul class="small"><li>Column names, types, null and distinct counts</li><li>12 sampled values per column, strings cut at 80 characters</li><li><code>turns[*].content</code> replaced by its length in characters</li><li><code>repo</code> values hashed (<code>sha256:9a1c…</code>) — 311 distinct kept distinct</li></ul></div>
+   <div class="panel"><h3>Kept here</h3><ul class="small"><li>The file itself and every full row</li><li>Turn contents, tool arguments, tool outputs</li><li>Anything you type in the conversation is sent; do not paste rows</li><li>The API key (backend only)</li></ul></div></div>
+   <dl class="facts" style="margin-top:16px"><dt>Provider</dt><dd>openrouter · anthropic/claude-opus-4-7 <span class="muted small">from backend/.env, not stored in the mapping</span></dd><dt>Size</dt><dd>1,412 tokens of context</dd></dl>
+   <div class="bar"><button type="button" class="btn" data-act="asst-back">Back</button><div class="right"><button type="button" class="btn" data-act="asst-manual">Write the mapping by hand</button><button type="button" class="btn primary" data-act="asst-send" data-autofocus>Send the profile and get a proposal</button></div></div>`;
+}
+function asstMapping(errs,ambs){
+  const A=S.asst;
+  const table=`<div class="tbl mtable"><table><caption>Proposed mapping <span class="muted">· edit any source path; validation runs as you type</span></caption><thead><tr><th style="width:25%">Target</th><th style="width:37%">Source path</th><th>Transform</th><th style="width:76px">Status</th></tr></thead><tbody>
+   ${A.rows.map((r,i)=>r.rule?`<tr class="rule"><td colspan="4">rule <span class="mono">${r.rule}</span> · <span class="mono">${esc(r.sel)}</span> · identity <span class="mono">${esc(r.key)}</span></td></tr>`
+     :`<tr><td class="tgt"><span class="ent">${r.ent}.</span>${r.t.split('.')[1]}</td><td><input class="mono" type="text" value="${esc(r.src)}" data-act="asst-edit" data-i="${i}" aria-label="Source path for ${r.t}" aria-invalid="${r.st==='err'}" aria-describedby="m${i}"></td><td class="small muted">${esc(r.tr)}</td><td><span class="badge ${r.st}">${({ok:'OK',amb:'Open',err:'Error'})[r.st]}</span></td></tr>
+      <tr class="row-msg"><td colspan="4"><div class="msg ${r.st}" id="m${i}">${r.st==='err'?esc(r.err):esc(r.why)}${r.st==='amb'?` <button type="button" class="btn quiet sm" data-act="asst-accept" data-i="${i}">Accept as proposed</button>`:''}</div></td></tr>`).join('')}
+   </tbody></table></div>
+   <div class="validate-line"><button type="button" class="btn sm" data-act="asst-validate">Validate mapping</button>${A.validated?`<span role="status">${errs?`<span class="badge err">${errs} error${errs>1?'s':''}</span> fix before the dry run`:`<span class="badge ok">Schema and semantics pass</span> ${ambs?ambs+' open question'+(ambs>1?'s':'')+' — allowed, recorded in the revision':'no open questions'}`}</span>`:`<span class="muted">${A.rows.filter(r=>r.t).length} fields · ${errs} error${errs===1?'':'s'} · ${ambs} open</span>`}</div>`;
+  const log=A.msgs.map(m=>m.who==='you'?`<div class="msg-u"><div class="who">You</div>${esc(m.text)}</div>`:`<div class="msg-a"><div class="who">Assistant</div>${m.html}</div>`).join('');
+  const chat=`<aside class="chat" aria-label="Conversation with the assistant"><div class="chat-head"><h2>Conversation</h2><span class="muted">claude-opus-4-7</span></div>
+   <div class="chat-log" aria-live="polite">${log}</div>
+   <div class="chat-sugg">${[['Why the last assistant turn?','q-last'],['Set the agent to swe-agent','q-agent'],['Can turns get their own time?','q-time']].map(([t,k])=>`<button type="button" data-act="asst-ask" data-q="${k}">${t}</button>`).join('')}</div>
+   <form class="chat-in" data-act="asst-form"><label class="sr" for="chat-text">Message to the assistant</label><textarea id="chat-text" rows="1" placeholder="Ask or request a change"></textarea><button type="submit" class="btn primary sm">Send</button></form>
+   <div class="chat-foot">Replies change the table above, never the database. Every change is listed and can be undone by editing the cell.</div></aside>`;
+  return `<header class="stage-head"><h1>Review the proposed mapping</h1><p class="lede">The assistant explains each field and marks what it could not decide. Edit the table or ask; the table is the only thing that will be saved.</p></header>
+   <div class="split"><div>${table}</div>${chat}</div>
+   <div class="bar"><button type="button" class="btn" data-act="asst-back">Back</button><div class="right"><span class="small muted">${errs?'Fix the errors to continue':''}</span><button type="button" class="btn primary" data-act="asst-preview" ${errs||A.previewing?'disabled':''}>${A.previewing?'<span class="spin" aria-hidden="true"></span> Running':'Run a dry run on 200 rows'}</button></div></div>`;
+}
+const SWE_PREVIEW={records:{sampled:200,accepted:194,partial:6,rejected:0},entities:{session:200,model_call:742,tool_call:1318},warnings:{null:87,absent:1318},rejects:[],
+ emissions:[{entity:'session',path:'session',loc:'row:0',fields:'identity_key: "conv_5f1c9a2e", agent: "swe-agent", repo: "octo/infra"'},{entity:'model_call',path:'model_call[3]',loc:'row:0',fields:'model: "gpt-5.5-codex", started_at: 2024-06-04T02:51:06Z, input_tokens: 18443, token_semantics: "swe-chat-conversation-total"'},{entity:'model_call',path:'model_call[1]',loc:'row:0',fields:'model: "gpt-5.5-codex", started_at: 2024-06-04T02:51:06Z, input_tokens: null'},{entity:'tool_call',path:'model_call[1].tool_calls[0]',loc:'row:0',fields:'tool_name: "bash", started_at: null'},{entity:'session',path:'session',loc:'row:1',fields:'identity_key: "conv_a03b7d51", agent: "swe-agent", repo: null (warning: null)'}]};
+function asstPreview(){
+  return `<header class="stage-head"><h1>Dry run on 200 rows</h1><p class="lede">The edited mapping applied to the first 200 rows of the excerpt. Nothing was written and the mapping is not saved yet.</p></header>
+   ${previewBlock(SWE_PREVIEW)}
+   <div class="bar"><button type="button" class="btn" data-act="asst-back">Back to the mapping</button><div class="right"><button type="button" class="btn primary" data-act="asst-next" data-autofocus>Looks right, save it</button></div></div>`;
+}
+function asstSave(){
+  const A=S.asst;
+  if(A.saving)return `<header class="stage-head"><h1>Saving and importing</h1></header><div class="panel" role="status" aria-live="polite"><p><span class="spin" aria-hidden="true"></span>&nbsp; Saved swe-chat-v1 revision 1. Applying it to 2,000 rows in one transaction.</p><div class="progress" style="margin-top:12px"><span style="width:${A.saveProgress||0}%"></span></div></div>`;
+  return `<header class="stage-head"><h1>Save as a revision, then import</h1><p class="lede">The mapping becomes an immutable revision. Later imports of swe-chat files can pick it without the assistant.</p></header>
+   <div class="receipt"><div class="filters" style="margin-bottom:16px"><label class="field"><span>Name</span><input type="text" value="swe-chat-v1"></label><label class="field"><span>Source</span><input type="text" value="swe-chat"></label><label class="field"><span>Revision</span><input type="text" value="1 (new)" disabled></label></div>
+   <label class="field"><span>Note for the revision</span><textarea rows="2">Proposed by claude-opus-4-7 from the 2,000-row excerpt; usage assigned to the last assistant turn; agent set to swe-agent.</textarea></label>
+   <dl class="facts" style="margin-top:16px"><dt>Proposal</dt><dd>openrouter · anthropic/claude-opus-4-7 · prompt v3 · 2 open questions accepted, 1 field changed by you</dd><dt>File</dt><dd>swe-chat-conversations.parquet · 38,221,904 bytes</dd><dt>SHA-256</dt><dd class="mono">${SWE_IMPORT.file.sha}</dd><dt>Dry run</dt><dd>200 rows: 194 accepted, 6 partial, 0 rejected</dd></dl></div>
+   <div class="bar"><button type="button" class="btn" data-act="asst-back">Back</button><div class="right"><button type="button" class="btn" data-act="asst-save-only">Save without importing</button><button type="button" class="btn primary" data-act="asst-save" data-autofocus>Save and import 2,000 rows</button></div></div>`;
+}
+const REPLIES={
+ intro:`<p>I read the profile of <span class="ref">swe-chat-conversations.parquet</span>: 2,000 rows, 7 columns, turns nested as a list. The mapping on the left emits sessions from <span class="ref">conversation_id</span>, model calls from assistant turns and tool calls from <span class="ref">tool_calls[*]</span>.</p><p>Three things I could not decide:</p><ul><li>the agent name is nowhere in the data;</li><li>usage is per conversation, so per-call tokens are not recoverable;</li><li>only <span class="ref">created_at</span> carries time.</li></ul><p>Each is marked <b>Open</b> in the table with what I proposed.</p>`,
+ 'q-last':`<p>Putting the conversation total on the last assistant turn keeps the session sum exact (<span class="ref">18,443</span> stays 18,443) and keeps coverage honest: 1 of <i>n</i> calls known. Spreading it evenly would invent per-call numbers. The semantics tag <span class="ref">swe-chat-conversation-total</span> stops the dashboard from summing it with TraceLab's per-call tokens.</p>`,
+ 'q-agent':`<p>Done. <span class="ref">session.agent</span> is now the literal <span class="ref">"swe-agent"</span>. It is a constant you chose, not something in the data; the revision note will say so.</p><div class="change">Changed session.agent: "unknown" → "swe-agent"</div>`,
+ 'q-time':`<p>Not from this file: turns have no timestamp and I will not derive one from order. If the upstream 1.3 GB file has a <span class="ref">turns[*].created_at</span>, re-profile it and I will map it; otherwise every call keeps the conversation start and the span shows as 0 ms with that explanation.</p>`,
+ other:`<p>I can only change the table, not the file or the database. Tell me which target field to change, or edit the cell directly and I will re-validate it.</p>`};
+function asstActions(act,el,ev){
+  const A=S.asst;
+  const push=(k,extra)=>{A.msgs.push({who:'assistant',html:REPLIES[k]});if(extra)extra()};
+  if(act==='asst-next'){A.step=Math.min(5,A.step+1);rerender()}
+  else if(act==='asst-back'){A.step=Math.max(1,A.step-1);rerender()}
+  else if(act==='asst-goto'){A.step=Number(el.dataset.step);rerender()}
+  else if(act==='asst-send'){A.sending=true;rerender();setTimeout(()=>{A.sending=false;A.got=true;A.rows=proposalRows();A.msgs=[];push('intro');A.step=3;rerender()},1100)}
+  else if(act==='asst-manual'){A.got=true;A.rows=proposalRows().map(r=>r.t?{...r,src:r.tr==='literal'?'"unknown"':'',st:'err',err:'Source path required'}:r);A.msgs=[{who:'assistant',html:'<p class="muted">The assistant was not used. Fill in each source path; validation runs as you type.</p>'}];A.step=3;rerender()}
+  else if(act==='asst-edit'){const r=A.rows[Number(el.dataset.i)];r.src=el.value;const e=validatePath(el.value.trim(),r);if(e){r.st='err';r.err=e}else{r.st=r.st==='err'?'ok':r.st}A.validated=false;
+    const tr=el.closest('tr');const msg=tr.nextElementSibling.querySelector('.msg');msg.className='msg '+r.st;msg.textContent=r.st==='err'?r.err:r.why;el.setAttribute('aria-invalid',r.st==='err');tr.querySelector('.badge').className='badge '+r.st;tr.querySelector('.badge').textContent=({ok:'OK',amb:'Open',err:'Error'})[r.st];
+    const errs=A.rows.filter(x=>x.st==='err').length;const btn=$('[data-act=asst-preview]');if(btn)btn.disabled=errs>0;const vl=$('.validate-line span');if(vl)vl.innerHTML=`<span class="muted">${A.rows.filter(x=>x.t).length} fields · ${errs} error${errs===1?'':'s'} · ${A.rows.filter(x=>x.st==='amb').length} open</span>`}
+  else if(act==='asst-accept'){A.rows[Number(el.dataset.i)].st='ok';rerender()}
+  else if(act==='asst-validate'){A.validated=true;rerender();$('.validate-line [role=status]')?.focus?.()}
+  else if(act==='asst-ask'){const q=el.dataset.q;A.msgs.push({who:'you',text:el.textContent});push(q,()=>{if(q==='q-agent'){const r=A.rows.find(x=>x.t==='session.agent');r.src='"swe-agent"';r.st='ok';r.why='Constant chosen by you in the conversation.'}});rerender();scrollChat()}
+  else if(act==='asst-form'){ev.preventDefault();const ta=$('#chat-text');const t=ta.value.trim();if(!t)return;A.msgs.push({who:'you',text:t});const k=/agent/i.test(t)?'q-agent':/last|token|usage/i.test(t)?'q-last':/time|stamp|when/i.test(t)?'q-time':'other';push(k,()=>{if(k==='q-agent'){const r=A.rows.find(x=>x.t==='session.agent');r.src='"swe-agent"';r.st='ok';r.why='Constant chosen by you in the conversation.'}});rerender();scrollChat();$('#chat-text')?.focus()}
+  else if(act==='asst-preview'){A.previewing=true;rerender();setTimeout(()=>{A.previewing=false;A.step=4;rerender()},900)}
+  else if(act==='asst-save-only'){A.step=1;A.got=false;A.rows=null;A.msgs=[];go('#/import')}
+  else if(act==='asst-save'){A.saving=true;A.saveProgress=0;rerender();const t=setInterval(()=>{A.saveProgress=Math.min(100,(A.saveProgress||0)+8);rerender();if(A.saveProgress>=100){clearInterval(t);A.saving=false;S.justImported=SWE_IMPORT.id;Object.assign(A,{step:1,got:false,rows:null,msgs:[],validated:false});go('#/imports/'+SWE_IMPORT.id)}},120)}
+}
+function scrollChat(){const l=$('.chat-log');if(l)l.scrollTop=l.scrollHeight}
+
+/* =========================================================
+   Screen 7 · Definitions
+   ========================================================= */
+function definitionsPage(){
+  return `<div class="page-head"><div><h1>Definitions</h1><p class="lede">What every number on the dashboard means, in what unit, and when two values may be compared.</p></div></div>
+   <div class="tbl"><table><caption class="sr">Metric definitions</caption><thead><tr><th>Metric</th><th>Definition</th><th>Unit</th><th>Semantics</th><th>Comparability</th></tr></thead><tbody>
+   ${DEFS.map(d=>`<tr id="def-${d[0].toLowerCase().replace(/\s/g,'-')}"><td style="font-weight:500;white-space:nowrap">${d[0]}</td><td>${d[1]}</td><td class="mono">${d[2]}</td><td class="mono">${d[3]}</td><td class="small">${d[4]}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+/* =========================================================
+   Popovers (definitions, one step away)
+   ========================================================= */
+const POPS={
+ 'def-sessions':{h:'Sessions',p:[METRICS.sessions.def],foot:'#/definitions'},
+ 'def-model-calls':{h:'Model calls',p:[METRICS.model_calls.def],foot:'#/definitions'},
+ 'def-input':{h:'Input tokens',p:[METRICS.input_tokens.def,`Exact value ${fmt(METRICS.input_tokens.v)} tokens. By semantics: tracelab-claude ${fmt(479945445)}, tracelab-codex ${fmt(73502432)}.`],foot:'#/definitions'},
+ 'def-output':{h:'Output tokens',p:[METRICS.output_tokens.def,`Exact value ${fmt(METRICS.output_tokens.v)} tokens over 4,741 of 4,770 calls.`],foot:'#/definitions'},
+ 'def-entities':{h:'Records and observations',p:['A source record is one line or row of the file. An observation is one session, model call or tool call the mapping emits from it. A TraceLab record emits one model call and one tool call per <code>tools[]</code> entry, and contributes to one session.']},
+ 'def-warnings':{h:'null and absent',p:['<b>absent</b>: the key was not in the record. <b>null</b>: the key was there with a null value. Both are stored as missing, never as 0 or "", and are counted separately so a schema change in the source is visible.','A field marked <i>required</i> in the mapping rejects the record instead.']},
+ 'def-outcomes':{h:'Record outcomes',p:['<b>accepted</b>: every rule applied. <b>partial</b>: accepted with at least one tolerated warning. <b>duplicate</b>: same bytes already committed for this source, nothing inserted. <b>rejected</b>: a rule refused it, reason recorded. <b>ignored</b>: no rule matched the record.']},
+ 'def-quality':{h:'Quality strip',p:['Counts things that reduce what the KPIs can claim: rejected records, model calls without a usage block (excluded from token sums), tool calls without a timestamp, and tool calls without an enclosing model call. Each links to the rows behind the count.']},
+ 'def-span':{h:'Declared vs observed',p:['<b>Declared</b> is an interval the source states for the session. <b>Observed</b> is the earliest and latest accepted child timestamp. They are shown side by side and never merged; a reversed declared interval is reported as a diagnostic, not corrected.']},
+ 'fmt-sniff':{h:'Format detection',p:['The first bytes identify gzip; the decompressed stream is JSON Lines because each line parses as one object. Parquet is identified by its footer magic. Detection never rewrites the file.']},
+};
+let popAnchor=null;
+function openPop(btn){
+  const id=btn.dataset.pop;const P=POPS[id];if(!P)return;const pop=$('#pop');
+  if(popAnchor===btn){closePop();return}
+  closePop();popAnchor=btn;btn.setAttribute('aria-expanded','true');
+  pop.innerHTML=`<h3 id="pop-title">${P.h}</h3>${P.p.map(x=>`<p class="small">${x}</p>`).join('')}${P.foot?`<div class="foot"><a href="${P.foot}">All definitions</a></div>`:''}`;
+  pop.setAttribute('aria-labelledby','pop-title');pop.hidden=false;
+  const r=btn.getBoundingClientRect();const pw=pop.offsetWidth;let left=r.left+window.scrollX;if(left+pw>window.scrollX+document.documentElement.clientWidth-16)left=window.scrollX+document.documentElement.clientWidth-16-pw;
+  pop.style.top=(r.bottom+window.scrollY+8)+'px';pop.style.left=left+'px';pop.setAttribute('tabindex','-1');pop.focus();
+}
+function closePop(){const pop=$('#pop');if(!pop||pop.hidden)return;pop.hidden=true;if(popAnchor){popAnchor.setAttribute('aria-expanded','false');popAnchor.focus();popAnchor=null}}
+
+/* =========================================================
+   Events
+   ========================================================= */
+document.addEventListener('click',ev=>{
+  const el=ev.target.closest('[data-act]');
+  if(!el){if(!ev.target.closest('#pop'))closePop();const tr=ev.target.closest('tr.link');if(tr&&!ev.target.closest('a,button'))go(tr.dataset.href);return}
+  const act=el.dataset.act;
+  if(act.startsWith('imp-'))return impActions(act,el);
+  if(act.startsWith('asst-')&&act!=='asst-form'&&act!=='asst-edit')return asstActions(act,el,ev);
+  if(act==='pop')return openPop(el);
+  if(act==='drawer-close')return $('#drawer').close();
+  if(act==='source')return openSource(el.dataset.loc);
+  if(act==='reject-payload'){const {parts}=parse();const imp=[...IMPORTS,SWE_IMPORT].find(x=>x.id===parts[1]);const rows=imp.rejects.filter(x=>!S.rep.code||x.code===S.rep.code);return openPayload(imp,imp.rejects.indexOf(rows[Number(el.dataset.i)]))}
+  if(act==='chart'){S.dash.chip={kind:el.dataset.kind,key:el.dataset.key};rerender();const t=$('#sessions');if(t){t.scrollIntoView({behavior:'smooth',block:'start'});}return}
+  if(act==='chip-clear'){S.dash.chip=null;rerender();return}
+  if(act==='retry'){S.demo='sample';$('#demo').value='sample';rerender();return}
+});
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape'&&!$('#pop').hidden){closePop();ev.preventDefault()}
+  if((ev.key==='Enter'||ev.key===' ')&&ev.target.matches('.bar[data-act=chart]')){ev.preventDefault();ev.target.click()}
+  if(ev.key==='Enter'&&ev.target.matches('#chat-text')&&!ev.shiftKey){ev.preventDefault();asstActions('asst-form',ev.target.form,ev)}
+});
+document.addEventListener('input',ev=>{const el=ev.target;if(el.dataset.act==='asst-edit')asstActions('asst-edit',el,ev)});
+document.addEventListener('change',ev=>{const el=ev.target;const act=el.dataset.act;
+  if(el.id==='demo'){S.demo=el.value;S.imp.upload=null;S.imp.step=1;S.imp.mapping=null;S.imp.preview=null;rerender();return}
+  if(act==='imp-pick')return impActions(act,el);
+  if(act==='dash-filter'){S.dash[el.dataset.name]=el.value;rerender();return}
+  if(act==='reject-code'){S.rep.code=el.value;rerender();return}
+});
+document.addEventListener('submit',ev=>{const f=ev.target.closest('[data-act=asst-form]');if(f)asstActions('asst-form',f,ev)});
+$('#drawer').addEventListener('click',ev=>{if(ev.target===ev.currentTarget)ev.currentTarget.close()});
+window.addEventListener('hashchange',route);
+window.addEventListener('resize',closePop);
+route();
+</script>
+</body>
+</html>
