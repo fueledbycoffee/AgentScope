@@ -1,0 +1,127 @@
+"""Exposure control for values that leave the server (ADR-005).
+
+Redaction is applied to values, never to keys: keys are the structure a mapping
+addresses. Replacements keep the shape (``<email>``, ``<token>``, ``<path>``)
+so a model still sees what kind of value was there. A whole string is
+classified before anything truncates it, so a credential is recognised whole
+and a long trace becomes ``<text N chars>`` rather than an excerpt.
+
+This is exposure control, not anonymisation: it removes the well-known shapes
+of secrets and personal locators, it does not claim that what remains
+identifies nobody. Deliberately absent: a generic "long base64/hex run" rule,
+which would destroy the ids (``call_…``, ``round_…``, session ids, UUIDs,
+digests) a mapping needs intact.
+"""
+
+from __future__ import annotations
+
+import re
+from collections import Counter
+from typing import Any, Final
+
+SANITIZER_VERSION: Final = 1
+MAX_TEXT_CHARS: Final = 200
+
+POLICY: Final = (
+    "Values are redacted by shape: private-key blocks, known credential formats "
+    "(OpenAI/OpenRouter/Anthropic keys, GitHub, Slack, AWS, Google, JWT, Bearer "
+    "and key=value assignments), URL credentials, e-mail addresses, home-directory "
+    "paths, IP addresses, and any text longer than 200 characters. Keys are never "
+    "rewritten: a key that would be redacted is withheld together with its subtree. "
+    "Identifiers, UUIDs and digests are kept. This is exposure control, not "
+    "anonymisation."
+)
+
+_PRIVATE_KEY = re.compile(
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)", re.S
+)
+_TOKENS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(r"\bsk-(?:or-|ant-)?[A-Za-z0-9_-]{20,}"),
+    re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}"),
+    re.compile(r"\bxox[abp]-[A-Za-z0-9-]{10,}"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{30,}"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b"),
+)
+_BEARER = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}")
+_ASSIGNMENT = re.compile(
+    r"(?i)\b((?:authorization|api[_-]?key|api[_-]?token|access[_-]?token|secret|password"
+    r"|passwd|token)['\"]?)(\s*[:=]\s*)['\"]?(?!Bearer\b)([^\s'\",;]{6,})['\"]?"
+)
+_URL_CREDENTIALS = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)([^/\s@]+)@")
+_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_PATH = re.compile(
+    r"(?<![\w/])(?:/Users/[^\s\"'`]+|/home/[^\s\"'`]+|/root(?:/[^\s\"'`]*)?"
+    r"|~/[^\s\"'`]+|[A-Za-z]:\\Users\\[^\s\"'`]+)"
+)
+_IPV4 = re.compile(r"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.])")
+_IPV6 = re.compile(
+    r"(?<![\w:])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}"
+    r"|(?:[0-9A-Fa-f]{1,4}:){1,6}:(?:[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,5})?)(?![\w:])"
+)
+
+
+def _ipv4(m: re.Match[str]) -> str:
+    octets = [int(g) for g in m.groups()]
+    if any(o > 255 for o in octets) or octets[0] == 127 or octets == [0, 0, 0, 0]:
+        return m.group(0)
+    return "<ip>"
+
+
+def _ipv6(m: re.Match[str]) -> str:
+    return m.group(0) if m.group(0) in {"::1", "::"} else "<ip>"
+
+
+def redact_text(text: str, *, long_text: bool = True) -> tuple[str, Counter[str]]:
+    """Return the redacted text and the number of replacements per reason.
+
+    ``long_text=False`` skips the length rule (used for key names, whose length
+    the profiler bounds itself).
+    """
+    counts: Counter[str] = Counter()
+
+    def sub(pattern: re.Pattern[str], reason: str, repl: str) -> None:
+        nonlocal text
+        text, n = pattern.subn(repl, text)
+        if n:
+            counts[reason] += n
+
+    original_length = len(text)
+    sub(_PRIVATE_KEY, "private_key", "<private-key>")
+    for pattern in _TOKENS:
+        sub(pattern, "token", "<token>")
+    sub(_BEARER, "token", "Bearer <token>")
+    sub(_ASSIGNMENT, "token", r"\1\2<token>")
+    sub(_URL_CREDENTIALS, "credentials", r"\1<credentials>@")
+    sub(_EMAIL, "email", "<email>")
+    sub(_PATH, "path", "<path>")
+    for pattern, repl in ((_IPV4, _ipv4), (_IPV6, _ipv6)):
+        before = text
+        text = pattern.sub(repl, text)
+        replaced = text.count("<ip>") - before.count("<ip>")
+        if replaced:
+            counts["ip"] += replaced
+    if long_text and original_length > MAX_TEXT_CHARS:
+        counts["long_text"] += 1
+        text = f"<text {original_length} chars>"
+    return text, counts
+
+
+def sanitize(value: Any) -> tuple[Any, dict[str, int]]:
+    """Redact every string inside a JSON value; keys and container shapes are kept."""
+    counts: Counter[str] = Counter()
+    result = _sanitize(value, counts)
+    return result, dict(sorted(counts.items()))
+
+
+def _sanitize(value: Any, counts: Counter[str]) -> Any:
+    if isinstance(value, str):
+        text, found = redact_text(value)
+        counts.update(found)
+        return text
+    if isinstance(value, dict):
+        return {key: _sanitize(item, counts) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_sanitize(item, counts) for item in value]
+    return value
