@@ -991,3 +991,45 @@ def test_defaults_are_canonical_values_on_every_missing_path() -> None:
     )
     assert present.emissions[0].fields["model"] == "gpt"
     assert present.emissions[0].fields["started_at"] == datetime(2026, 2, 1, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("source_format", ["epoch_ms", "epoch_s", "iso8601"])
+def test_timestamp_defaults_are_iso8601_regardless_of_source_format(source_format: str) -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "model_call",
+                "entity": "model_call",
+                "select": "$",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "started_at": {
+                        "path": "$.ts",
+                        "timestamp_format": source_format,
+                        "on_missing": "default",
+                        "default": "2026-01-01T00:00:00Z",
+                    },
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    missing = apply_mapping(spec, {"sid": "s"}, file_sha256="f", locator="line:1")
+    assert missing.rejects == ()
+    assert missing.emissions[0].fields["started_at"] == datetime(2026, 1, 1, tzinfo=UTC)
+    source_values = {
+        "epoch_ms": 1767225600000,
+        "epoch_s": 1767225600,
+        "iso8601": "2026-01-01T00:00:00Z",
+    }
+    present = apply_mapping(
+        spec, {"sid": "s", "ts": source_values[source_format]}, file_sha256="f", locator="line:2"
+    )
+    assert present.rejects == ()
+    assert present.emissions[0].fields["started_at"] == datetime(2026, 1, 1, tzinfo=UTC)

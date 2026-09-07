@@ -371,7 +371,10 @@ def _evaluate(
             # Exact unit conversion first (ints, floats and numeric strings); the strict
             # coercion below then rejects anything not integral instead of rounding.
             value = convert_duration(value, fm.unit_from, fm.unit_to)
-        value = coerce(value, fm.type, timestamp_format=fm.timestamp_format)
+        # A default is canonical, so a timestamp default is always ISO-8601 regardless
+        # of the source's timestamp_format.
+        fmt = "iso8601" if from_default else fm.timestamp_format
+        value = coerce(value, fm.type, timestamp_format=fmt)
     except ConversionError as exc:
         return _on_invalid(fm, exc, rule, occurrence, warnings)
     target_unit = TARGET_SCHEMA[rule.entity].fields[fm.target].unit
