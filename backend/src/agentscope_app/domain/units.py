@@ -31,9 +31,19 @@ TIMESTAMP_FORMATS: Final = ("iso8601", "epoch_s", "epoch_ms")
 # Converted durations must stay below 10^19 target units (about 300 million years
 # in ms); anything larger is out of range rather than a multi-megabyte integer.
 MAX_DURATION_MAGNITUDE: Final = Decimal(10) ** 19
+# Same bound for every integer measure: fits a signed 64-bit column and keeps
+# a decimal exponent from expanding into a huge int.
+MAX_INTEGER_MAGNITUDE: Final = 10**19
+MAX_INTEGER_DIGITS: Final = 19  # Decimal.adjusted() >= 19 means |value| >= 10**19
 _TRUE: Final = frozenset({"true", "1", "yes", "y", "t"})
 _FALSE: Final = frozenset({"false", "0", "no", "n", "f"})
 _INT_STRING: Final = re.compile(r"-?\d{1,18}")
+
+
+def _bounded_int(value: int) -> int:
+    if abs(value) >= MAX_INTEGER_MAGNITUDE:
+        raise ConversionError("out_of_range", f"{value} exceeds the supported integer range")
+    return value
 
 
 def convert_duration(value: Any, from_unit: str, to_unit: str) -> int | Decimal:
@@ -49,7 +59,7 @@ def convert_duration(value: Any, from_unit: str, to_unit: str) -> int | Decimal:
         raise ConversionError(
             "unknown_unit", f"Unknown duration unit: {from_unit!r} -> {to_unit!r}"
         )
-    if isinstance(value, bool) or not isinstance(value, int | float | str):
+    if isinstance(value, bool) or not isinstance(value, int | float | str | Decimal):
         raise ConversionError("invalid_type", f"Cannot convert {value!r} to a duration")
     try:
         with localcontext() as ctx:
@@ -58,7 +68,9 @@ def convert_duration(value: Any, from_unit: str, to_unit: str) -> int | Decimal:
             ctx.traps[Overflow] = True
             ctx.traps[Underflow] = True
             ctx.traps[Subnormal] = True
-            if isinstance(value, int):
+            if isinstance(value, Decimal):
+                exact = value
+            elif isinstance(value, int):
                 exact = Decimal(value)
             elif isinstance(value, float):
                 exact = Decimal(repr(value))
@@ -125,19 +137,27 @@ def coerce(value: Any, field_type: FieldType, *, timestamp_format: str | None = 
             return str(value)
     elif field_type is FieldType.INTEGER:
         if isinstance(value, int):
-            return value
+            return _bounded_int(value)
         if isinstance(value, Decimal):
-            if value.is_finite() and value == value.to_integral_value():
-                return int(value)
-            raise ConversionError("invalid_type", f"Cannot convert {value} to integer exactly")
+            if not value.is_finite():
+                raise ConversionError("nonfinite_value", f"{value} is not a finite number")
+            # adjusted() reads the exponent without arithmetic, so a huge exponent
+            # is refused before any context operation can overflow or expand it.
+            if value.adjusted() >= MAX_INTEGER_DIGITS:
+                raise ConversionError("out_of_range", f"{value} exceeds the supported range")
+            if value != value.to_integral_value():
+                raise ConversionError("invalid_type", f"Cannot convert {value} to integer exactly")
+            return _bounded_int(int(value))
         if isinstance(value, float) and value.is_integer():
-            return int(value)
+            return _bounded_int(int(value))
         if isinstance(value, str) and _INT_STRING.fullmatch(value.strip()):
-            return int(value.strip())
+            return _bounded_int(int(value.strip()))
     elif field_type is FieldType.NUMBER:
         if isinstance(value, int | float):
             return value
         if isinstance(value, Decimal) and value.is_finite():
+            if value.adjusted() >= MAX_INTEGER_DIGITS:
+                raise ConversionError("out_of_range", f"{value} exceeds the supported range")
             return float(value)
         if isinstance(value, str):
             try:

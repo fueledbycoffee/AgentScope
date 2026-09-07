@@ -141,3 +141,19 @@ def test_coerce_handles_exact_decimals() -> None:
     assert coerce(Decimal("2.5"), FieldType.NUMBER) == 2.5
     with pytest.raises(ConversionError):
         coerce(Decimal("1000.00000000000001"), FieldType.INTEGER)
+
+
+def test_integer_coercion_is_bounded_before_expansion() -> None:
+    for huge in (Decimal("1e10000000"), Decimal("1e50000"), Decimal("1e19"), 10**19):
+        with pytest.raises(ConversionError, match="range"):
+            coerce(huge, FieldType.INTEGER)
+    assert coerce("9" * 18, FieldType.INTEGER) == int("9" * 18)
+    assert coerce(Decimal("1e18"), FieldType.INTEGER) == 10**18
+    assert coerce(10**18, FieldType.INTEGER) == 10**18
+    with pytest.raises(ConversionError):
+        coerce(Decimal("1e10000000"), FieldType.NUMBER)
+
+
+def test_convert_duration_accepts_exact_decimals() -> None:
+    assert convert_duration(Decimal("1.5"), "s", "ms") == 1500
+    assert convert_duration(Decimal("1.0"), "s", "ms") == 1000

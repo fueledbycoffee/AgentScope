@@ -777,3 +777,56 @@ def test_json_decode_fractions_never_become_integer_tokens() -> None:
     )
     assert ok.rejects == () and ok.emissions[0].fields["input_tokens"] == 12
     assert ok.emissions[0].fields["model"] == "1.5"
+
+
+def test_json_decoded_numbers_are_bounded_and_convert_units() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "model_call",
+                "entity": "model_call",
+                "select": "$",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "input_tokens": {
+                        "path": "$.tokens",
+                        "transforms": ["json_decode"],
+                        "on_invalid": "null",
+                    },
+                },
+            },
+            {
+                "id": "tool_call",
+                "entity": "tool_call",
+                "select": "$.tools[*]",
+                "parent": "model_call",
+                "fields": {
+                    "tool_name": {"literal": "t"},
+                    "wall_latency_ms": {
+                        "path": "$.secs",
+                        "transforms": ["json_decode"],
+                        "unit": {"from": "s", "to": "ms"},
+                    },
+                },
+            },
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    record = {
+        "sid": "s",
+        "tokens": "1e10000000",
+        "tools": [{"secs": "1.5"}, {"secs": "1.0"}, {"secs": "1"}],
+    }
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    assert result.rejects == ()
+    call = next(e for e in result.emissions if e.entity == "model_call")
+    assert call.fields["input_tokens"] is None
+    assert [(w.code, w.field) for w in result.warnings] == [("invalid_value", "input_tokens")]
+    tools = [e.fields["wall_latency_ms"] for e in result.emissions if e.entity == "tool_call"]
+    assert tools == [1500, 1000, 1000]
