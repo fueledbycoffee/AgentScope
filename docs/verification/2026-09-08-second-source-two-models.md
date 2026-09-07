@@ -159,8 +159,10 @@ richer, with `token_semantics: unknown`, `is_error`, latency and status fields
 mapped to source columns the audit shows are mostly null),
 `swe-chat-conversations-v1-a.json` (A-conversations-6: the minimal set). Each
 carries an `.expected.json` with the outcomes computed on the synthetic
-SWE-shaped table (sessions: 3 accepted, 3 session emissions; conversations:
-6 rows accepted, 1 session, 2 model calls, 1 tool call). None is bundled under
+SWE-shaped table (sessions: 3 rows accepted, 3 session emissions;
+conversations, 6 rows: B's unconditional session rule accepts all 6, A's
+`is_first_turn` predicate accepts 3 and ignores 3; both yield 1 session,
+2 model calls, 1 tool call). None is bundled under
 `backend/mappings/` yet: the conversations semantics (thinking rows as calls;
 result rows dropped) are a reviewer's choice for this excerpt, recorded here,
 and belong to the source's own documentation before they ship as defaults
