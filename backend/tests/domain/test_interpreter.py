@@ -944,3 +944,50 @@ def test_transformed_empty_strings_follow_empty_as_missing() -> None:
     assert result.emissions == ()
     assert [(r.code, r.field) for r in result.rejects] == [("missing_value", "external_id")]
     assert "empty" in result.rejects[0].message
+
+
+def test_defaults_are_canonical_values_on_every_missing_path() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "model_call",
+                "entity": "model_call",
+                "select": "$",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "model": {
+                        "path": "$.model",
+                        "transforms": ["json_decode"],
+                        "on_missing": "default",
+                        "default": "unknown",
+                    },
+                    "started_at": {
+                        "path": "$.ts",
+                        "transforms": ["trim"],
+                        "on_missing": "default",
+                        "default": "2026-01-01T00:00:00Z",
+                    },
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    for record in ({"sid": "s"}, {"sid": "s", "model": None}, {"sid": "s", "model": "null"}):
+        result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+        assert result.rejects == (), record
+        assert result.emissions[0].fields["model"] == "unknown", record
+        assert result.emissions[0].fields["started_at"] == datetime(2026, 1, 1, tzinfo=UTC)
+    present = apply_mapping(
+        spec,
+        {"sid": "s", "model": '"gpt"', "ts": " 2026-02-01T00:00:00Z "},
+        file_sha256="f",
+        locator="line:2",
+    )
+    assert present.emissions[0].fields["model"] == "gpt"
+    assert present.emissions[0].fields["started_at"] == datetime(2026, 2, 1, tzinfo=UTC)

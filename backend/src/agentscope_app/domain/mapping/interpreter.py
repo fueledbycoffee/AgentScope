@@ -336,24 +336,38 @@ def _evaluate(
         and value.strip() == ""
     ):
         state = "empty"
+    # A default is a canonical value: it skips transforms and unit conversion (they
+    # describe the source encoding) but is still coerced to the target type. The
+    # same rule applies whether the value was missing at the source or became null
+    # or empty after a transform.
+    from_default = False
     if state != "present":
         value = _missing_outcome(fm, state, rule, occurrence, warnings)
         if value is MISSING:
             return None
+        from_default = True
     try:
-        for transform in fm.transforms:
-            value = apply_transform(transform, value)
-            if value is None:  # a transform produced null: same policy as a source null
-                value = _missing_outcome(fm, "null", rule, occurrence, warnings)
-                if value is MISSING:
-                    return None
-                break  # the default replaces the value; remaining transforms do not apply
-        if fm.empty_as_missing and isinstance(value, str) and value.strip() == "":
+        if not from_default:
+            for transform in fm.transforms:
+                value = apply_transform(transform, value)
+                if value is None:  # a transform produced null: same policy as a source null
+                    value = _missing_outcome(fm, "null", rule, occurrence, warnings)
+                    if value is MISSING:
+                        return None
+                    from_default = True
+                    break
+        if (
+            not from_default
+            and fm.empty_as_missing
+            and isinstance(value, str)
+            and value.strip() == ""
+        ):
             # A transform may produce an empty string (json_decode of '""'): same policy.
             value = _missing_outcome(fm, "empty", rule, occurrence, warnings)
             if value is MISSING:
                 return None
-        if fm.unit_from and fm.unit_to:
+            from_default = True
+        if not from_default and fm.unit_from and fm.unit_to:
             # Exact unit conversion first (ints, floats and numeric strings); the strict
             # coercion below then rejects anything not integral instead of rounding.
             value = convert_duration(value, fm.unit_from, fm.unit_to)

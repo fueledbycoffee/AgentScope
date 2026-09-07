@@ -129,7 +129,7 @@ Grammar: `("$" | "@root") ("." name | "[" n "]" | "[*]")*`, at most 16 segments.
 | `unit` | none | `{"from": "s", "to": "ms"}`; only for `ms` fields, `to` must be `ms`; units `ns`, `us`, `ms`, `s`, `min`. Conversion happens before type coercion and never rounds: a result that is not a whole millisecond is invalid |
 | `empty_as_missing` | `false` | Treat an empty string as missing |
 | `on_missing` | `null` | `null` (store null, warn), `default` (use `default`), `reject` (reject the whole emission) |
-| `default` | | Required when `on_missing` is `default`. Measurement fields (tokens, milliseconds) accept only a `null` default: a number would turn a missing value into a measured one |
+| `default` | | Required when `on_missing` is `default`. A default is written in canonical terms: it skips `transforms` and `unit` (those describe the source encoding) but is still coerced to the target type. Measurement fields (tokens, milliseconds) accept only a `null` default: a number would turn a missing value into a measured one |
 | `on_invalid` | `reject` | What to do when a transform or conversion fails: `null` (store null, warn) or `reject` |
 | `bounds` | none | `min` or `max`: timestamp fields only, with a `path` containing `[*]`; takes the earliest or latest of the selected timestamps (null entries ignored). This is the only extraction over a nested collection the DSL allows, because event arrays are not guaranteed to be chronological |
 
