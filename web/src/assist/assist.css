@@ -1,0 +1,82 @@
+/* Assistant page: evidence rail | editor + actions | conversation. Console tokens only. */
+.assist {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(300px, 380px);
+  gap: var(--sp-4);
+  align-items: start;
+}
+@media (max-width: 1280px) {
+  .assist { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
+  .assist-rail { grid-column: 1 / -1; }
+}
+.assist-rail, .assist-editor, .assist-actions, .chat {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  padding: var(--sp-3);
+  min-width: 0;
+}
+.assist .panel-head { display: flex; align-items: center; gap: var(--sp-2); }
+.assist .panel-head h2 { margin: 0; flex: 1; font-size: 1rem; }
+.assist .muted { color: var(--ink-2); }
+.assist .ok { color: var(--ok); }
+.assist table.compact td, .assist table.compact th { padding: 2px 6px; font-size: 0.85rem; }
+.assist .types .chip, .assist td .chip { margin-right: 4px; }
+.assist .examples { margin: 4px 0 0; padding-left: 0; list-style: none; font-size: 0.8rem; }
+.assist .examples li { overflow-wrap: anywhere; }
+.assist .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; }
+.assist .kv dt { color: var(--ink-2); }
+.assist .kv dd { margin: 0; overflow-wrap: anywhere; }
+
+/* editor */
+.assist-editor .editor {
+  width: 100%;
+  min-height: 420px;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  background: var(--bg);
+  color: var(--ink);
+  tab-size: 2;
+}
+.assist-editor .editor[aria-invalid="true"] { border-color: var(--bad); }
+.assist-editor .issues ul { padding-left: 0; list-style: none; margin: var(--sp-2) 0 0; }
+.assist-editor .issue { padding: 2px 0; font-size: 0.85rem; }
+.assist-editor .issue.error code { color: var(--bad); }
+.assist-editor .issue.warn code { color: var(--warn); }
+.assist-editor .issue .code { color: var(--ink-2); margin: 0 6px; }
+.assist-editor .link { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; color: inherit; font: inherit; }
+
+/* actions */
+.assist-actions .actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: flex-start; }
+.assist-actions .gate { display: flex; flex-direction: column; gap: 2px; max-width: 200px; }
+.assist-actions .gate-reason { font-size: 0.78rem; }
+.assist-actions .receipt, .assist-actions .preview-summary { margin-top: var(--sp-3); }
+
+/* conversation (the library's primitives render plain elements with these classes) */
+.chat { display: flex; flex-direction: column; min-height: 520px; max-height: calc(100vh - 160px); }
+.chat-viewport { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-2); padding-right: 4px; }
+.chat-empty, .chat-status, .chat-disabled { color: var(--ink-2); font-size: 0.85rem; margin: 0; }
+.chat-msg { border-radius: var(--r-2); padding: var(--sp-2) var(--sp-3); max-width: 92%; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9rem; }
+.chat-msg-user { align-self: flex-end; background: var(--accent-soft); color: var(--ink); }
+.chat-msg-assistant { align-self: flex-start; background: var(--surface-2); color: var(--ink); }
+.chat-meta { margin: 6px 0 0; font-size: 0.75rem; color: var(--ink-2); }
+.chat-composer { display: flex; gap: var(--sp-2); align-items: flex-end; margin-top: var(--sp-2); }
+.chat-input {
+  flex: 1;
+  min-height: 44px;
+  max-height: 160px;
+  resize: vertical;
+  font: inherit;
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  background: var(--bg);
+  color: var(--ink);
+}
+.chat-input:focus-visible, .assist-editor .editor:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.chat-msg-assistant > :nth-child(2) { margin-top: 6px; font-size: 0.75rem; color: var(--ink-2); }

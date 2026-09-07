@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
@@ -8,6 +7,7 @@ import {
   type AppendMessage,
   type ThreadMessageLike,
 } from '@assistant-ui/react'
+import { Icon } from '../components'
 
 /** One turn of the assistant conversation as the page stores it (also what the API's `history` needs). */
 export interface ChatTurn {
@@ -23,18 +23,40 @@ export interface ConversationProps {
   busy: boolean
   /** Called with the composer text when the user sends; the page owns what happens next. */
   onSend: (text: string) => void
+  /** When set, the composer is disabled and shows why. */
   disabledReason?: string
+  status?: string
 }
 
+/** The receipt travels as a second text part so it renders under the reply, styled by position. */
 function toThreadMessage(turn: ChatTurn): ThreadMessageLike {
-  return { id: turn.id, role: turn.role, content: [{ type: 'text', text: turn.content }] }
+  const content: { type: 'text'; text: string }[] = [{ type: 'text', text: turn.content }]
+  if (turn.meta) content.push({ type: 'text', text: turn.meta })
+  return { id: turn.id, role: turn.role, content }
+}
+
+function UserMessage() {
+  return (
+    <MessagePrimitive.Root className="chat-msg chat-msg-user">
+      <MessagePrimitive.Parts />
+    </MessagePrimitive.Root>
+  )
+}
+
+function AssistantMessage() {
+  return (
+    <MessagePrimitive.Root className="chat-msg chat-msg-assistant">
+      <MessagePrimitive.Parts />
+    </MessagePrimitive.Root>
+  )
 }
 
 /**
  * The conversation panel, built on @assistant-ui/react primitives over an external store:
  * the page owns the turns and the pending state; the library renders thread and composer.
+ * Everything typed here goes to the server as data (redacted, digest-bound), never as an instruction.
  */
-export function Conversation({ turns, busy, onSend, disabledReason }: ConversationProps) {
+export function Conversation({ turns, busy, onSend, disabledReason, status }: ConversationProps) {
   const runtime = useExternalStoreRuntime<ChatTurn>({
     messages: turns,
     isRunning: busy,
@@ -48,52 +70,31 @@ export function Conversation({ turns, busy, onSend, disabledReason }: Conversati
       if (text) onSend(text)
     },
   })
-  const metaById = useMemo(() => new Map(turns.map(t => [t.id, t.meta])), [turns])
+  const disabled = busy || disabledReason !== undefined
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="chat" aria-label="Assistant conversation">
-        <ThreadPrimitive.Viewport className="chat-viewport">
+        <ThreadPrimitive.Viewport className="chat-viewport" role="log" aria-live="polite" aria-label="Conversation">
           <ThreadPrimitive.Empty>
-            <p className="chat-empty">Ask for an analysis to start. Everything you type is sent as data with the profile.</p>
+            <p className="chat-empty">Send a request to start, for example “Propose a mapping for this file”. Your text is sent as data with the profile.</p>
           </ThreadPrimitive.Empty>
-          <ThreadPrimitive.Messages
-            components={{
-              UserMessage: () => (
-                <MessagePrimitive.Root className="chat-msg chat-msg-user">
-                  <MessagePrimitive.Parts />
-                </MessagePrimitive.Root>
-              ),
-              AssistantMessage: () => (
-                <MessagePrimitive.Root className="chat-msg chat-msg-assistant">
-                  <MessagePrimitive.Parts />
-                  <MessagePrimitive.If hasContent>
-                    <span className="chat-meta" data-meta-for={metaById.size} />
-                  </MessagePrimitive.If>
-                </MessagePrimitive.Root>
-              ),
-            }}
-          />
+          <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
         </ThreadPrimitive.Viewport>
+        {status && <p className="chat-status" role="status">{status}</p>}
         <ComposerPrimitive.Root className="chat-composer">
           <ComposerPrimitive.Input
             className="chat-input"
-            placeholder={disabledReason ?? 'Ask a question or request a change'}
+            placeholder={disabledReason ?? 'Ask a question or request a change (Enter to send, Shift+Enter for a new line)'}
             aria-label="Message to the assistant"
-            disabled={busy || disabledReason !== undefined}
+            disabled={disabled}
             submitOnEnter
           />
-          <ComposerPrimitive.Send
-            className="icon-button"
-            aria-label="Send"
-            data-tip="Send"
-            disabled={busy || disabledReason !== undefined}
-          >
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M2 8h12M9 3l5 5-5 5" />
-            </svg>
+          <ComposerPrimitive.Send className="btn small icon-only has-tip" aria-label="Send" data-tip="Send" disabled={disabled}>
+            <Icon name="play" />
           </ComposerPrimitive.Send>
         </ComposerPrimitive.Root>
+        {disabledReason && <p className="chat-disabled">{disabledReason}</p>}
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   )

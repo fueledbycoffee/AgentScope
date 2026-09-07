@@ -5,6 +5,7 @@ import { FileBar, ScopeBar, ScopeReceipt } from './components'
 import { ShellProvider } from './shellContext'
 import { useShellContext } from './shellHooks'
 import DefinitionsPage from './pages/Definitions'
+import AssistPage from './pages/Assist'
 import ImportPage from './pages/Import'
 import { ImportsPage, ReportPage } from './pages/Imports'
 import MappingsPage from './pages/Mappings'
@@ -37,6 +38,7 @@ export default function App() {
       <Route path="/sessions" element={<SessionsPage />} />
       <Route path="/sessions/:id" element={<SessionPage />} />
       <Route path="/import" element={<ImportPage />} />
+      <Route path="/import/assist/:uploadId" element={<AssistPage />} />
       <Route path="/imports" element={<ImportsPage />} />
       <Route path="/imports/:id" element={<ReportPage />} />
       <Route path="/mappings" element={<MappingsPage />} />

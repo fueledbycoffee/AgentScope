@@ -111,6 +111,11 @@ export default function ImportPage() {
       </select>
       {mappings.data && !mappings.data.some(item => item.input_format === upload.format) &&
         <p>No mappings available for {upload.format}.</p>}
+      <p className="row">
+        <IconButton name="braces" label="Draft a mapping with the assistant" className="btn has-tip" data-tip="Draft a mapping with the assistant" disabled={!!busy}
+          onClick={() => navigate(`/import/assist/${encodeURIComponent(upload.upload_id)}`, { state: { upload } })} />
+        <span className="muted">No mapping fits? Let the assistant propose one from this file's profile.</span>
+      </p>
       <button className="btn" disabled={!!busy || !mapping} onClick={() => {
         setPreview(undefined)
         void run('Previewing…', async () => setPreview(await previewImport({ upload_id: upload.upload_id, mapping_id: mappingId, sample: 200 })))
