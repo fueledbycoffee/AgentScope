@@ -243,3 +243,149 @@ def test_end_to_end_commit_over_the_fixture_then_reimport(engine: Any, tmp_path:
     assert after.model_calls.value == 4770 and after.sessions.value == 80  # nothing doubled
     with uow_factory() as uow:
         assert [r.status for r in uow.imports.list(10, 0)] == ["duplicate", "committed"]
+
+
+def _pipeline(engine: Any, tmp_path: Path) -> tuple[Any, Any, Any, Any, Any]:
+    uow_factory = make_uow_factory(engine)
+    with uow_factory() as uow:
+        uow.mappings.add(mapping_record())
+        uow.commit()
+    store = FilesystemRawFileStore(tmp_path / "raw")
+    reader = JsonlRecordReader()
+    clock, ids = UtcClock(), UuidIdGenerator()
+    return (
+        uow_factory,
+        StoreUpload(uow_factory, store, reader, clock, ids),
+        CommitImport(uow_factory, store, reader, clock, ids),
+        store,
+        reader,
+    )
+
+
+def _tracelab_line(session: str, extra: str = "") -> bytes:
+    return (
+        f'{{"provider": "claude", "session_id": "claude:{session}", "round_index": 0, "model": "m",'
+        f' "input_tokens_total": 10, "output_tokens": 1, "timing_events": [{{"timestamp":'
+        f' "2026-05-11T06:40:00Z"}}], "tools": [], "user": "u",'
+        f' "trace_key": "k-{session}"{extra}}}\n'
+    ).encode()
+
+
+def test_decimal_payloads_round_trip_through_json_columns(engine: Any, tmp_path: Path) -> None:
+    uow_factory, upload, commit, _, _ = _pipeline(engine, tmp_path)
+    lines = b"".join(_tracelab_line(f"s{i}") for i in range(25))  # past the 20-record preview
+    lines += _tracelab_line("s25", ', "extra": 1.00000000000000001, "big": 9007199254740993')
+    info = upload.execute("dec.jsonl", lines)
+    report = commit.execute(info.upload_id, "map_tracelab", "tracelab")
+    assert report.status == "committed", report.error
+    with uow_factory() as uow:
+        payload = uow.traces.raw_record(info.sha256, "line:26")
+    from decimal import Decimal
+
+    assert payload["extra"] == Decimal("1.00000000000000001") and payload["big"] == 9007199254740993
+
+
+def test_committed_uniqueness_is_a_database_guarantee(engine: Any) -> None:
+    uow_factory = make_uow_factory(engine)
+    with uow_factory() as uow:
+        uow.mappings.add(mapping_record())
+        uow.commit()
+    from dataclasses import replace
+
+    from agentscope_app.application.dto import FileInfo
+    from agentscope_app.application.errors import ConflictError
+
+    file_info = FileInfo("a.jsonl", "a" * 64, 1, "jsonl", 1)
+    first = replace(_report("imp_a", "tracelab"), files=(file_info,))
+    second = replace(_report("imp_b", "tracelab"), files=(file_info,), status="running")
+    with uow_factory() as uow:
+        uow.imports.add_report(first)
+        uow.commit()
+    with uow_factory() as uow:
+        uow.imports.add_report(second)
+        with pytest.raises(ConflictError):
+            uow.imports.update_report(replace(second, status="committed"))
+        uow.rollback()
+    with uow_factory() as uow:  # a different source is fine
+        other = replace(_report("imp_c", "other"), files=(file_info,))
+        uow.imports.add_report(other)
+        uow.commit()
+        assert [r.import_id for r in uow.imports.find_committed_any("a" * 64)] == ["imp_a", "imp_c"]
+
+
+def test_results_insert_in_bounded_batches_at_the_record_cap(engine: Any) -> None:
+    uow_factory = make_uow_factory(engine)
+    from dataclasses import replace
+
+    from agentscope_app.application.dto import FileInfo, RecordOutcome
+
+    with uow_factory() as uow:
+        uow.mappings.add(mapping_record())
+        uow.commit()
+    outcomes = [
+        RecordOutcome(f"line:{i}", "accepted", {"session": 1}, {}, {"i": i})
+        for i in range(1, 100_001)
+    ]
+    with uow_factory() as uow:
+        uow.imports.add_report(
+            replace(
+                _report("imp_big", "tracelab"),
+                files=(FileInfo("b", "b" * 64, 1, "jsonl", 100_000),),
+            )
+        )
+        uow.imports.add_results("imp_big", "b" * 64, outcomes, [])
+        uow.commit()
+    with uow_factory() as uow:
+        assert uow.traces.raw_record("b" * 64, "line:100000") == {"i": 100000}
+
+
+def test_cross_file_session_merge_keeps_reducer_rules(engine: Any) -> None:
+    uow_factory = make_uow_factory(engine)
+    with uow_factory() as uow:
+        uow.mappings.add(mapping_record())
+        uow.commit()
+    from datetime import datetime as dt
+
+    def session_emission(line: int, **fields: Any) -> Emission:
+        return Emission(
+            "session",
+            "session",
+            SourceOccurrence("f" * 64, f"line:{line}", "session"),
+            {"external_id": "s", **fields},
+            ("s",),
+        )
+
+    noon = dt(2026, 1, 1, 12, tzinfo=UTC)
+    ten = dt(2026, 1, 1, 10, tzinfo=UTC)
+    with uow_factory() as uow:
+        uow.imports.add_report(_report("imp_1", "tracelab"))
+        e = [session_emission(1, repo="repo-a", started_at=noon)]
+        uow.traces.store(
+            import_id="imp_1",
+            file_sha256="f" * 64,
+            source="tracelab",
+            mapping_id="map_tracelab",
+            emissions=e,
+            sessions=reduce_sessions(e),
+        )
+        uow.commit()
+    with uow_factory() as uow:
+        uow.imports.add_report(_report("imp_2", "tracelab"))
+        e = [session_emission(1, repo="repo-b", ended_at=ten)]
+        uow.traces.store(
+            import_id="imp_2",
+            file_sha256="g" * 64,
+            source="tracelab",
+            mapping_id="map_tracelab",
+            emissions=e,
+            sessions=reduce_sessions(e),
+        )
+        uow.commit()
+    sessions = ListSessions(uow_factory).execute(source="tracelab", agent=None, limit=10, offset=0)
+    detail = GetSession(uow_factory).execute(sessions[0].id)
+    assert detail.repo == "repo-a" and detail.declared_started_at == noon
+    assert detail.declared_ended_at is None
+    assert sorted((d.code, d.field) for d in detail.diagnostics) == [
+        ("conflicting_value", "repo"),
+        ("reversed_interval", "ended_at"),
+    ]

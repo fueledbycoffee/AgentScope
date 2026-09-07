@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import func, insert, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from agentscope_app.application.dto import (
@@ -32,6 +33,7 @@ from agentscope_app.application.dto import (
 from agentscope_app.application.dto import (
     RawRecord as RawRecordDTO,
 )
+from agentscope_app.application.errors import ConflictError
 from agentscope_app.domain.mapping.interpreter import Emission
 from agentscope_app.domain.reducer import SessionAggregate
 from agentscope_app.infrastructure.db import models as m
@@ -84,7 +86,7 @@ class SqlAlchemyUploads:
         if row is None:
             return None
         raw_file = self._s.get(m.RawFile, row.sha256)
-        already = SqlAlchemyImports(self._s).find_committed_any_source(row.sha256)
+        already = SqlAlchemyImports(self._s).find_committed_any(row.sha256)
         return UploadInfo(
             upload_id=row.id,
             filename=row.filename,
@@ -162,7 +164,7 @@ class SqlAlchemyImports:
         )
         return [ImportRef(r.id, r.started_at) for r in self._s.scalars(stmt)]
 
-    def find_committed_any_source(self, file_sha256: str) -> Sequence[ImportRef]:
+    def find_committed_any(self, file_sha256: str) -> Sequence[ImportRef]:
         stmt = (
             select(m.Import)
             .join(m.ImportFile, m.ImportFile.import_id == m.Import.id)
@@ -189,6 +191,7 @@ class SqlAlchemyImports:
                 error=report.error,
             )
         )
+        self._s.flush()  # parents before children: no relationships declare the order
         for f in report.files:
             if self._s.get(m.RawFile, f.sha256) is None:
                 self._s.add(
@@ -196,11 +199,14 @@ class SqlAlchemyImports:
                         sha256=f.sha256, size_bytes=f.size_bytes, storage_key="", created_at=_now()
                     )
                 )
+                self._s.flush()
             self._s.add(
                 m.ImportFile(
                     id=_new_id("if"),
                     import_id=report.import_id,
                     sha256=f.sha256,
+                    source=report.source,
+                    committed=report.status == "committed",
                     filename=f.filename,
                     size_bytes=f.size_bytes,
                     format=f.format,
@@ -220,7 +226,17 @@ class SqlAlchemyImports:
         row.warnings = dict(report.warnings)
         row.reject_count = report.reject_count
         row.error = report.error
-        self._s.flush()
+        if report.status == "committed":
+            for f in self._s.scalars(
+                select(m.ImportFile).where(m.ImportFile.import_id == report.import_id)
+            ):
+                f.committed = True
+        try:
+            self._s.flush()
+        except IntegrityError as exc:
+            raise ConflictError(
+                "Another import of the same bytes for this source was committed concurrently"
+            ) from exc
 
     def add_results(
         self,
@@ -229,16 +245,16 @@ class SqlAlchemyImports:
         outcomes: Sequence[RecordOutcome],
         rejects: Sequence[RejectRow],
     ) -> None:
-        if outcomes:
+        raw_stmt = sqlite_insert(m.RawRecord).on_conflict_do_nothing(
+            index_elements=["file_sha256", "locator"]
+        )
+        for chunk in _chunks(outcomes):
             self._s.execute(
-                sqlite_insert(m.RawRecord)
-                .values(
-                    [
-                        {"file_sha256": file_sha256, "locator": o.locator, "payload": o.payload}
-                        for o in outcomes
-                    ]
-                )
-                .on_conflict_do_nothing(index_elements=["file_sha256", "locator"])
+                raw_stmt,
+                [
+                    {"file_sha256": file_sha256, "locator": o.locator, "payload": o.payload}
+                    for o in chunk
+                ],
             )
             self._s.execute(
                 insert(m.RecordResult),
@@ -251,10 +267,10 @@ class SqlAlchemyImports:
                         "entity_counts": o.entity_counts,
                         "warning_counts": o.warning_counts,
                     }
-                    for o in outcomes
+                    for o in chunk
                 ],
             )
-        if rejects:
+        for chunk in _chunks(rejects):
             self._s.execute(
                 insert(m.Reject),
                 [
@@ -268,7 +284,7 @@ class SqlAlchemyImports:
                         "message": r.message,
                         "payload": r.payload if isinstance(r.payload, dict) else None,
                     }
-                    for r in rejects
+                    for r in chunk
                 ],
             )
 
@@ -406,14 +422,14 @@ class SqlAlchemyTraces:
                 contributions.append(
                     self._contribution(e, import_id, mapping_id, tool_call_id=row_id)
                 )
-        if model_rows:
-            self._s.execute(insert(m.ModelCall), model_rows)
-            counts["model_call"] = len(model_rows)
-        if tool_rows:
-            self._s.execute(insert(m.ToolCall), tool_rows)
-            counts["tool_call"] = len(tool_rows)
-        if contributions:
-            self._s.execute(insert(m.EntityContribution), contributions)
+        for chunk in _chunks(model_rows):
+            self._s.execute(insert(m.ModelCall), chunk)
+        counts["model_call"] = len(model_rows)
+        for chunk in _chunks(tool_rows):
+            self._s.execute(insert(m.ToolCall), chunk)
+        counts["tool_call"] = len(tool_rows)
+        for chunk in _chunks(contributions):
+            self._s.execute(insert(m.EntityContribution), chunk)
         self._s.flush()
         return {k: v for k, v in counts.items() if v}
 
@@ -477,9 +493,7 @@ class SqlAlchemyTraces:
                 self._s.add(row)
                 counts["session"] += 1
             else:
-                for attr in ("agent", "repo", "user", "declared_started_at", "declared_ended_at"):
-                    if getattr(row, attr) is None and getattr(agg, attr) is not None:
-                        setattr(row, attr, getattr(agg, attr))
+                self._merge_existing(row, agg, import_id)
                 if agg.observed_start_at is not None and (
                     row.observed_start_at is None or agg.observed_start_at < row.observed_start_at
                 ):
@@ -504,6 +518,53 @@ class SqlAlchemyTraces:
                 )
         self._s.flush()
         return ids
+
+    def _merge_existing(self, row: m.Session, agg: SessionAggregate, import_id: str) -> None:
+        """Merge a later file's contribution with the reducer's rules: first non-null
+        wins, a differing non-null value is a conflict, a declared interval may not
+        be reversed by the merge."""
+        first = agg.contributions[0] if agg.contributions else None
+        locator = first.locator if first else ""
+
+        def diag(code: str, field: str, message: str) -> None:
+            self._s.add(
+                m.SessionDiagnostic(
+                    session_id=row.id,
+                    import_id=import_id,
+                    code=code,
+                    field=field,
+                    message=message,
+                    locator=locator,
+                )
+            )
+
+        for attr in ("agent", "repo", "user"):
+            incoming = getattr(agg, attr)
+            current = getattr(row, attr)
+            if incoming is None:
+                continue
+            if current is None:
+                setattr(row, attr, incoming)
+            elif current != incoming:
+                diag("conflicting_value", attr, f"{attr}: kept {current!r}, ignored {incoming!r}")
+        if agg.declared_started_at is not None:
+            if row.declared_started_at is None:
+                end = row.declared_ended_at
+                if end is not None and end < agg.declared_started_at:
+                    diag("reversed_interval", "started_at", "declared start after end; ignored")
+                else:
+                    row.declared_started_at = agg.declared_started_at
+            elif row.declared_started_at != agg.declared_started_at:
+                diag("conflicting_value", "started_at", "declared start differs; kept first")
+        if agg.declared_ended_at is not None:
+            if row.declared_ended_at is None:
+                start = row.declared_started_at
+                if start is not None and agg.declared_ended_at < start:
+                    diag("reversed_interval", "ended_at", "declared end before start; ignored")
+                else:
+                    row.declared_ended_at = agg.declared_ended_at
+            elif row.declared_ended_at != agg.declared_ended_at:
+                diag("conflicting_value", "ended_at", "declared end differs; kept first")
 
     def _token_metric(self, session_id: str) -> Metric:
         known, total, total_tokens = self._s.execute(
@@ -660,6 +721,13 @@ class SqlAlchemyTraces:
             "input_tokens_sum": int(tokens) if tokens is not None else None,
             "by_semantics": by_semantics,
         }
+
+
+INSERT_CHUNK = 500  # rows per executemany batch, well under SQLite's bound-parameter limit
+
+
+def _chunks(rows: Sequence[Any]) -> list[Sequence[Any]]:
+    return [rows[i : i + INSERT_CHUNK] for i in range(0, len(rows), INSERT_CHUNK)]
 
 
 def _bind_dt(value: Any) -> datetime | None:

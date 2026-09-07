@@ -73,6 +73,10 @@ class MappingRepository(Protocol):
 class ImportRepository(Protocol):
     def find_committed(self, file_sha256: str, source: str) -> Sequence[ImportRef]: ...
 
+    def find_committed_any(self, file_sha256: str) -> Sequence[ImportRef]:
+        """Committed imports of these bytes under any source."""
+        ...
+
     def add_report(self, report: ImportReport) -> None: ...
 
     def update_report(self, report: ImportReport) -> None:

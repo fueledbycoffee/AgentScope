@@ -15,7 +15,6 @@ from agentscope_app.application.ports import (
     IdGenerator,
     RawFileStore,
     RecordReader,
-    UnitOfWork,
     UnitOfWorkFactory,
 )
 
@@ -61,11 +60,7 @@ class StoreUpload:
                 if len(preview) < self._preview_records:
                     preview.append(record)
         with self._uow_factory() as uow:
-            already = tuple(
-                ref
-                for source in _known_sources(uow)
-                for ref in uow.imports.find_committed(stored.sha256, source)
-            )
+            already = tuple(uow.imports.find_committed_any(stored.sha256))
             info = UploadInfo(
                 upload_id=self._ids.new_id("upl"),
                 filename=filename,
@@ -79,8 +74,3 @@ class StoreUpload:
             uow.uploads.add(info)
             uow.commit()
         return info
-
-
-def _known_sources(uow: UnitOfWork) -> list[str]:
-    """Sources are whatever the saved mappings target; imports are scoped by source."""
-    return sorted({m.source for m in uow.mappings.list()})

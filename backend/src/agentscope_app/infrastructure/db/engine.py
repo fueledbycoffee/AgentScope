@@ -9,11 +9,15 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, create_engine, event
 
+from agentscope_app.infrastructure.jsonx import dumps_exact, loads_exact
+
 ALEMBIC_DIR = Path(__file__).resolve().parent / "alembic"
 
 
 def create_engine_for(url: str) -> Engine:
-    engine = create_engine(url, future=True)
+    engine = create_engine(
+        url, future=True, json_serializer=dumps_exact, json_deserializer=loads_exact
+    )
     if engine.dialect.name == "sqlite":
 
         @event.listens_for(engine, "connect")

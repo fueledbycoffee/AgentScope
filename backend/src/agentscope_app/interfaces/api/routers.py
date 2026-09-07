@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict
-from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Query, Request, UploadFile
@@ -21,6 +19,7 @@ from agentscope_app.application.dto import (
 )
 from agentscope_app.application.errors import LimitExceededError
 from agentscope_app.domain.mapping.parser import parse_mapping
+from agentscope_app.infrastructure.jsonx import dumps_exact
 from agentscope_app.interfaces.api.container import Container
 from agentscope_app.interfaces.api.schemas import ImportRequest, PreviewRequest
 
@@ -130,37 +129,8 @@ def get_raw_record(request: Request, file_sha256: str, locator: str) -> dict[str
         "file_sha256": file_sha256,
         "locator": locator,
         "payload": payload,
-        "payload_text": dumps_exact(payload),
+        "payload_text": dumps_exact(payload, indent=2),
     }
-
-
-def dumps_exact(payload: Any) -> str:
-    """Render a record as JSON text with every number exactly as stored.
-
-    Browsers parse JSON numbers into IEEE doubles, so integers above 2^53 and
-    exact decimals would be silently rounded; the UI shows this text instead.
-    """
-    numbers: dict[str, str] = {}
-
-    def walk(value: Any) -> Any:
-        if isinstance(value, Decimal):
-            token = f"__exact_number_{len(numbers)}__"
-            numbers[token] = str(value)
-            return token
-        if isinstance(value, int) and not isinstance(value, bool):
-            token = f"__exact_number_{len(numbers)}__"
-            numbers[token] = str(value)
-            return token
-        if isinstance(value, dict):
-            return {str(k): walk(v) for k, v in value.items()}
-        if isinstance(value, list):
-            return [walk(v) for v in value]
-        return value
-
-    text = json.dumps(walk(payload), ensure_ascii=False, indent=2)
-    for token, number in numbers.items():
-        text = text.replace(f'"{token}"', number)
-    return text
 
 
 @router.get("/metrics/summary")

@@ -22,7 +22,7 @@ from agentscope_app.application.dto import (
     StoredFile,
     UploadInfo,
 )
-from agentscope_app.application.errors import InvalidInputError
+from agentscope_app.application.errors import ConflictError, InvalidInputError
 from agentscope_app.domain.mapping.interpreter import Emission
 from agentscope_app.domain.reducer import SessionAggregate
 
@@ -114,6 +114,7 @@ class FakeMappings:
 
 class FakeImports:
     def __init__(self) -> None:
+        self.conflict_on_commit = False
         self.reports: dict[str, ImportReport] = {}
         self.results: dict[str, list[RecordOutcome]] = {}
         self.reject_rows: dict[str, list[RejectRow]] = {}
@@ -127,11 +128,20 @@ class FakeImports:
             and any(f.sha256 == file_sha256 for f in r.files)
         ]
 
+    def find_committed_any(self, file_sha256: str) -> Sequence[ImportRef]:
+        return [
+            ImportRef(r.import_id, r.started_at)
+            for r in self.reports.values()
+            if r.status == "committed" and any(f.sha256 == file_sha256 for f in r.files)
+        ]
+
     def add_report(self, report: ImportReport) -> None:
         self.reports[report.import_id] = report
 
     def update_report(self, report: ImportReport) -> None:
         assert report.import_id in self.reports
+        if report.status == "committed" and self.conflict_on_commit:
+            raise ConflictError("another import of the same bytes was committed concurrently")
         self.reports[report.import_id] = report
 
     def add_results(

@@ -31,6 +31,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
@@ -120,11 +121,24 @@ class ImportFile(Base):
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     import_id: Mapped[str] = mapped_column(ForeignKey("imports.id"))
     sha256: Mapped[str] = mapped_column(ForeignKey("raw_files.sha256"))
+    source: Mapped[str] = mapped_column(String(100))
+    committed: Mapped[bool] = mapped_column(Boolean, default=False)
     filename: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int]
     format: Mapped[str] = mapped_column(String(20))
     record_count: Mapped[int]
-    __table_args__ = (Index("ix_import_files_sha256", "sha256"),)
+    __table_args__ = (
+        Index("ix_import_files_sha256", "sha256"),
+        # Exact-file idempotency is a database guarantee, not only a pre-check:
+        # at most one committed import per (bytes, source).
+        Index(
+            "uq_import_files_committed_source",
+            "sha256",
+            "source",
+            unique=True,
+            sqlite_where=text("committed = 1"),
+        ),
+    )
 
 
 class RawRecord(Base):

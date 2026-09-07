@@ -20,7 +20,7 @@ from agentscope_app.application.dto import (
     RejectRow,
     UploadInfo,
 )
-from agentscope_app.application.errors import InvalidInputError, NotFoundError
+from agentscope_app.application.errors import ConflictError, InvalidInputError, NotFoundError
 from agentscope_app.application.ports import (
     Clock,
     IdGenerator,
@@ -250,6 +250,8 @@ class CommitImport:
                 uow.imports.add_results(import_id, info.sha256, outcomes, rejects)
                 uow.commit()
             return report
+        except ConflictError:
+            raise  # another import of the same bytes won the race: nothing was written
         except Exception as exc:  # noqa: BLE001 - a failed import is reported, never half-visible
             report = build("failed", _counts(), {}, {}, 0, error=f"{type(exc).__name__}: {exc}")
             self._persist(report, info.sha256, [], [])

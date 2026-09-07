@@ -230,3 +230,23 @@ def test_failed_commit_leaves_nothing_and_records_a_failed_report() -> None:
     assert report.entities == {} and h.uow.rollbacks >= 1
     assert h.uow.imports.get(report.import_id) == report
     assert h.uow.imports.find_committed(info.sha256, "tracelab") == []
+
+
+def test_already_imported_covers_custom_sources() -> None:
+    h = Harness()
+    info = h.upload()
+    report = h.commit_uc.execute(info.upload_id, "map_tracelab", source="custom")
+    again = h.upload()
+    assert [ref.import_id for ref in again.already_imported] == [report.import_id]
+
+
+def test_concurrent_commit_conflict_propagates_instead_of_failing() -> None:
+    from agentscope_app.application.errors import ConflictError
+
+    h = Harness()
+    info = h.upload()
+    h.uow.imports.conflict_on_commit = True
+    with pytest.raises(ConflictError):
+        h.commit_uc.execute(info.upload_id, "map_tracelab", source="tracelab")
+    assert h.uow.traces.stored == [] or h.uow.rollbacks >= 1
+    assert h.uow.imports.find_committed(info.sha256, "tracelab") == []
