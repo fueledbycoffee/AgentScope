@@ -356,4 +356,5 @@ into the implementation under the round-cap rule; these are the decisions.
   context digest uses the exact codec with sorted keys, a separate contract.
 - **Save races (18).** The repository translates an integrity failure into
   `ConflictError`; the use case then re-reads by hash and returns the winner,
-  or retries the revision allocation once before surfacing `409 conflict`.
+  or retries the revision allocation (bounded, five times, re-reading the
+  revisions each time) before surfacing `409 conflict`.

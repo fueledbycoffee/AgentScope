@@ -5,16 +5,18 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Query, Request, UploadFile
+from fastapi import APIRouter, File, Query, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
 from agentscope_app.application.dto import (
     MAX_UPLOAD_BYTES,
+    AssistantOutcome,
     FileBinding,
     ImportReport,
     MappingRecord,
     MetricsSummary,
     PreviewReport,
+    ProfileReport,
     RecordRow,
     RejectRow,
     RejectSummary,
@@ -25,7 +27,13 @@ from agentscope_app.application.errors import LimitExceededError
 from agentscope_app.domain.jsonx import dumps_exact
 from agentscope_app.domain.mapping.parser import parse_mapping
 from agentscope_app.interfaces.api.container import Container
-from agentscope_app.interfaces.api.schemas import ImportRequest, PreviewRequest
+from agentscope_app.interfaces.api.schemas import (
+    AssistantRequestBody,
+    AssistantRunBody,
+    ImportRequest,
+    PreviewRequest,
+    SaveMappingBody,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -47,6 +55,41 @@ async def create_upload(request: Request, file: Annotated[UploadFile, File()]) -
     return await run_in_threadpool(
         _c(request).store_upload.execute, file.filename or "upload", data
     )
+
+
+@router.post("/uploads/{upload_id}/profile")
+async def profile_upload(request: Request, upload_id: str) -> ProfileReport:
+    return await run_in_threadpool(_c(request).profile_file.execute, upload_id)
+
+
+@router.post("/assistant/prepare")
+async def prepare_assistant_context(request: Request, body: AssistantRequestBody) -> dict[str, Any]:
+    prepared = await run_in_threadpool(_c(request).prepare_context.execute, body.to_request())
+    return {
+        "kind": prepared.kind,
+        "context_sha256": prepared.sha256,
+        "bytes": prepared.bytes,
+        "payload_text": prepared.text,
+        "payload": prepared.document,
+        "redactions": prepared.redactions,
+        "truncated": prepared.truncated,
+        "sample_included": prepared.sample_included,
+        "sample_count": prepared.sample_count,
+    }
+
+
+@router.post("/assistant/run")
+async def run_assistant(request: Request, body: AssistantRunBody) -> AssistantOutcome:
+    return await run_in_threadpool(
+        _c(request).run_assistant.execute, body.to_request(), body.context_sha256
+    )
+
+
+@router.post("/mappings")
+def save_mapping(request: Request, body: SaveMappingBody, response: Response) -> dict[str, Any]:
+    saved = _c(request).save_mapping.execute(body.document, created_by="user")
+    response.status_code = 201 if saved.created else 200
+    return {**_mapping_summary(saved.record), "created": saved.created}
 
 
 @router.get("/mappings")

@@ -210,6 +210,48 @@ level, a struct field named `_arrow`, unsupported extension types, more than 64
 columns or nesting deeper than 8, a footer row count above 100,000, or more
 than 256 MiB of decoded data.
 
+## How the assistant sees your file
+
+The mapping assistant (ADR-005) never reads the file. It reads a **field
+profile**: for every path the DSL can address, how many of the inspected
+records have it (`records`, `missing`), how many values were observed and how
+many were null (`values`, `nulls`; array elements count one each, so a null
+rate is `nulls / values` and coverage is `records / inspected`), the JSON
+types seen, the number of distinct values (exact up to 50), up to five short
+examples, exact minimum and maximum, string and array lengths, and hints
+computed from the values themselves (`iso8601`, `epoch_seconds`,
+`epoch_millis`, `uuid`, `identifier`, `enum`, `free_text`). Parquet wrappers
+are reported by kind with their observed units and time zones and the
+accessors that address their payload (`$.created_at.iso`, `$.latency.seconds`).
+Keys the grammar cannot address (dots, spaces, leading digits, non-ASCII) are
+listed as unaddressable rather than flattened into a path that would point at
+a different value.
+
+Limits, all reported when they apply: 2,000 records inspected, 400 paths,
+depth 8, 200 elements per array (lengths stay exact), 200,000 visited values,
+keys up to 200 characters. Sample records, when you choose to send them, are
+at most 20, chosen to cover every path, and projected to depth 8 and 20 array
+items.
+
+Everything that leaves the server goes through the redactor first, examples
+included, before anything is cut short: private-key blocks, known credential
+shapes (OpenAI/OpenRouter/Anthropic keys, GitHub, Slack, AWS and Google
+tokens, JWTs, `Bearer …`, `api_key=…` assignments), URL user info, e-mail
+addresses, home-directory paths, IP addresses, and any text longer than 200
+characters, each replaced by a placeholder that keeps the shape (`<email>`,
+`<token>`, `<path>`, `<text 1,234 chars>`). Keys are never rewritten: a key
+that would be redacted is withheld together with its subtree and reported as
+such. Identifiers, UUIDs and digests are kept on purpose: a mapping needs them
+intact, and a generic "long random string" rule would destroy `call_…` and
+`round_…` ids. This is exposure control, not anonymisation: it removes the
+well-known shapes of secrets and personal locators; an opaque secret with no
+recognisable shape is not detected, and nothing here claims that what remains
+identifies nobody.
+
+The exact text that would be sent, and its digest, is shown by
+`POST /api/assistant/prepare` before any model is called; the run refuses a
+digest that no longer matches. See `docs/api/v0.1.md`.
+
 ## What the DSL cannot do, on purpose
 
 No expressions, regular expressions, arithmetic, joins across records, grouping

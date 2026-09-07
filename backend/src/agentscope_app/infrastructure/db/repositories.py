@@ -161,6 +161,13 @@ class SqlAlchemyMappings:
                 created_at=record.created_at,
             )
         )
+        try:
+            self._s.flush()
+        except IntegrityError as exc:
+            raise ConflictError(
+                "A mapping with the same content, or the same name and revision, "
+                "was saved concurrently"
+            ) from exc
 
 
 class SqlAlchemyImports:

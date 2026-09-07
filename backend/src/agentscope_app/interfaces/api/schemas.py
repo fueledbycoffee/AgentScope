@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field, model_validator
+
+from agentscope_app.application.dto import (
+    MAX_HISTORY_TURNS,
+    MAX_MESSAGE_CHARS,
+    AssistantRequest,
+    MappingIdentity,
+    Turn,
+)
 
 
 class PreviewRequest(BaseModel):
@@ -38,6 +48,49 @@ class ImportRequest(BaseModel):
             return list(self.files)
         assert self.upload_id is not None and self.mapping_id is not None
         return [FileBindingBody(upload_id=self.upload_id, mapping_id=self.mapping_id)]
+
+
+class TurnBody(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=MAX_MESSAGE_CHARS)
+
+
+class IdentityBody(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    source: str = Field(min_length=1, max_length=100)
+
+
+class AssistantRequestBody(BaseModel):
+    """``POST /api/assistant/prepare``; the use case validates the rest (identity, revise)."""
+
+    kind: Literal["propose", "revise"]
+    upload_id: str
+    identity: IdentityBody
+    include_sample: bool = False
+    current_mapping: dict[str, Any] | None = None
+    message: str | None = Field(default=None, max_length=MAX_MESSAGE_CHARS)
+    history: list[TurnBody] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
+
+    def to_request(self) -> AssistantRequest:
+        return AssistantRequest(
+            kind=self.kind,
+            upload_id=self.upload_id,
+            identity=MappingIdentity(self.identity.name, self.identity.source),
+            include_sample=self.include_sample,
+            current_mapping=self.current_mapping,
+            message=self.message,
+            history=tuple(Turn(t.role, t.content) for t in self.history),
+        )
+
+
+class AssistantRunBody(AssistantRequestBody):
+    """``POST /api/assistant/run``: the same request plus the digest of the prepared text."""
+
+    context_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+
+
+class SaveMappingBody(BaseModel):
+    document: dict[str, Any]
 
 
 class ErrorBody(BaseModel):

@@ -23,10 +23,14 @@ from starlette.types import Scope
 from agentscope_app import __version__
 from agentscope_app.application.errors import (
     ApplicationError,
+    AssistantFailedError,
+    AssistantUnavailableError,
     ConflictError,
+    ContextTooLargeError,
     InvalidInputError,
     LimitExceededError,
     NotFoundError,
+    StaleContextError,
 )
 from agentscope_app.infrastructure.settings import Settings
 from agentscope_app.interfaces.api.container import Container, build_container
@@ -35,11 +39,16 @@ from agentscope_app.interfaces.api.routers import router
 # Exact decimals from JSONL payloads are shown as strings so nothing is rounded on display.
 ENCODERS_BY_TYPE[Decimal] = str
 
+# Ordered: the first matching class wins, so subclasses come before their bases.
 _STATUS = {
     NotFoundError: 404,
     InvalidInputError: 400,
+    ContextTooLargeError: 413,
     LimitExceededError: 413,
+    StaleContextError: 409,
     ConflictError: 409,
+    AssistantUnavailableError: 503,
+    AssistantFailedError: 502,
     ApplicationError: 400,
 }
 

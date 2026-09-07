@@ -17,6 +17,14 @@ MAX_BATCH_BYTES = 4 * MAX_UPLOAD_BYTES  # bytes read by one import attempt (dupl
 MAX_DECODED_BYTES = 256 * 1024 * 1024  # Parquet: sum of uncompressed row groups
 PREVIEW_RECORDS = 20
 MAX_PREVIEW_SAMPLE = 1_000
+# assistant context (ADR-005): what may leave the server, and how much
+CONTEXT_BUDGET_BYTES = 64 * 1024
+MAX_MESSAGE_CHARS = 4_000
+MAX_HISTORY_TURNS = 20
+MAX_MAPPING_BYTES = 64 * 1024
+MAX_REPAIR_CANDIDATE_BYTES = 16 * 1024
+MAX_REPAIR_ISSUES_BYTES = 4 * 1024
+MAX_RAW_TEXT_BYTES = 32 * 1024
 
 
 @dataclass(frozen=True)
@@ -273,3 +281,101 @@ class MetricsSummary:
     model_calls: Metric
     tool_calls: Metric
     input_tokens: Metric
+
+
+# --- mapping assistant (ADR-005) ---------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Turn:
+    role: str  # "user" | "assistant"
+    content: str
+
+
+@dataclass(frozen=True)
+class MappingIdentity:
+    name: str
+    source: str
+
+
+@dataclass(frozen=True)
+class AssistantRequest:
+    """What the client asks for; the server derives everything else from the upload."""
+
+    kind: str  # "propose" | "revise"
+    upload_id: str
+    identity: MappingIdentity
+    include_sample: bool = False
+    current_mapping: dict[str, Any] | None = None
+    message: str | None = None
+    history: tuple[Turn, ...] = ()
+
+
+@dataclass(frozen=True)
+class PreparedContext:
+    """The exact data context the model will see, frozen; ``sha256`` is over ``text``."""
+
+    kind: str
+    text: str
+    bytes: int
+    sha256: str
+    document: dict[str, Any]
+    redactions: dict[str, int]
+    truncated: dict[str, int]
+    sample_included: bool
+    sample_count: int
+
+
+@dataclass(frozen=True)
+class RepairRequest:
+    """The model's own previous reply and the validation issues, sanitised and bounded."""
+
+    candidate_text: str
+    issues_text: str
+
+
+@dataclass(frozen=True)
+class AssistantReply:
+    text: str
+    model: str
+    finish: str  # "stop" | "length" | "refusal"
+
+
+@dataclass(frozen=True)
+class FieldExplanation:
+    target: str
+    path: str
+    why: str
+    confidence: float
+
+
+@dataclass(frozen=True)
+class Ambiguity:
+    target: str
+    options: tuple[str, ...]
+    what_settles_it: str
+
+
+@dataclass(frozen=True)
+class MappingProposal:
+    mapping: dict[str, Any]
+    explanations: tuple[FieldExplanation, ...]
+    ambiguities: tuple[Ambiguity, ...]
+    questions: tuple[str, ...]
+    model: str
+    executable: bool
+
+
+@dataclass(frozen=True)
+class AssistantOutcome:
+    proposal: MappingProposal | None
+    issues: tuple[dict[str, Any], ...]
+    attempts: int
+    diagnostics: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ProfileReport:
+    upload_id: str
+    profile: dict[str, Any]
+    cached: bool
