@@ -42,3 +42,8 @@ def test_unknown_transform_is_refused() -> None:
     assert "eval" not in TRANSFORM_NAMES
     with pytest.raises(ConversionError):
         apply_transform(Transform("eval", {}), "1+1")
+
+
+def test_json_decode_too_deep_is_a_conversion_error() -> None:
+    with pytest.raises(ConversionError, match="deep"):
+        apply_transform(Transform("json_decode", {}), "[" * 20000 + "0" + "]" * 20000)

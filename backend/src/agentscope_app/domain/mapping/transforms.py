@@ -59,4 +59,8 @@ def apply_transform(transform: Transform, value: Any) -> Any:
             return json.loads(text)
         except ValueError as exc:
             raise ConversionError("invalid_json", f"json_decode failed: {exc}") from exc
+        except RecursionError as exc:
+            raise ConversionError(
+                "json_too_deep", "json_decode input is nested too deeply"
+            ) from exc
     raise ConversionError("unknown_transform", f"Transform {name!r} is not allowed")

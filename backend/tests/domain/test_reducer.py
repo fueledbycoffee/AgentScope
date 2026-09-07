@@ -14,7 +14,7 @@ def ts(minute: int) -> datetime:
 
 
 def session(line: int, **fields: object) -> Emission:
-    return Emission("session", "session", occ("session", line), dict(fields), "s1")
+    return Emission("session", "session", occ("session", line), dict(fields), ("s1",))
 
 
 def call(line: int, **fields: object) -> Emission:

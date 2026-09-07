@@ -110,3 +110,12 @@ def test_coerce_timestamp_uses_format() -> None:
 def test_coerce_integer_rejects_malformed_strings(value: str) -> None:
     with pytest.raises(ConversionError):
         coerce(value, FieldType.INTEGER)
+
+
+def test_convert_duration_is_exact() -> None:
+    assert convert_duration(1.001, "s", "ms") == 1001
+    assert convert_duration(0.1, "s", "ms") == 100
+    assert convert_duration(9007199254740993, "ms", "ms") == 9007199254740993
+    assert convert_duration(1, "ns", "ms") == 0.000001
+    with pytest.raises(ConversionError):
+        convert_duration(True, "ms", "ms")

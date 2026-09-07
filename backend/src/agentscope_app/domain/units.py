@@ -4,17 +4,19 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any, Final
 
 from agentscope_app.domain.errors import ConversionError
 from agentscope_app.domain.schema import FieldType
 
-DURATION_UNITS: Final[dict[str, float]] = {
-    "ns": 1e-6,
-    "us": 1e-3,
-    "ms": 1.0,
-    "s": 1000.0,
-    "min": 60000.0,
+# Factors to milliseconds, exact decimals so conversions never accumulate float error.
+DURATION_UNITS: Final[dict[str, Decimal]] = {
+    "ns": Decimal("0.000001"),
+    "us": Decimal("0.001"),
+    "ms": Decimal(1),
+    "s": Decimal(1000),
+    "min": Decimal(60000),
 }
 TIMESTAMP_FORMATS: Final = ("iso8601", "epoch_s", "epoch_ms")
 _TRUE: Final = frozenset({"true", "1", "yes", "y", "t"})
@@ -27,8 +29,16 @@ def convert_duration(value: int | float, from_unit: str, to_unit: str) -> int | 
         raise ConversionError(
             "unknown_unit", f"Unknown duration unit: {from_unit!r} -> {to_unit!r}"
         )
-    result = value * DURATION_UNITS[from_unit] / DURATION_UNITS[to_unit]
-    return int(result) if float(result).is_integer() else result
+    if isinstance(value, bool):
+        raise ConversionError("invalid_type", "Durations cannot be booleans")
+    try:
+        exact = Decimal(value) if isinstance(value, int) else Decimal(repr(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise ConversionError("invalid_type", f"Cannot convert {value!r} to a duration") from exc
+    result = exact * DURATION_UNITS[from_unit] / DURATION_UNITS[to_unit]
+    if result == result.to_integral_value():
+        return int(result)
+    return float(result)
 
 
 def parse_timestamp(value: Any, fmt: str) -> datetime:

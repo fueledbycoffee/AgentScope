@@ -84,17 +84,17 @@ def test_full_record_emits_linked_entities_with_provenance() -> None:
     session = by_path["session"]
     assert session.entity == "session"
     assert session.fields == {"external_id": "s1", "agent": "codex"}
-    assert session.native_key == "s1" and session.occurrence.file_sha256 == "f" * 64
+    assert session.native_key == ("s1",) and session.occurrence.file_sha256 == "f" * 64
     assert session.occurrence.locator == "line:7"
     call = by_path["model_call"]
     assert call.fields["started_at"] == datetime(2026, 5, 11, 6, 40, 30, 637000, tzinfo=UTC)
     assert call.fields["input_tokens"] == 10 and call.fields["model"] == "gpt"
-    assert call.native_key == "c1" and call.parent_occurrence is None
+    assert call.native_key == ("c1",) and call.parent_occurrence is None
     tool = by_path["tool_call[0]"]
     assert tool.parent_occurrence == call.occurrence
     assert tool.fields["session_external_id"] == "s1"
     assert tool.fields["wall_latency_ms"] == 1500 and tool.fields["is_error"] is False
-    assert tool.native_key == "t1"
+    assert tool.native_key == ("t1",)
     assert by_path["tool_call[1]"].fields["is_error"] is None
     assert by_path["tool_call[1]"].fields["wall_latency_ms"] == 0
     assert [(w.code, w.field) for w in result.warnings] == [("invalid_value", "is_error")]
@@ -323,3 +323,78 @@ def test_malformed_integer_string_follows_on_invalid_policy() -> None:
     assert result.rejects == ()
     assert result.emissions[0].fields["input_tokens"] is None
     assert [(w.code, w.field) for w in result.warnings] == [("invalid_value", "input_tokens")]
+
+
+def test_literal_null_follows_on_missing_policy() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "tool_call",
+                "entity": "tool_call",
+                "select": "$",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "tool_name": {"path": "$.name"},
+                    "status": {"literal": None},
+                    "exit_code": {"literal": None, "on_missing": "default", "default": 0},
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    result = apply_mapping(spec, {"sid": "s", "name": "Bash"}, file_sha256="f", locator="line:1")
+    assert result.rejects == ()
+    assert result.emissions[0].fields["status"] is None
+    assert result.emissions[0].fields["exit_code"] == 0
+    assert [(w.code, w.field) for w in result.warnings] == [("null", "status")]
+
+
+def test_composite_native_keys_keep_component_boundaries() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "tool_call",
+                "entity": "tool_call",
+                "select": "$.tools[*]",
+                "native_key": ["external_id", "status"],
+                "fields": {
+                    "session_external_id": {"path": "@root.sid"},
+                    "tool_name": {"literal": "t"},
+                    "external_id": {"path": "$.id"},
+                    "status": {"path": "$.st"},
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    record = {"sid": "s", "tools": [{"id": "a|b", "st": "c"}, {"id": "a", "st": "b|c"}]}
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    keys = [e.native_key for e in result.emissions]
+    assert keys == [("a|b", "c"), ("a", "b|c")] and len(set(keys)) == 2
+
+
+def test_float_duration_conversion_is_exact_through_the_interpreter() -> None:
+    result = run(
+        {
+            "sid": "s",
+            "kind": "call",
+            "ts": 1,
+            "usage": {"output": 0},
+            "tools": [{"name": "a", "secs": 1.001}],
+        }
+    )
+    assert result.rejects == ()
+    tool = next(e for e in result.emissions if e.entity == "tool_call")
+    assert tool.fields["wall_latency_ms"] == 1001

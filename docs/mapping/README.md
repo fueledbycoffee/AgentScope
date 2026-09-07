@@ -114,7 +114,7 @@ Grammar: `("$" | "@root") ("." name | "[" n "]" | "[*]")*`, at most 16 segments.
 | `select` | Path of the items the rule emits from; default `$` |
 | `where` | Conditions, all of which must hold: `{path, op, value}` with `op` in `eq`, `ne`, `in`, `not_in`, `exists`, `not_exists` |
 | `parent` | Only on `tool_call` rules: id of a `model_call` rule declared earlier whose `select` is `$`; the tool links to that call and inherits its session. A tool that maps a different session than its parent is rejected (`conflicting_relationship`) |
-| `native_key` | Fields whose values form the claimed native identity; defaults to `["external_id"]` when mapped |
+| `native_key` | Fields whose values form the claimed native identity, kept as an ordered tuple of parts (never joined into one string); defaults to `["external_id"]` when mapped |
 | `fields` | Target field → field mapping |
 
 ## Field mappings
@@ -133,7 +133,9 @@ Grammar: `("$" | "@root") ("." name | "[" n "]" | "[*]")*`, at most 16 segments.
 
 Conversions are strict: booleans never become numbers, `12.5` never becomes
 an integer, unknown enum values are not silently kept unless the mapping says
-so. Negative token or latency values are rejected.
+so. Negative token or latency values are rejected. Duration arithmetic is done
+in exact decimals, so `1.001 s` is `1001 ms`. A `literal` of `null` counts as a
+missing value and follows `on_missing`.
 
 ## Validation stages
 

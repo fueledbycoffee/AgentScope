@@ -49,7 +49,7 @@ class Emission:
     rule_id: str
     occurrence: SourceOccurrence
     fields: dict[str, Any]
-    native_key: str | None = None
+    native_key: tuple[str, ...] | None = None  # claimed native identity, one part per key field
     parent_occurrence: SourceOccurrence | None = None
 
 
@@ -180,11 +180,11 @@ def _emit(
                 "missing_required", f"Required field {name!r} of {rule.entity} is missing", name
             )
 
-    native_key: str | None = None
+    native_key: tuple[str, ...] | None = None
     if rule.native_key:
         parts = [values.get(k) for k in rule.native_key]
         if all(p is not None for p in parts):
-            native_key = "|".join(str(p) for p in parts)
+            native_key = tuple(str(p) for p in parts)
     return Emission(rule.entity, rule.id, occurrence, values, native_key, parent_occurrence)
 
 
@@ -198,7 +198,7 @@ def _evaluate(
 ) -> Any:
     if fm.has_literal:
         value: Any = fm.literal
-        state = "present"
+        state = "null" if value is None else "present"
     else:
         value, state = MISSING, "absent"
         for path in fm.paths:
