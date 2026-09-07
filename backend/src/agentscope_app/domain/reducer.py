@@ -84,8 +84,12 @@ def reduce_sessions(emissions: Iterable[Emission]) -> dict[str, SessionAggregate
             session.model_call_count += 1
         elif emission.entity == "tool_call":
             session.tool_call_count += 1
-        started = emission.fields.get("started_at")
-        ended = emission.fields.get("ended_at") or started
+        # Either timestamp is evidence of activity: an end-only child still bounds
+        # the observed span, and a start-only child still extends its end.
+        started_field = emission.fields.get("started_at")
+        ended_field = emission.fields.get("ended_at")
+        started = started_field if started_field is not None else ended_field
+        ended = ended_field if ended_field is not None else started_field
         if isinstance(started, datetime) and (
             session.observed_start_at is None or started < session.observed_start_at
         ):

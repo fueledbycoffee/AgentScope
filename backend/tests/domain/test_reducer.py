@@ -112,3 +112,13 @@ def test_merging_declared_bounds_never_creates_a_reversed_interval() -> None:
     )["s2"]
     assert reversed_start.declared_started_at is None
     assert [c.code for c in reversed_start.conflicts] == ["reversed_interval"]
+
+
+def test_end_only_and_start_only_children_bound_the_observed_span() -> None:
+    emissions = [
+        call(1, session_external_id="s1", started_at=None, ended_at=ts(9)),
+        call(2, session_external_id="s1", started_at=ts(10), ended_at=ts(11)),
+        call(3, session_external_id="s1", started_at=ts(12), ended_at=None),
+    ]
+    s = reduce_sessions(emissions)["s1"]
+    assert s.observed_start_at == ts(9) and s.observed_end_at == ts(12)

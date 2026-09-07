@@ -348,6 +348,11 @@ def _evaluate(
                 if value is MISSING:
                     return None
                 break  # the default replaces the value; remaining transforms do not apply
+        if fm.empty_as_missing and isinstance(value, str) and value.strip() == "":
+            # A transform may produce an empty string (json_decode of '""'): same policy.
+            value = _missing_outcome(fm, "empty", rule, occurrence, warnings)
+            if value is MISSING:
+                return None
         if fm.unit_from and fm.unit_to:
             # Exact unit conversion first (ints, floats and numeric strings); the strict
             # coercion below then rejects anything not integral instead of rounding.

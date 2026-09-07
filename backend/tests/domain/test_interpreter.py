@@ -913,3 +913,34 @@ def test_transform_producing_null_follows_on_missing() -> None:
     result = apply_mapping(warn, {"sid": "s", "m": "null"}, file_sha256="f", locator="line:1")
     assert result.emissions[0].fields["model"] is None
     assert [(w.field, w.code) for w in result.warnings] == [("model", "null")]
+
+
+def test_transformed_empty_strings_follow_empty_as_missing() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "session",
+                "entity": "session",
+                "select": "$",
+                "fields": {
+                    "external_id": {
+                        "path": "$.sid",
+                        "transforms": ["json_decode"],
+                        "empty_as_missing": True,
+                        "on_missing": "reject",
+                    }
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    result = apply_mapping(spec, {"sid": '""'}, file_sha256="f", locator="line:1")
+    assert result.emissions == ()
+    assert [(r.code, r.field) for r in result.rejects] == [("missing_value", "external_id")]
+    assert "empty" in result.rejects[0].message
