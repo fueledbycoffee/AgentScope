@@ -137,3 +137,60 @@ procedure (change `AGENTSCOPE_LLM_MODEL`, restart, nothing else).
 
 Out of scope: the assistant UI (#15), the two-model report (#16), an
 Anthropic-native adapter (stretch, listed in ADR-005), streaming, tool calls.
+
+## 8. Decisions after the Codex review (implemented, not re-planned)
+
+The review (`…-review-codex.md`, 13 findings, BLOCK) is folded into the code
+under the round-cap rule:
+
+- **Dependency (1).** `httpx2` is a runtime dependency; a new import-linter
+  contract forbids HTTP clients in `interfaces` (indirect imports allowed, so
+  the composition root may wire the adapter).
+- **Secret boundary (2).** The key is a canary: a reply whose text or model
+  contains it is refused with a fixed error; error messages carry fixed
+  wording, the host and a ≤200-character key-scrubbed, redacted excerpt of the
+  provider's structured `error.message`, never raw bodies or transport
+  exception text (`from None`); the base URL may not carry credentials, a
+  query or a fragment.
+- **No replays (3).** Gateway errors (`502/503/504`) and connection failures
+  are never retried. The only replays are one JSON-mode negotiation retry on
+  an explicit `response_format` rejection (nothing generated) and one `429`
+  retry honouring `Retry-After` within the remaining time.
+- **Deadline (4).** `AGENTSCOPE_LLM_TIMEOUT_S` is a monotonic deadline per
+  `complete`, capping every HTTP attempt inside it (connect ≤ 10 s); a run
+  with a repair is at most twice that. Documented as such.
+- **Decision table (5).** Non-empty `refusal` or `content_filter` → refusal;
+  `refusal: null` ignored; `length` stays `length` with empty text; `""` with
+  `stop` reaches the application's parser (one repair); `null` content with
+  `stop` and unknown finishes (`tool_calls`) → `malformed`.
+- **Negotiation (6).** Only a `400` whose error message says the parameter is
+  unsupported / unknown / invalid triggers the fallback; remembered per
+  adapter instance (one endpoint + model); the reply's `model` stays the real
+  one and the event travels as `AssistantReply.notes` →
+  `diagnostics.adapter_notes`.
+- **Shapes and statuses (7).** Every field is type-checked before use;
+  `choices: []`, non-object payloads, provider error objects inside a `200`
+  (OpenRouter's upstream failures), `402`, `404` ("check endpoint and model"),
+  `408`, redirects, `422`, and every `httpx2` timeout/transport family have an
+  explicit mapping.
+- **Startup independence (8).** `validate_configuration` names the offending
+  variable; the container turns a `ValueError` into an unavailable assistant
+  with that reason, so the application always starts.
+- **Ownership (9).** The adapter owns its `httpx2.Client`; `Container.close()`
+  is called from the FastAPI lifespan.
+- **Verbatim assertion (10).** Tests decode the outer request JSON and compare
+  the data message's UTF-8 bytes and SHA-256 with the prepared text, on the
+  first and the repair call, with Unicode, escapes and exact numbers.
+- **Repair as data (11).** The preamble and the repair instruction declare the
+  previous candidate and the delimited issues block untrusted artifacts; a
+  test places injection text in the candidate and asserts its slot.
+- **Fixtures vs evidence (12).** `synthetic_*` fixtures and `captured_*`
+  bodies with a provenance sidecar; CI never calls a network; ADR-005's CI
+  wording adjusted; evidence log in the ADR and `docs/llm/configuration.md`.
+- **Docs (13).** Outcome table in `docs/api/v0.1.md`, `attempts` in every
+  `502`, full configuration guide with troubleshooting.
+
+Live result while implementing: the owner's `minimax/minimax-m3:free` left
+OpenRouter's free tier (404); `dots-studio/dots-3-note-preview:free` completed
+a run (113 s, two calls, editable draft); other free models were overloaded or
+rate-limited that evening. `.env.example` now names the model that worked.

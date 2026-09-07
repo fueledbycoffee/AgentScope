@@ -311,19 +311,23 @@ class RunAssistant:
                 "model": attempt.reply.model,
                 "raw_text": _bounded(attempt.safe_text(), MAX_RAW_TEXT_BYTES),
                 "failure": attempt.terminal_failure,
+                "adapter_notes": list(attempt.reply.notes),
                 "context_sha256": prepared.sha256,
                 "sample_included": prepared.sample_included,
             },
         )
 
     def _call(self, prepared: PreparedContext, repair: RepairRequest | None) -> AssistantReply:
+        attempts = 2 if repair is not None else 1
         try:
             reply = self._assistant.complete(prepared, repair=repair)
         except AssistantError as exc:
             message = _bounded(redact_text(exc.message, long_text=False)[0], 2_000)
             if exc.kind == "unavailable":
-                raise AssistantUnavailableError(message) from exc
-            raise AssistantFailedError(message, [{"kind": exc.kind}]) from exc
+                raise AssistantUnavailableError(message) from None
+            raise AssistantFailedError(
+                message, [{"kind": exc.kind, "attempts": attempts}]
+            ) from None
         if reply.finish not in _FINISHES:
             raise AssistantFailedError(
                 f"Adapter returned an unknown finish state {reply.finish!r}",

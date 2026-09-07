@@ -339,6 +339,7 @@ class AssistantReply:
     text: str
     model: str
     finish: str  # "stop" | "length" | "refusal"
+    notes: tuple[str, ...] = ()  # adapter events worth showing (e.g. JSON mode negotiated off)
 
 
 @dataclass(frozen=True)

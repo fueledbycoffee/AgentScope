@@ -32,6 +32,7 @@ from agentscope_app.infrastructure.db.unit_of_work import make_uow_factory
 from agentscope_app.infrastructure.files.raw_store import FilesystemRawFileStore
 from agentscope_app.infrastructure.ids import UtcClock, UuidIdGenerator
 from agentscope_app.infrastructure.llm.fake import FakeMappingAssistant
+from agentscope_app.infrastructure.llm.openai_compatible import OpenAICompatibleAssistant
 from agentscope_app.infrastructure.llm.unavailable import UnavailableMappingAssistant
 from agentscope_app.infrastructure.mappings.bundled import load_bundled_mappings
 from agentscope_app.infrastructure.readers.router import FormatRouter
@@ -60,16 +61,36 @@ class Container:
     prepare_context: PrepareContext
     run_assistant: RunAssistant
     save_mapping: SaveMappingRevision
+    assistant: MappingAssistant
+
+    def close(self) -> None:
+        close = getattr(self.assistant, "close", None)
+        if callable(close):
+            close()
 
 
 def build_assistant(settings: Settings) -> MappingAssistant:
-    """Only ``fake`` is explicit; any other provider is unavailable until its adapter exists (#14).
+    """``fake`` is the deterministic offline assistant; ``openai_compatible`` talks to any
+    chat-completions endpoint and needs a model id; anything else is unavailable.
 
     Nothing else depends on this choice: uploads, saved-mapping replay and the
     dashboards work without an assistant (ADR-005).
     """
     if settings.llm_provider == "fake":
         return FakeMappingAssistant(settings.bundled_mappings_dir)
+    if settings.llm_provider == "openai_compatible":
+        try:
+            return OpenAICompatibleAssistant(
+                base_url=settings.llm_base_url,
+                model=settings.llm_model,
+                api_key=settings.llm_api_key.get_secret_value(),
+                timeout_s=settings.llm_timeout_s,
+                json_mode=settings.llm_json_mode,
+                max_tokens=settings.llm_max_tokens,
+            )
+        except ValueError as exc:
+            # an invalid assistant configuration never takes the application down
+            return UnavailableMappingAssistant(settings.llm_provider, reason=str(exc))
     return UnavailableMappingAssistant(settings.llm_provider)
 
 
@@ -87,6 +108,7 @@ def build_container(settings: Settings) -> Container:
     reader = FormatRouter()
     profile_file = ProfileFile(uow_factory, store, reader)
     prepare_context = PrepareContext(uow_factory, store, reader, profile_file)
+    assistant = build_assistant(settings)
     return Container(
         settings=settings,
         uow_factory=uow_factory,
@@ -106,6 +128,7 @@ def build_container(settings: Settings) -> Container:
         metrics_summary=MetricsSummary(uow_factory),
         profile_file=profile_file,
         prepare_context=prepare_context,
-        run_assistant=RunAssistant(prepare_context, build_assistant(settings)),
+        run_assistant=RunAssistant(prepare_context, assistant),
         save_mapping=SaveMappingRevision(uow_factory, clock),
+        assistant=assistant,
     )

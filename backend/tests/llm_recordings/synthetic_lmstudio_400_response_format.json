@@ -1,0 +1,3 @@
+{
+ "error": "'response_format.type' must be 'json_schema' or 'text'; 'json_object' is not supported by this model"
+}

@@ -352,7 +352,7 @@ def test_adapter_errors_are_terminal_and_mapped() -> None:
     h = Harness(["timeout", "valid"])
     with pytest.raises(AssistantFailedError) as failed:
         h.go(h.request(h.tracelab_upload()))
-    assert list(failed.value.details) == [{"kind": "timeout"}]
+    assert list(failed.value.details) == [{"kind": "timeout", "attempts": 1}]
     assert len(h.assistant.calls) == 1  # no second call after a transport failure
 
     class Unavailable:

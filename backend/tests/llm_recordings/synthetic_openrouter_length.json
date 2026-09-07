@@ -1,0 +1,21 @@
+{
+ "id": "gen-recorded",
+ "object": "chat.completion",
+ "created": 1789000000,
+ "model": "minimax/minimax-m3:free",
+ "choices": [
+  {
+   "index": 0,
+   "finish_reason": "length",
+   "message": {
+    "role": "assistant",
+    "content": "{\"mapping\": {\"dsl_version\": 1, \"target_schema_version\": 1, \"name\": \"assisted\", \"source\": \"tracelab\", \"input_format\": \"jsonl\", \"notes\": \"TraceLab v0.0.1 public release (syfi_coding_trace.jsonl.gz). One JSONL row is one recorded model invocation with nested tools[]. Sessions are reconciled by session_id; their observed bounds come from the model calls and tool calls, not from this mapping. Native id"
+   }
+  }
+ ],
+ "usage": {
+  "prompt_tokens": 6100,
+  "completion_tokens": 900,
+  "total_tokens": 7000
+ }
+}

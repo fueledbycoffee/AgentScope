@@ -1,0 +1,21 @@
+{
+ "id": "gen-recorded",
+ "object": "chat.completion",
+ "created": 1789000000,
+ "model": "minimax/minimax-m3:free",
+ "choices": [
+  {
+   "index": 0,
+   "finish_reason": "content_filter",
+   "message": {
+    "role": "assistant",
+    "content": ""
+   }
+  }
+ ],
+ "usage": {
+  "prompt_tokens": 6100,
+  "completion_tokens": 900,
+  "total_tokens": 7000
+ }
+}
