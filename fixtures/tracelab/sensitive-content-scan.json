@@ -1,0 +1,21 @@
+{
+  "candidate_counts": {},
+  "checks": [
+    "email",
+    "absolute_home_path",
+    "credential_url",
+    "credential_query",
+    "known_token",
+    "private_key",
+    "jwt",
+    "bearer",
+    "secret_assignment",
+    "secret_field"
+  ],
+  "file": "fixtures/tracelab/tracelab-sample.jsonl.gz",
+  "findings": [],
+  "result": "no_candidates",
+  "rows_scanned": 4770,
+  "scanned_at": "2026-09-07T08:39:35.689446Z",
+  "sha256": "d044a766e12c7eceae2eb1ed71e42d95cf0aec2f10c8d61a06cecc0381fb9897"
+}
