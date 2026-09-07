@@ -179,6 +179,15 @@ def test_saved_document_replays_without_the_assistant(document_path: Path, tmp_p
             assert external_id in by_id, (external_id, sorted(by_id))
             for field, value in fields.items():
                 assert by_id[external_id][field] == value, (external_id, field, by_id[external_id])
+        # call rows: a start the row declares, and no end the row does not (never fabricated)
+        detail = client.get(f"/api/sessions/{sessions[0]['id']}").json()
+        for kind in ("model_call", "tool_call"):
+            rows = {row["raw_record"]["locator"]: row for row in detail[f"{kind}s"]}
+            for locator, fields in expected.get(f"{kind}_fields", {}).items():
+                assert locator in rows, (kind, locator, sorted(rows))
+                for field, value in fields.items():
+                    got = rows[locator][field]
+                    assert _iso(got) == value, (kind, locator, field, got)
         # the assistant remained reachable through the real container, and was never reached
         control = client.post(
             "/api/assistant/run",
@@ -194,6 +203,12 @@ def test_saved_document_replays_without_the_assistant(document_path: Path, tmp_p
         # a second start finds the same revision by content hash
         again = client.post("/api/mappings", json={"document": document})
         assert again.status_code == 200 and again.json()["id"] == mapping_id
+
+
+def _iso(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return value.replace("+00:00", "Z")
 
 
 def test_at_least_one_reviewed_document_is_committed() -> None:

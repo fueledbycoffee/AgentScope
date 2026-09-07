@@ -118,13 +118,25 @@ was included in the pre-checks.
    is right depends on what the source means by a turn, which the audit shows
    is not "one API call" (assistant rows equal the declared call count in 4 of
    12 sessions). Recorded as a coverage limit, not corrected.
+7. Both models copied the row's `timestamp` into both `started_at` and
+   `ended_at` of every model and tool call, so each call read as a zero-length
+   interval and the latency metrics as zero. A row has one instant; the tool
+   result's time sits on another row the mapping cannot join. Corrected after
+   the run in every committed conversations document (ends left null), and the
+   regression fixture pins a call whose result row is one second later. Found
+   by the adversarial review of the pull request, not by either agent during
+   the runs: a mapping that validates and imports cleanly can still assert
+   something the data does not say.
 
 ## Replay without the assistant
 
-Four replays, each run twice (`replay-*`, then `replay2-*` after the harness
-gained explicit pass/fail assertions: control run 503, import `committed`,
-zero duplicates, records accepted, expected session count and entity counts,
-zero assistant requests; all four `replay2-*` runs PASSED): the pre-import
+Four replays, each run three times (`replay-*`; `replay2-*` after the harness
+gained explicit pass/fail assertions; `replay3-*` after the second adversarial
+review made the comparison a real one: the original run's import report is
+the baseline, and the replay must reproduce its accepted and rejected counts
+and its mapping id and revision, the expected session count and entity counts
+are mandatory flags, the control run must answer 503, and the request log
+must hold zero assistant runs; all four `replay3-*` runs PASSED): the pre-import
 snapshot restored into a fresh backend started with
 `AGENTSCOPE_LLM_PROVIDER=none` and an empty key; a control prepare answered
 200 and the following run **503 assistant_unavailable**; the import through the
@@ -138,9 +150,12 @@ recorder that raises on any call, then saves each reviewed document, uploads a
 synthetic SWE-shaped Parquet table (with a first-turn row so config A's
 session predicate fires), previews and imports through the HTTP API, and
 asserts: committed, zero duplicates, the expected accepted count and entity
-counts, the distinct sessions and their mapped `agent`, an assistant control
-call that stops at the digest check, zero recorder calls, and the same
-revision found again by content hash.
+counts, the distinct sessions and their mapped `agent`, each call row's
+declared start and a **null end** (the fixture's tool_use row is at 12:00:03
+and its result row at 12:00:04; a mapping that copied the start into the end
+would have been caught here), an assistant control call that stops at the
+digest check, zero recorder calls, and the same revision found again by
+content hash.
 
 ## Acceptance matrix
 
@@ -162,16 +177,22 @@ Committed under `backend/tests/verification/documents/` after review (paths,
 role predicates and notes only; no source values):
 `swe-chat-sessions-v1.json` (A-sessions-3; B-sessions-2 produced a document
 with the same fields), `swe-chat-conversations-v1.json` (B-conversations-5,
-**with three reviewer corrections applied after the run**, recorded in the
+**with four reviewer corrections applied after the run**, recorded in the
 document's `notes` and in the fixture's provenance: the session rule's
 `ended_at` (a turn's timestamp is not a declared end; the reducer would keep
 the first row's value and raise `conflicting_value` on the rest), the literal
 `is_error: false` on model and tool calls (an unknown outcome stays null, the
-UI shows "unavailable" rather than "no"), and `tool_call.status ← $.category`
-(a category is not an outcome). The revision imported in run B-conversations-5
-still carried those three fields; its counts are unaffected, its declared
-session ends and error flags were fabricated and are not to be trusted),
-`swe-chat-conversations-v1-a.json` (A-conversations-6: the minimal set). Each
+UI shows "unavailable" rather than "no"), `tool_call.status ← $.category`
+(a category is not an outcome), and `ended_at ← $.timestamp.iso` on model and
+tool calls (a row's timestamp is one instant, the start; the result arrives on
+another row the mapping cannot join, so the end stays null and the latency
+metrics stay unavailable rather than reading zero). The revision imported in
+run B-conversations-5 still carried those fields; its counts are unaffected,
+its declared session ends, error flags and call ends were fabricated and are
+not to be trusted), `swe-chat-conversations-v1-a.json` (A-conversations-6: the
+minimal set, **with the same call-end correction**: both models copied the
+row's timestamp into both `started_at` and `ended_at`, the one correction
+common to every conversations proposal). Each
 carries an `.expected.json` with the outcomes computed on the synthetic
 SWE-shaped table (sessions: 3 rows accepted, 3 session emissions;
 conversations, 6 rows: B's unconditional session rule accepts all 6, A's

@@ -50,10 +50,6 @@
           "path": "$.timestamp.iso",
           "timestamp_format": "iso8601"
         },
-        "ended_at": {
-          "path": "$.timestamp.iso",
-          "timestamp_format": "iso8601"
-        },
         "model": {
           "path": "$.model"
         },
@@ -105,10 +101,6 @@
           "path": "$.tool_call_id"
         },
         "started_at": {
-          "path": "$.timestamp.iso",
-          "timestamp_format": "iso8601"
-        },
-        "ended_at": {
           "path": "$.timestamp.iso",
           "timestamp_format": "iso8601"
         },
@@ -196,5 +188,5 @@
       "reason": "Not needed"
     }
   ],
-  "notes": "SWE-chat conversations: assistant rows are model calls, tool_use rows are tool calls; token semantics unknown. Reviewed 2026-09-07. Reviewer corrections after the run (2026-09-07 late): session.ended_at removed (a turn's timestamp is not a declared end); model_call.is_error literal removed (unknown stays null); tool_call.is_error literal removed (unknown stays null); tool_call.status <- $.category removed (a category is not an outcome)."
+  "notes": "SWE-chat conversations: assistant rows are model calls, tool_use rows are tool calls; token semantics unknown. Reviewed 2026-09-07. Reviewer corrections after the run (2026-09-07 late): session.ended_at removed (a turn's timestamp is not a declared end); model_call.is_error literal removed (unknown stays null); tool_call.is_error literal removed (unknown stays null); tool_call.status <- $.category removed (a category is not an outcome). tool_call.ended_at and model_call.ended_at <- $.timestamp.iso removed (a row's timestamp is one instant, the start; the result arrives on another row the mapping cannot join, so ends stay null)."
 }

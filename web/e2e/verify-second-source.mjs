@@ -21,7 +21,7 @@
 // saved document, preview and import reports, and the pre-import snapshot (database + raw store).
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from '@playwright/test'
@@ -217,13 +217,15 @@ async function live() {
       writeFileSync(join(runDir, 'document.corrected.json'), documentText)
     }
     log('validate')
+    // executability is the server's verdict (warnings leave a document executable), not the UI's "no issues" line
+    const validationResponse = page.waitForResponse(r => r.url().includes('/api/mappings/validate'), { timeout: 60_000 })
     await page.getByRole('button', { name: 'Validate the document' }).click()
-    // either the "no issues" line or the issue list (a labelled <ul>, no visible heading)
-    await page.getByText('No issues: the document is executable.').or(page.locator('ul[aria-label="Validation issues"]')).first().waitFor({ timeout: 60_000 })
-    const executable = await page.getByText('No issues: the document is executable.').count() > 0
-    const issuesText = executable ? '' : await page.locator('ul[aria-label="Validation issues"]').innerText()
-    writeFileSync(join(runDir, 'validation.txt'), executable ? 'executable' : issuesText)
-    if (!executable) log('validation issues:', issuesText.slice(0, 400).replace(/\n/g, ' | '))
+    const validation = await (await validationResponse).json()
+    const executable = validation.executable === true
+    const issues = validation.issues ?? []
+    const issuesText = issues.map(i => `${i.severity ?? 'issue'} ${i.code ?? ''} ${i.path ?? ''} ${i.message ?? ''}`.trim()).join('\n')
+    writeFileSync(join(runDir, 'validation.txt'), `${executable ? 'executable' : 'not executable'}\n${issuesText}`)
+    if (issues.length) log(executable ? 'validation warnings:' : 'validation issues:', issuesText.slice(0, 400).replace(/\n/g, ' | '))
     let saved = null
     let preview = null
     let report = null
@@ -264,6 +266,17 @@ async function live() {
   }
 }
 
+// the original run's import report: "N of M records accepted, R rejected" and "name · revision R · map_id"
+function readBaseline(runDirectory) {
+  const path = join(runDirectory, 'import-report.txt')
+  if (!existsSync(path)) return null
+  const text = readFileSync(path, 'utf8')
+  const counts = text.match(/(\d+) of (\d+) records accepted, (\d+) rejected/)
+  const mapping = text.match(/revision (\d+) · (map_[0-9a-f]+)/)
+  if (!counts || !mapping) return null
+  return { accepted: Number(counts[1]), total: Number(counts[2]), rejected: Number(counts[3]), revision: Number(mapping[1]), mappingId: mapping[2] }
+}
+
 async function replay() {
   const root = join(runDir, 'backend')
   rmSync(root, { recursive: true, force: true })
@@ -297,18 +310,24 @@ async function replay() {
     const imported = await (await fetch(`${base}/api/imports/${encodeURIComponent(importId)}`)).json()
     const sessions = await (await fetch(`${base}/api/sessions?source=${encodeURIComponent(args.source ?? 'swe-chat')}&limit=500`)).json()
     const assistantRuns = Object.entries(counters).filter(([k]) => k.includes('/api/assistant/run')).reduce((n, [, v]) => n + v, 0)
-    // a replay passes only when the saved mapping really executed on a fresh database
+    // the baseline is the original run's import (the snapshot's parent directory): same accepted and rejected
+    // counts, same mapping revision; the expected session count and entity counts are mandatory
+    const baseline = readBaseline(resolve(args.replay, '..'))
+    const accepted = (imported.records?.accepted ?? 0) + (imported.records?.partial ?? 0)
     const checks = {
       control_run_503: control.run_status === 503 && control.code === 'assistant_unavailable',
       import_committed: imported.status === 'committed',
       no_duplicates: (imported.records?.duplicate ?? 0) === 0,
-      records_accepted: (imported.records?.accepted ?? 0) + (imported.records?.partial ?? 0) > 0,
-      expected_sessions: args['expect-sessions'] === undefined || sessions.length === Number(args['expect-sessions']),
-      expected_entities: args['expect-entities'] === undefined || JSON.stringify(imported.entities) === args['expect-entities'],
+      baseline_found: baseline !== null,
+      same_accepted: baseline !== null && accepted === baseline.accepted && accepted > 0,
+      same_rejected: baseline !== null && (imported.records?.rejected ?? 0) === baseline.rejected,
+      same_mapping_revision: baseline !== null && imported.mapping?.id === baseline.mappingId && Number(imported.mapping?.revision) === baseline.revision,
+      expected_sessions: args['expect-sessions'] !== undefined && sessions.length === Number(args['expect-sessions']),
+      expected_entities: args['expect-entities'] !== undefined && JSON.stringify(imported.entities) === args['expect-entities'],
       no_assistant_runs: assistantRuns === 0,
     }
     const passed = Object.values(checks).every(Boolean)
-    writeFileSync(join(runDir, 'replay.json'), JSON.stringify({ runId, snapshot: args.replay, control, import: { id: importId, status: imported.status, records: imported.records, entities: imported.entities, mapping: imported.mapping }, sessions: sessions.length, checks, passed, requests: counters }, null, 2))
+    writeFileSync(join(runDir, 'replay.json'), JSON.stringify({ runId, snapshot: args.replay, baseline, control, import: { id: importId, status: imported.status, records: imported.records, entities: imported.entities, mapping: imported.mapping }, sessions: sessions.length, checks, passed, requests: counters }, null, 2))
     writeFileSync(join(runDir, 'import-report.txt'), report)
     log('replay', passed ? 'PASSED' : 'FAILED', runId, JSON.stringify(checks), `entities ${JSON.stringify(imported.entities)}`)
     if (!passed) process.exitCode = 3

@@ -22,13 +22,26 @@
     "post_run_reviewer_corrections": [
       "session.ended_at removed",
       "is_error literals removed",
-      "tool_call.status <- $.category removed"
+      "tool_call.status <- $.category removed",
+      "tool_call.ended_at and model_call.ended_at <- $.timestamp.iso removed"
     ]
   },
   "distinct_sessions": 1,
   "session_fields": {
     "sess-0": {
       "agent": "claude-code"
+    }
+  },
+  "tool_call_fields": {
+    "row:3": {
+      "started_at": "2026-06-01T12:00:03Z",
+      "ended_at": null
+    }
+  },
+  "model_call_fields": {
+    "row:1": {
+      "started_at": "2026-06-01T12:00:01Z",
+      "ended_at": null
     }
   }
 }
