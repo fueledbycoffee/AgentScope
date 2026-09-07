@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -91,6 +92,8 @@ def test_day_one_gate_upload_preview_import_explore_reimport(client: TestClient)
     ref = detail["model_calls"][0]["raw_record"]
     raw = client.get("/api/raw-records", params=ref).json()
     assert raw["payload"]["session_id"] == sessions[0]["external_id"]
+    assert sessions[0]["external_id"] in raw["payload_text"]
+    assert json.loads(raw["payload_text"])["session_id"] == sessions[0]["external_id"]
     assert client.get("/api/sessions/nope").status_code == 404
 
     metrics = client.get("/api/metrics/summary", params={"source": "tracelab"}).json()
@@ -127,3 +130,20 @@ def test_errors_follow_the_contract(client: TestClient) -> None:
         "/api/imports/preview", json={"upload_id": "x", "mapping_id": "y", "sample": 5000}
     )
     assert too_many.status_code == 422  # request validation, FastAPI's own shape
+
+
+def test_payload_text_keeps_big_integers_and_decimals_exact() -> None:
+    from decimal import Decimal
+
+    from agentscope_app.interfaces.api.routers import dumps_exact
+
+    text = dumps_exact(
+        {
+            "native_id": 9007199254740993,
+            "ratio": Decimal("1.00000000000000001"),
+            "ok": True,
+            "n": [1, None],
+        }
+    )
+    assert "9007199254740993" in text and "1.00000000000000001" in text
+    assert '"9007199254740993"' not in text and "true" in text and "null" in text
