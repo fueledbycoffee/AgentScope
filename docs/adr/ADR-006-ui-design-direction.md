@@ -41,7 +41,8 @@ design of record for the web application. Its rules bind UI work from #8 on:
 
 ## Consequences
 
-- The #7 thin slice is refactored into the Console shell (routes
+- Integration is a dedicated issue (#30): tokens, shell and reusable
+  components land first, and the #7 thin slice is re-hosted in that shell (routes
   `/overview`, `/sessions`, `/sessions/:id`, `/imports`, `/imports/:id`,
   `/import`, `/mappings`, `/assistant`, `/definitions`).
 - The metric layer (#10) must expose per-metric definition, unit, semantics

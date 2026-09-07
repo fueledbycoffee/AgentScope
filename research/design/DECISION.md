@@ -49,8 +49,9 @@ copy).
 - Issue #11 (dashboard), #9 (import accounting UI) and #15 (assistant UI)
   follow the Console design document: routes, disclosure model, tokens, type
   scale, component inventory and states in `claude/3-console/README.md`.
-- The thin-slice UI from #7 is refactored into the Console shell rather than
-  extended.
+- The design is integrated first as its own issue (#30: tokens, shell,
+  reusable components); the thin-slice UI from #7 is re-hosted in that shell
+  rather than extended, and #9, #11, #15 and #16 compose from it.
 - Dark theme follows the token derivation stated in the Console README.
 
 See ADR-006 for the architectural consequences.
