@@ -171,6 +171,8 @@ def _bounds(fm: FieldMapping, item: Any, root: Any) -> tuple[Any, str]:
             value = apply_transform(transform, value)
         if value is None:
             continue
+        if fm.empty_as_missing and isinstance(value, str) and value.strip() == "":
+            continue
         parsed.append(coerce(value, FieldType.TIMESTAMP, timestamp_format=fm.timestamp_format))
     if not parsed:
         return MISSING, "absent"

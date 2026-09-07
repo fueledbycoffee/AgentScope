@@ -342,6 +342,14 @@ def _parse_condition(raw: Any, path: str, issues: _Issues) -> Condition | None:
             f"Operator {op!r} is not one of {CONDITION_OPERATORS}",
         )
         return None
+    if op in ("eq", "ne") and "value" not in raw:
+        issues.error(
+            "semantic",
+            f"{path}.value",
+            "missing_condition_value",
+            f"Operator {op!r} needs an explicit value (use null to compare with null)",
+        )
+        return None
     value = raw.get("value")
     if _depth(value) > MAX_CONDITION_DEPTH:
         issues.error(

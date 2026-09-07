@@ -394,3 +394,12 @@ def test_bounds_validation() -> None:
     parsed = variant(valid)
     assert parsed.is_executable and parsed.spec is not None
     assert parsed.spec.rules[1].fields["started_at"].bounds == "min"
+
+
+def test_equality_conditions_need_an_explicit_value() -> None:
+    parsed = variant(lambda d: d["rules"][1].__setitem__("where", [{"path": "$.k", "op": "eq"}]))
+    assert ("rules[1].where[0].value", "missing_condition_value") in codes(parsed)
+    explicit_null = variant(
+        lambda d: d["rules"][1].__setitem__("where", [{"path": "$.k", "op": "ne", "value": None}])
+    )
+    assert explicit_null.is_executable

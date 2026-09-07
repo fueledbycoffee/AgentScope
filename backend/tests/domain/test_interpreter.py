@@ -666,3 +666,21 @@ def test_bounds_apply_transforms_to_each_candidate_before_parsing() -> None:
     result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
     assert result.rejects == ()
     assert result.emissions[0].fields["started_at"] == datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def test_bounds_honour_empty_as_missing() -> None:
+    spec = parse_mapping(_bounds_doc(empty_as_missing=True, on_missing="null")).spec
+    assert spec is not None
+    only_empty = apply_mapping(
+        spec, {"sid": "s", "events": [{"ts": ""}]}, file_sha256="f", locator="line:1"
+    )
+    assert only_empty.rejects == () and only_empty.emissions[0].fields["started_at"] is None
+    assert ("started_at", "absent") in {(w.field, w.code) for w in only_empty.warnings}
+    mixed = apply_mapping(
+        spec,
+        {"sid": "s", "events": [{"ts": " "}, {"ts": "2026-01-01T00:00:00Z"}]},
+        file_sha256="f",
+        locator="line:2",
+    )
+    assert mixed.rejects == ()
+    assert mixed.emissions[0].fields["started_at"] == datetime(2026, 1, 1, tzinfo=UTC)
