@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import io
 import json
+from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, BinaryIO
@@ -16,7 +17,9 @@ from agentscope_app.application.dto import (
     MappingRecord,
     RawRecord,
     RecordOutcome,
+    RecordRow,
     RejectRow,
+    RejectSummary,
     SessionDetail,
     SessionSummary,
     StoredFile,
@@ -161,6 +164,7 @@ class FakeImports:
         import_id: str,
         code: str | None,
         file_sha256: str | None,
+        rule_id: str | None,
         limit: int,
         offset: int,
     ) -> Sequence[RejectRow]:
@@ -169,6 +173,29 @@ class FakeImports:
             for r in self.reject_rows.get(import_id, [])
             if (code is None or r.code == code)
             and (file_sha256 is None or r.file_sha256 == file_sha256)
+            and (rule_id is None or r.rule_id == rule_id)
+        ]
+        return rows[offset : offset + limit]
+
+    def reject_summary(self, import_id: str) -> RejectSummary:
+        rows = self.reject_rows.get(import_id, [])
+        tally = lambda key: dict(Counter(getattr(r, key) for r in rows))  # noqa: E731
+        outcomes = dict(Counter(o.outcome for o in self.results.get(import_id, [])))
+        return RejectSummary(tally("code"), tally("rule_id"), tally("file_sha256"), outcomes)
+
+    def records(
+        self,
+        import_id: str,
+        outcome: str | None,
+        file_sha256: str | None,
+        limit: int,
+        offset: int,
+    ) -> Sequence[RecordRow]:
+        rows = [
+            RecordRow(o.file_sha256, o.locator, o.outcome, o.entity_counts, o.warning_counts)
+            for o in self.results.get(import_id, [])
+            if (outcome is None or o.outcome == outcome)
+            and (file_sha256 is None or o.file_sha256 == file_sha256)
         ]
         return rows[offset : offset + limit]
 

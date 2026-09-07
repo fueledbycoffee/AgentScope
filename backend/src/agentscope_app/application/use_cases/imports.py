@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterator, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 from agentscope_app.application.dto import (
@@ -167,6 +167,7 @@ class _FileGroup:
     spec: MappingSpec
     upload_ids: list[str]
     duplicate: bool = False
+    duplicate_of: str | None = None
 
 
 class CommitImport:
@@ -223,7 +224,8 @@ class CommitImport:
             )
 
         def duplicate_info(g: _FileGroup) -> FileInfo:
-            return file_info(g, "duplicate", _counts(duplicate=g.info.record_count))
+            info = file_info(g, "duplicate", _counts(duplicate=g.info.record_count))
+            return replace(info, duplicate_of=g.duplicate_of)
 
         def build(
             status: str,
@@ -370,7 +372,9 @@ class CommitImport:
                 else:
                     group.upload_ids.append(b.upload_id)
             for g in groups.values():
-                g.duplicate = bool(uow.imports.find_committed(g.info.sha256, source))
+                earlier = uow.imports.find_committed(g.info.sha256, source)
+                g.duplicate = bool(earlier)
+                g.duplicate_of = earlier[0].import_id if earlier else None
         return groups
 
     def _persist(self, report: ImportReport) -> None:

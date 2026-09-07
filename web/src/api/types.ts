@@ -17,6 +17,7 @@ export interface ImportedFile extends FileInfo {
   mapping: { id: string; name: string; revision: number } | null
   status: FileStatus
   records: Partial<RecordCounts>
+  duplicate_of?: string | null
 }
 export type RecordCounts = { accepted: number; partial: number; duplicate: number; rejected: number; ignored: number }
 export interface FileBinding { upload_id: string; mapping_id: string }
@@ -44,6 +45,9 @@ export interface Reject {
   file_sha256?: string
 }
 export interface ImportReject extends Reject { payload: Json }
+export type RecordOutcome = 'accepted' | 'partial' | 'duplicate' | 'rejected' | 'ignored'
+export interface RecordRow { file_sha256: string; locator: string; outcome: RecordOutcome; entity_counts: EntityCounts; warning_counts: Record<string, number> }
+export interface RejectSummary { codes: Record<string, number>; rules: Record<string, number>; files: Record<string, number>; outcomes: Partial<Record<RecordOutcome, number>> }
 export type EntityCounts = Partial<Record<'session' | 'model_call' | 'tool_call', number>>
 export interface ImportPreview {
   records: { accepted: number; partial: number; rejected: number; sampled: number }

@@ -16,7 +16,9 @@ from agentscope_app.application.dto import (
     MappingRecord,
     RawRecord,
     RecordOutcome,
+    RecordRow,
     RejectRow,
+    RejectSummary,
     SessionDetail,
     SessionSummary,
     StoredFile,
@@ -99,9 +101,25 @@ class ImportRepository(Protocol):
         import_id: str,
         code: str | None,
         file_sha256: str | None,
+        rule_id: str | None,
         limit: int,
         offset: int,
     ) -> Sequence[RejectRow]: ...
+
+    def reject_summary(self, import_id: str) -> RejectSummary:
+        """Reject counts by code, rule and file, plus record counts by outcome."""
+        ...
+
+    def records(
+        self,
+        import_id: str,
+        outcome: str | None,
+        file_sha256: str | None,
+        limit: int,
+        offset: int,
+    ) -> Sequence[RecordRow]:
+        """Per-record outcomes ordered by file, then by locator position."""
+        ...
 
 
 class TraceRepository(Protocol):

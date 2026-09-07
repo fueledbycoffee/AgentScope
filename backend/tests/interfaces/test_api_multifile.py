@@ -105,6 +105,9 @@ def test_batch_import_with_parquet_and_jsonl(client: TestClient) -> None:
     )
     assert again.status_code == 201 and again.json()["status"] == "duplicate"
     assert again.json()["files"][0]["status"] == "duplicate"
+    assert again.json()["files"][0]["duplicate_of"] == report["import_id"]
+    read_back = client.get(f"/api/imports/{again.json()['import_id']}").json()
+    assert read_back["files"][0]["duplicate_of"] == report["import_id"]
     # both forms at once, or neither, is a validation error in the envelope
     both = client.post(
         "/api/imports",
@@ -122,3 +125,41 @@ def test_batch_import_with_parquet_and_jsonl(client: TestClient) -> None:
         "/api/imports", json={"source": "s", "files": [{"upload_id": "nope", "mapping_id": "y"}]}
     )
     assert unknown.status_code == 404
+
+
+def test_records_and_reject_summary_endpoints(client: TestClient) -> None:
+    mappings = {m["name"]: m["id"] for m in client.get("/api/mappings").json()}
+    a = upload(client, "a.jsonl", JSONL)
+    report = client.post(
+        "/api/imports",
+        json={
+            "upload_id": a["upload_id"],
+            "mapping_id": mappings["tracelab-v1"],
+            "source": "tracelab",
+        },
+    ).json()
+    base = f"/api/imports/{report['import_id']}"
+    records = client.get(f"{base}/records").json()
+    assert [(r["locator"], r["outcome"]) for r in records] == [
+        ("line:1", "accepted"),
+        ("line:2", "rejected"),
+    ]
+    assert records[0]["file_sha256"] == a["sha256"] and records[0]["entity_counts"] == {
+        "session": 1,
+        "model_call": 1,
+    }
+    assert [
+        r["locator"] for r in client.get(f"{base}/records", params={"outcome": "rejected"}).json()
+    ] == ["line:2"]
+    assert client.get(f"{base}/records", params={"outcome": "bogus"}).status_code == 400
+    summary = client.get(f"{base}/rejects/summary").json()
+    assert summary["outcomes"] == {"accepted": 1, "rejected": 1}
+    assert summary["codes"] == {"missing_value": 2} and set(summary["rules"]) == {
+        "session",
+        "model_call",
+    }
+    assert [
+        r["rule_id"] for r in client.get(f"{base}/rejects", params={"rule_id": "session"}).json()
+    ] == ["session"]
+    assert client.get("/api/imports/imp_nope/records").status_code == 404
+    assert client.get("/api/imports/imp_nope/rejects/summary").status_code == 404

@@ -14,6 +14,11 @@ function defaultResponse(input: RequestInfo | URL, options?: RequestInit): Promi
   if (url.pathname === '/api/imports' && options?.method === 'POST') return Promise.resolve(json(report))
   if (url.pathname === '/api/imports') return Promise.resolve(json([{ ...report, warnings: undefined }]))
   if (url.pathname === '/api/imports/imp_1') return Promise.resolve(json(report))
+  if (url.pathname === '/api/imports/imp_1/rejects/summary') return Promise.resolve(json({ codes: { invalid_value: 1 }, rules: { tool_call: 1 }, files: { [upload.sha256]: 1 }, outcomes: { accepted: 2, rejected: 1 } }))
+  if (url.pathname === '/api/imports/imp_1/records') return Promise.resolve(json([
+    { file_sha256: upload.sha256, locator: 'line:1', outcome: 'accepted', entity_counts: { session: 1, model_call: 1 }, warning_counts: {} },
+    { file_sha256: upload.sha256, locator: 'line:3', outcome: 'rejected', entity_counts: {}, warning_counts: { absent: 2 } },
+  ]))
   if (url.pathname === '/api/imports/imp_1/rejects') return Promise.resolve(json([{ ...reject, payload: { bad: true } }]))
   if (url.pathname === '/api/metrics/summary') return Promise.resolve(json(metrics))
   if (url.pathname === '/api/sessions') return Promise.resolve(json([session]))
@@ -165,7 +170,7 @@ describe('Import flow', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/imports', expect.objectContaining({
       body: JSON.stringify({ source: 'tracelab', files: [{ upload_id: 'upl_1', mapping_id: 'map_1' }, { upload_id: 'upl_2', mapping_id: 'map_2' }] }),
     }))
-    expect(screen.getByRole('table', { name: 'Imported files' })).toHaveTextContent('tracelab-v1 · revision 1')
+    expect(screen.getByRole('table', { name: 'Imported files' })).toHaveTextContent('tracelab-v1 · rev 1')
   })
 
   it('submits a fully queued batch without a current preview', async () => {
@@ -279,9 +284,9 @@ describe('Reports, history, and session detail', () => {
       ? Promise.resolve(json({ ...report, status, entities: {}, error: status === 'failed' ? 'IntegrityError: Transaction rolled back' : null }))
       : defaultResponse(url, options))
     start('/imports/imp_1')
-    await screen.findByText(status, { selector: 'dd .pill' })
+    await screen.findByText(status, { selector: '.page-head .pill' })
     expect(screen.getByText(/No observations were inserted/)).toBeInTheDocument()
-    const counts = screen.getByRole('heading', { name: 'Entity observations' }).parentElement!
+    const counts = screen.getByRole('region', { name: 'Entity observations' })
     expect(within(counts).getAllByText('0', { exact: true })).toHaveLength(3)
     for (const kind of ['session', 'model call', 'tool call']) expect(within(counts).getByText(kind)).toBeInTheDocument()
     expect(counts).not.toHaveTextContent('undefined')
@@ -297,12 +302,13 @@ describe('Reports, history, and session detail', () => {
     start('/imports')
     const table = await screen.findByRole('table', { name: 'Import attempts, newest first' })
     expect(table).toHaveTextContent('IntegrityError: Transaction rolled back')
-    expect(table.querySelectorAll('td .muted')).toHaveLength(2)  // no entities on duplicate and failed rows, never zeros
+    expect(table.querySelectorAll('td .muted').length).toBeGreaterThanOrEqual(4)  // sessions and model calls show a dash on both rows, never zeros
+    expect(table).not.toHaveTextContent('session: 0')
     expect(table).not.toHaveTextContent('undefined')
   })
 
   it('renders a dash for a reject without a field', async () => {
-    fetchMock.mockImplementation((url, options) => String(url).startsWith('/api/imports/imp_1/rejects')
+    fetchMock.mockImplementation((url, options) => String(url).startsWith('/api/imports/imp_1/rejects?')
       ? Promise.resolve(json([{ ...reject, code: 'invalid_json', field: null, payload: null }]))
       : defaultResponse(url, options))
     start('/imports/imp_1')
@@ -327,19 +333,25 @@ describe('Reports, history, and session detail', () => {
   })
 
   it('paginates rejects and resets the page when the code filter changes', async () => {
-    fetchMock.mockImplementation((url, options) => String(url).startsWith('/api/imports/imp_1/rejects')
+    fetchMock.mockImplementation((url, options) => String(url).startsWith('/api/imports/imp_1/rejects?')
       ? Promise.resolve(json(String(url).includes('offset=50') ? [] : Array.from({ length: 50 }, (_, i) => ({ ...reject, locator: `line:${i}`, payload: {} }))))
       : defaultResponse(url, options))
     start('/imports/imp_1')
     await screen.findByRole('table', { name: 'Rejected records' })
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    const rejects = screen.getByRole('region', { name: 'Rejects' })
+    fireEvent.click(within(rejects).getByRole('button', { name: 'Next' }))
     await screen.findByText('No rejects on this page.')
     expect(fetchMock).toHaveBeenCalledWith('/api/imports/imp_1/rejects?limit=50&offset=50', undefined)
-    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
-    fireEvent.change(screen.getByLabelText('Reject code filter'), { target: { value: 'invalid_value' } })
+    expect(within(rejects).getByRole('button', { name: 'Next' })).toBeDisabled()
+    fireEvent.change(within(rejects).getByLabelText('Code filter'), { target: { value: 'invalid_value' } })
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/imports/imp_1/rejects?code=invalid_value&limit=50&offset=0', undefined))
     await screen.findByRole('table', { name: 'Rejected records' })
-    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+    expect(within(rejects).getByRole('button', { name: 'Previous' })).toBeDisabled()
+    // the records panel has its own filter and pages
+    const records = screen.getByRole('region', { name: 'Records' })
+    expect(within(records).getByRole('option', { name: 'rejected (1)' })).toBeInTheDocument()
+    fireEvent.change(within(records).getByLabelText('Outcome filter'), { target: { value: 'rejected' } })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/imports/imp_1/records?outcome=rejected&limit=50&offset=0', undefined))
   })
 
   it('opens session detail, displays diagnostics, and lazily fetches source payloads as inert JSON', async () => {

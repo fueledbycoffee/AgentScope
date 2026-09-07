@@ -205,7 +205,7 @@ def test_end_to_end_commit_over_the_fixture_then_reimport(engine: Any, tmp_path:
     with uow_factory() as uow:
         assert uow.imports.get(report.import_id) == report
         assert [r.import_id for r in uow.imports.list(10, 0)] == [report.import_id]
-        assert uow.imports.rejects(report.import_id, None, None, 10, 0) == []
+        assert uow.imports.rejects(report.import_id, None, None, None, 10, 0) == []
         assert uow.traces.raw_record(info.sha256, "line:1")["provider"] in ("claude", "codex")
 
     sessions = ListSessions(uow_factory).execute(source="tracelab", agent=None, limit=100, offset=0)
