@@ -156,8 +156,17 @@ def _emit(
             )
         else:
             parent_occurrence = parent.occurrence
-            if values.get("session_external_id") is None:
-                values["session_external_id"] = parent.fields.get("session_external_id")
+            parent_session = parent.fields.get("session_external_id")
+            child_session = values.get("session_external_id")
+            if child_session is None:
+                values["session_external_id"] = parent_session
+            elif parent_session is not None and child_session != parent_session:
+                raise _FieldRejectError(
+                    "conflicting_relationship",
+                    f"Tool call session {child_session!r} differs from its parent model call "
+                    f"session {parent_session!r}",
+                    "session_external_id",
+                )
         if values.get("session_external_id") is None:
             raise _FieldRejectError(
                 "missing_relationship",
@@ -224,11 +233,10 @@ def _evaluate(
             if value is None:
                 return None
         if fm.unit_from and fm.unit_to:
-            # Convert units on the numeric value first, then settle the target type.
+            # Convert units on the numeric value first; the strict coercion below then
+            # rejects anything that is not integral instead of rounding it.
             numeric = coerce(value, FieldType.NUMBER)
             value = convert_duration(numeric, fm.unit_from, fm.unit_to)
-            if fm.type is FieldType.INTEGER:
-                value = round(value)
         value = coerce(value, fm.type, timestamp_format=fm.timestamp_format)
     except ConversionError as exc:
         if fm.on_invalid == "null":

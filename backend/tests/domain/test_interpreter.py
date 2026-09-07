@@ -244,3 +244,82 @@ def test_conditions_cover_all_operators() -> None:
     result = apply_mapping(spec, record, file_sha256="a", locator="row:1")
     assert [e.fields["external_id"] for e in result.emissions] == ["keep-1", "keep-2"]
     assert [e.occurrence.emission_path for e in result.emissions] == ["s[0]", "s[1]"]
+
+
+def test_tool_call_in_another_session_than_its_parent_is_rejected() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "model_call",
+                "entity": "model_call",
+                "select": "$",
+                "fields": {"session_external_id": {"path": "$.sid"}},
+            },
+            {
+                "id": "tool_call",
+                "entity": "tool_call",
+                "select": "$.tools[*]",
+                "parent": "model_call",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "tool_name": {"path": "$.name"},
+                },
+            },
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    record = {"sid": "A", "tools": [{"sid": "A", "name": "ok"}, {"sid": "B", "name": "other"}]}
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    assert [e.occurrence.emission_path for e in result.emissions] == ["model_call", "tool_call[0]"]
+    assert [(r.code, r.field, r.occurrence.emission_path) for r in result.rejects] == [
+        ("conflicting_relationship", "session_external_id", "tool_call[1]")
+    ]
+
+
+def test_unit_conversion_does_not_round_into_integers() -> None:
+    result = run(
+        {
+            "sid": "s",
+            "kind": "call",
+            "ts": 1,
+            "usage": {"output": 0},
+            "tools": [{"name": "a", "secs": 0.0015}, {"name": "b", "secs": -0.0001}],
+        }
+    )
+    assert [(r.code, r.field, r.occurrence.emission_path) for r in result.rejects] == [
+        ("invalid_value", "wall_latency_ms", "tool_call[0]"),
+        ("invalid_value", "wall_latency_ms", "tool_call[1]"),
+    ]
+
+
+def test_malformed_integer_string_follows_on_invalid_policy() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "model_call",
+                "entity": "model_call",
+                "select": "$",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "input_tokens": {"path": "$.tokens", "on_invalid": "null"},
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    result = apply_mapping(spec, {"sid": "s", "tokens": "--1"}, file_sha256="f", locator="line:1")
+    assert result.rejects == ()
+    assert result.emissions[0].fields["input_tokens"] is None
+    assert [(w.code, w.field) for w in result.warnings] == [("invalid_value", "input_tokens")]

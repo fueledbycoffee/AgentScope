@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any, Final
 
@@ -18,6 +19,7 @@ DURATION_UNITS: Final[dict[str, float]] = {
 TIMESTAMP_FORMATS: Final = ("iso8601", "epoch_s", "epoch_ms")
 _TRUE: Final = frozenset({"true", "1", "yes", "y", "t"})
 _FALSE: Final = frozenset({"false", "0", "no", "n", "f"})
+_INT_STRING: Final = re.compile(r"-?\d{1,18}")
 
 
 def convert_duration(value: int | float, from_unit: str, to_unit: str) -> int | float:
@@ -71,7 +73,7 @@ def coerce(value: Any, field_type: FieldType, *, timestamp_format: str | None = 
             return value
         if isinstance(value, float) and value.is_integer():
             return int(value)
-        if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        if isinstance(value, str) and _INT_STRING.fullmatch(value.strip()):
             return int(value.strip())
     elif field_type is FieldType.NUMBER:
         if isinstance(value, int | float):

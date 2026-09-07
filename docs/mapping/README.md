@@ -85,6 +85,14 @@ session named by `external_id`, and the reducer merges contributions (first
 non-null value wins, later different values are reported as conflicts) and
 computes `observed_start_at` / `observed_end_at` from the children.
 
+Session identity is scoped by source (one mapping, one source namespace) and
+by whatever the mapping puts into `external_id`. If a source reuses session
+ids across harnesses, the mapping must make the id harness-specific (TraceLab
+already prefixes ids with `claude:` / `codex:`); the reducer cannot do it,
+because model calls and tool calls carry no harness field. Two session
+contributions with the same id but a different `agent` are kept as one session
+with a `conflicting_value` diagnostic so the collision stays visible.
+
 ## Paths
 
 Grammar: `("$" | "@root") ("." name | "[" n "]" | "[*]")*`, at most 16 segments.
@@ -101,11 +109,11 @@ Grammar: `("$" | "@root") ("." name | "[" n "]" | "[*]")*`, at most 16 segments.
 
 | Key | Meaning |
 | --- | --- |
-| `id` | Unique name of the rule; also the emission path prefix in provenance |
+| `id` | Unique name of the rule, matching `[A-Za-z_][A-Za-z0-9_-]*`; it becomes the emission path prefix in provenance (`tool_call[3]`), which is why brackets are not allowed |
 | `entity` | `session`, `model_call` or `tool_call` |
 | `select` | Path of the items the rule emits from; default `$` |
 | `where` | Conditions, all of which must hold: `{path, op, value}` with `op` in `eq`, `ne`, `in`, `not_in`, `exists`, `not_exists` |
-| `parent` | Only on `tool_call` rules: id of a `model_call` rule whose `select` is `$`; the tool links to that call and inherits its session |
+| `parent` | Only on `tool_call` rules: id of a `model_call` rule declared earlier whose `select` is `$`; the tool links to that call and inherits its session. A tool that maps a different session than its parent is rejected (`conflicting_relationship`) |
 | `native_key` | Fields whose values form the claimed native identity; defaults to `["external_id"]` when mapped |
 | `fields` | Target field → field mapping |
 
@@ -117,7 +125,7 @@ Grammar: `("$" | "@root") ("." name | "[" n "]" | "[*]")*`, at most 16 segments.
 | `transforms` | `[]` | Ordered allowlist: `trim`, `lower`, `upper`, `json_decode`, `{"enum_map": {"mapping": {...}, "unmapped": "keep" \| "null" \| "reject"}}` |
 | `type` | schema type | Optional; must equal the target schema type |
 | `timestamp_format` | `iso8601` | `iso8601`, `epoch_s` or `epoch_ms`; timestamp fields only. Naive ISO values are taken as UTC |
-| `unit` | none | `{"from": "s", "to": "ms"}`; only for `ms` fields, `to` must be `ms`; units `ns`, `us`, `ms`, `s`, `min` |
+| `unit` | none | `{"from": "s", "to": "ms"}`; only for `ms` fields, `to` must be `ms`; units `ns`, `us`, `ms`, `s`, `min`. Conversion happens before type coercion and never rounds: a result that is not a whole millisecond is invalid |
 | `empty_as_missing` | `false` | Treat an empty string as missing |
 | `on_missing` | `null` | `null` (store null, warn), `default` (use `default`), `reject` (reject the whole emission) |
 | `default` | | Required when `on_missing` is `default` |
@@ -150,7 +158,8 @@ Warnings (value stored as null, emission kept): `absent`, `null`, `empty`,
 
 Rejects (emission dropped, explained): `missing_value` (`on_missing: reject`),
 `invalid_value`, `missing_required`, `missing_relationship`,
-`negative_measure`, `selector_limit`, `internal_error`.
+`conflicting_relationship`, `negative_measure`, `selector_limit`,
+`internal_error`.
 
 Reducer diagnostics: `conflicting_value`, `implicit_session`.
 

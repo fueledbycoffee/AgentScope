@@ -79,3 +79,20 @@ def test_schema_and_parser_agree_on_structural_rejections(
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(doc, SCHEMA)
     assert not parse_mapping(doc).is_executable
+
+
+def test_schema_rejects_rule_ids_that_would_break_provenance_paths() -> None:
+    doc = copy.deepcopy(VALID)
+    doc["rules"][0]["id"] = "t[0]"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(doc, SCHEMA)
+    assert not parse_mapping(doc).is_executable
+
+
+def test_schema_and_parser_both_require_document_metadata() -> None:
+    for key in ("name", "source", "input_format"):
+        doc = copy.deepcopy(VALID)
+        del doc[key]
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(doc, SCHEMA)
+        assert not parse_mapping(doc).is_executable

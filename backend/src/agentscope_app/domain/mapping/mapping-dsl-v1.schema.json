@@ -18,19 +18,19 @@
   "$defs": {
     "path": {
       "type": "string",
-      "pattern": "^(\\$|@root)(\\.[A-Za-z_][A-Za-z0-9_-]*|\\[-?[0-9]+\\]|\\[\\*\\])*$",
+      "pattern": "^(\\$|@root)(\\.[A-Za-z_][A-Za-z0-9_-]*|\\[-?[0-9]{1,18}\\]|\\[\\*\\])*$",
       "description": "Restricted path: '$' is the current item, '@root' the root record; '.name', '[n]' and '[*]' only."
     },
     "fieldPath": {
       "type": "string",
-      "pattern": "^(\\$|@root)(\\.[A-Za-z_][A-Za-z0-9_-]*|\\[-?[0-9]+\\])*$",
+      "pattern": "^(\\$|@root)(\\.[A-Za-z_][A-Za-z0-9_-]*|\\[-?[0-9]{1,18}\\])*$",
       "description": "Like path but without '[*]'."
     },
     "rule": {
       "type": "object",
       "required": ["id", "entity", "fields"],
       "properties": {
-        "id": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"},
         "entity": {"enum": ["session", "model_call", "tool_call"]},
         "select": {"$ref": "#/$defs/path", "default": "$"},
         "where": {"type": "array", "items": {"$ref": "#/$defs/condition"}},

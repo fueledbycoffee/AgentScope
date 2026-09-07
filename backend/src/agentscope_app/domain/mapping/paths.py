@@ -13,7 +13,7 @@ from typing import Any, Final
 
 MAX_SEGMENTS: Final = 16
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
-_INT = re.compile(r"-?\d+")
+_INT = re.compile(r"-?\d{1,18}")
 
 
 class PathSyntaxError(ValueError):
@@ -85,7 +85,9 @@ def parse_path(text: str) -> Path:
             elif _INT.fullmatch(inner):
                 segments.append(Index(int(inner)))
             else:
-                raise PathSyntaxError(f"Index must be an integer or '*' in {text!r}")
+                raise PathSyntaxError(
+                    f"Index must be an integer (at most 18 digits) or '*' in {text!r}"
+                )
             pos = end + 1
         else:
             raise PathSyntaxError(f"Unexpected character {rest[pos]!r} at {pos} in {text!r}")

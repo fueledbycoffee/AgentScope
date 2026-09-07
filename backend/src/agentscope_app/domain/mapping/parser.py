@@ -8,6 +8,7 @@ they come back as issues so a draft can still be shown and corrected.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -68,6 +69,8 @@ _FIELD_KEYS = frozenset(
     }
 )
 _CONDITION_KEYS = frozenset({"path", "op", "value"})
+_RULE_ID = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
+_REQUIRED_DOC_KEYS = ("name", "source", "input_format")
 
 
 class _Issues:
@@ -109,10 +112,10 @@ def parse_mapping(raw: Any) -> ParsedMapping:
             f"target_schema_version must be {TARGET_SCHEMA_VERSION}, "
             f"got {raw.get('target_schema_version')!r}",
         )
-    name = _string(raw, "name", "name", issues, default="")
-    source = _string(raw, "source", "source", issues, default="")
-    input_format = _string(raw, "input_format", "input_format", issues, default="jsonl")
-    if input_format not in INPUT_FORMATS:
+    name = _required_string(raw, "name", issues)
+    source = _required_string(raw, "source", issues)
+    input_format = _required_string(raw, "input_format", issues)
+    if input_format and input_format not in INPUT_FORMATS:
         issues.error(
             "schema",
             "input_format",
@@ -156,6 +159,16 @@ def parse_mapping(raw: Any) -> ParsedMapping:
     return ParsedMapping(spec, tuple(issues.items))
 
 
+def _required_string(obj: Mapping[str, Any], key: str, issues: _Issues) -> str:
+    value = obj.get(key)
+    if not isinstance(value, str) or not value.strip():
+        issues.error(
+            "schema", key, "missing_key", f"{key} is required and must be a non-empty string"
+        )
+        return ""
+    return value
+
+
 def _string(obj: Mapping[str, Any], key: str, path: str, issues: _Issues, *, default: str) -> str:
     value = obj.get(key, default)
     if not isinstance(value, str):
@@ -173,6 +186,13 @@ def _parse_rule(raw_rule: Any, path: str, issues: _Issues) -> Rule | None:
     if not rule_id:
         issues.error("schema", f"{path}.id", "missing_id", "A rule needs a non-empty id")
         rule_id = path
+    elif not _RULE_ID.fullmatch(rule_id):
+        issues.error(
+            "schema",
+            f"{path}.id",
+            "invalid_id",
+            "Rule ids must match [A-Za-z_][A-Za-z0-9_-]* (they form provenance paths)",
+        )
     entity_name = _string(raw_rule, "entity", f"{path}.entity", issues, default="")
     entity = TARGET_SCHEMA.get(entity_name)
     if entity is None:
@@ -257,6 +277,7 @@ def _parse_rule(raw_rule: Any, path: str, issues: _Issues) -> Rule | None:
 
 def _check_parents(rules: list[Rule], issues: _Issues) -> None:
     by_id = {r.id: r for r in rules}
+    position = {r.id: i for i, r in enumerate(rules)}
     for index, rule in enumerate(rules):
         if rule.parent is None:
             continue
@@ -277,6 +298,13 @@ def _check_parents(rules: list[Rule], issues: _Issues) -> None:
                 path,
                 "parent_not_root",
                 "A parent must be a model_call rule whose select is exactly '$'",
+            )
+        elif position[parent.id] > index:
+            issues.error(
+                "semantic",
+                path,
+                "parent_order",
+                f"Parent rule {rule.parent!r} must be declared before the rule that uses it",
             )
 
 

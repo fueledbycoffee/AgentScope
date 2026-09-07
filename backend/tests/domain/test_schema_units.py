@@ -104,3 +104,9 @@ def test_coerce_timestamp_uses_format() -> None:
     assert coerce(0, FieldType.TIMESTAMP, timestamp_format="epoch_s") == datetime(
         1970, 1, 1, tzinfo=UTC
     )
+
+
+@pytest.mark.parametrize("value", ["--1", "+1", "1_000", "9" * 19, " - 1"])
+def test_coerce_integer_rejects_malformed_strings(value: str) -> None:
+    with pytest.raises(ConversionError):
+        coerce(value, FieldType.INTEGER)

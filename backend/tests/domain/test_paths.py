@@ -66,3 +66,11 @@ def test_wildcard_flag_and_syntax_errors() -> None:
     for bad in ["", "tools", "$.", "$..a", "$[x]", "$.a[", "$.a b", "$" + ".b" * 17, "@rootx"]:
         with pytest.raises(PathSyntaxError):
             parse_path(bad)
+
+
+def test_oversized_index_is_a_syntax_error_not_a_crash() -> None:
+    with pytest.raises(PathSyntaxError):
+        parse_path("$[" + "9" * 5000 + "]")
+    with pytest.raises(PathSyntaxError):
+        parse_path("$[" + "9" * 19 + "]")
+    assert parse_path("$[" + "9" * 18 + "]").segments

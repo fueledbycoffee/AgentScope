@@ -277,3 +277,44 @@ def test_native_key_defaults_to_external_id_only_when_mapped() -> None:
     parsed = variant(no_external_id)
     assert parsed.is_executable and parsed.spec is not None
     assert parsed.spec.rules[1].native_key == ()
+
+
+def _rule_id_with_bracket(d: dict[str, Any]) -> None:
+    d["rules"][0]["id"] = "t[0]"
+
+
+def _missing_name(d: dict[str, Any]) -> None:
+    del d["name"]
+
+
+def _empty_source(d: dict[str, Any]) -> None:
+    d["source"] = "  "
+
+
+def _missing_input_format(d: dict[str, Any]) -> None:
+    del d["input_format"]
+
+
+def _parent_declared_after_child(d: dict[str, Any]) -> None:
+    d["rules"] = [d["rules"][0], d["rules"][2], d["rules"][1]]
+
+
+REVIEW_EXPECTATIONS: list[tuple[Mutator, str, str]] = [
+    (_rule_id_with_bracket, "rules[0].id", "invalid_id"),
+    (_missing_name, "name", "missing_key"),
+    (_empty_source, "source", "missing_key"),
+    (_missing_input_format, "input_format", "missing_key"),
+    (_parent_declared_after_child, "rules[1].parent", "parent_order"),
+]
+
+
+def test_review_findings_are_rejected_with_explanations() -> None:
+    for mutate, path, code in REVIEW_EXPECTATIONS:
+        parsed = variant(mutate)
+        assert (path, code) in codes(parsed), (mutate.__name__, parsed.issues)
+        assert not parsed.is_executable, mutate.__name__
+
+
+def test_huge_path_index_is_a_located_issue_not_a_crash() -> None:
+    parsed = variant(lambda d: d["rules"][0].__setitem__("select", "$[" + "9" * 5000 + "]"))
+    assert ("rules[0].select", "invalid_path") in codes(parsed)
