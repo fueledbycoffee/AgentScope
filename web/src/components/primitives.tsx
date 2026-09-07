@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ApiError } from '../api'
 import { PAGE_SIZE, abbreviate } from '../format'
@@ -61,9 +61,16 @@ export function Popover({ label, title, children, className = 'i-btn', buttonLab
     document.addEventListener('mousedown', onClick)
     return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onClick) }
   }, [open, close])
+  const panel = useRef<HTMLDivElement>(null)
+  const [flip, setFlip] = useState(false)
+  useLayoutEffect(() => {
+    if (!open || !panel.current) return
+    const rect = panel.current.getBoundingClientRect()
+    setFlip(rect.right > window.innerWidth - 8) // keep the panel inside the viewport
+  }, [open])
   return <span className="popover-host" ref={host}>
     <button ref={button} type="button" className={className} aria-label={label} aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>{buttonLabel}</button>
-    {open && <div className="popover" role="dialog" id={id} aria-label={title ?? label}>
+    {open && <div ref={panel} className={`popover${flip ? ' flip' : ''}`} role="dialog" id={id} aria-label={title ?? label}>
       {title && <h3>{title}</h3>}{children}
     </div>}
   </span>
