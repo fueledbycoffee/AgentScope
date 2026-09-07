@@ -8,6 +8,8 @@
   schema, validation stages and diagnostic codes, with the TraceLab example.
 - [Architecture decision records](adr/README.md): accepted decisions and their
   rationale for maintainers.
-- Architecture documentation and diagrams: **planned**, not yet published.
+- [Architecture: import pipeline](architecture/import-pipeline.md): components,
+  dependency direction, the commit path and how identity is enforced in tables.
+- [HTTP API contract v0.1](api/v0.1.md): the interface the web app consumes.
 - Metric definitions, coverage and comparability documentation: **planned**, not
   yet published.

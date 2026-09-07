@@ -16,6 +16,7 @@ from agentscope_app.application.dto import (
     MappingRef,
     PreviewReport,
     RawRecord,
+    RecordOutcome,
     RejectRow,
     UploadInfo,
 )
@@ -28,12 +29,19 @@ from agentscope_app.application.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
+from agentscope_app.domain.identity import SourceOccurrence
 from agentscope_app.domain.mapping.contract import MappingSpec
-from agentscope_app.domain.mapping.interpreter import Emission, RecordResult, apply_mapping
+from agentscope_app.domain.mapping.interpreter import (
+    Emission,
+    RecordResult,
+    Reject,
+    apply_mapping,
+)
 from agentscope_app.domain.mapping.parser import parse_mapping
 from agentscope_app.domain.reducer import reduce_sessions
 
 RECORD_OUTCOMES = ("accepted", "partial", "duplicate", "rejected", "ignored")
+SAMPLE_LIMIT = 50
 
 
 def _load_mapping(uow: UnitOfWork, mapping_id: str) -> tuple[MappingRecord, MappingSpec]:
@@ -68,9 +76,6 @@ def _classify(result: RecordResult) -> str:
 
 def _run_record(spec: MappingSpec, record: RawRecord, file_sha256: str) -> RecordResult:
     if record.payload is None:
-        from agentscope_app.domain.identity import SourceOccurrence
-        from agentscope_app.domain.mapping.interpreter import Reject
-
         occurrence = SourceOccurrence(file_sha256, record.locator, "record")
         message = record.error or "record could not be decoded"
         return RecordResult(rejects=(Reject("record", occurrence, "invalid_json", message),))
@@ -118,7 +123,7 @@ class PreviewImport:
                 records[_classify(result)] += 1
                 for emission in result.emissions:
                     entities[emission.entity] += 1
-                    if len(emissions) < 50:
+                    if len(emissions) < SAMPLE_LIMIT:
                         emissions.append(
                             EmissionSample(
                                 emission.entity,
@@ -129,8 +134,9 @@ class PreviewImport:
                         )
                 for warning in result.warnings:
                     warnings[warning.code] += 1
-                if len(rejects) < 50:
-                    rejects.extend(_reject_rows(result, record.payload)[: 50 - len(rejects)])
+                if len(rejects) < SAMPLE_LIMIT:
+                    room = SAMPLE_LIMIT - len(rejects)
+                    rejects.extend(_reject_rows(result, record.payload)[:room])
         counts = {k: records.get(k, 0) for k in ("accepted", "partial", "rejected", "ignored")}
         counts["sampled"] = sampled
         return PreviewReport(
@@ -169,27 +175,37 @@ class CommitImport:
         file_info = FileInfo(
             info.filename, info.sha256, info.size_bytes, info.format, info.record_count
         )
-        base = dict(
-            import_id=import_id,
-            source=source,
-            mapping=MappingRef(mapping.id, mapping.name, mapping.revision),
-            started_at=started_at,
-            files=(file_info,),
-        )
-        if duplicates:
-            report = ImportReport(
-                status="duplicate",
+        mapping_ref = MappingRef(mapping.id, mapping.name, mapping.revision)
+
+        def build(
+            status: str,
+            records: dict[str, int],
+            entities: dict[str, int],
+            warnings: dict[str, int],
+            reject_count: int,
+            error: str | None = None,
+        ) -> ImportReport:
+            return ImportReport(
+                import_id=import_id,
+                status=status,
+                source=source,
+                mapping=mapping_ref,
+                started_at=started_at,
                 finished_at=self._clock.now(),
-                records=_counts(duplicate=info.record_count),
-                entities={},
-                warnings={},
-                reject_count=0,
-                **base,
+                files=(file_info,),
+                records=records,
+                entities=entities,
+                warnings=warnings,
+                reject_count=reject_count,
+                error=error,
             )
+
+        if duplicates:
+            report = build("duplicate", _counts(duplicate=info.record_count), {}, {}, 0)
             self._persist(report, info.sha256, [], [])
             return report
 
-        outcomes: list[tuple[str, str, dict[str, int], dict[str, int]]] = []
+        outcomes: list[RecordOutcome] = []
         rejects: list[RejectRow] = []
         emissions: list[Emission] = []
         records: Counter[str] = Counter()
@@ -204,12 +220,21 @@ class CommitImport:
                     warning_counts = Counter(w.code for w in result.warnings)
                     warnings.update(warning_counts)
                     outcomes.append(
-                        (record.locator, outcome, dict(entity_counts), dict(warning_counts))
+                        RecordOutcome(
+                            record.locator,
+                            outcome,
+                            dict(entity_counts),
+                            dict(warning_counts),
+                            record.payload,
+                        )
                     )
                     rejects.extend(_reject_rows(result, record.payload))
                     emissions.extend(result.emissions)
             sessions = reduce_sessions(emissions)
             with self._uow_factory() as uow:
+                # The entity rows reference the import row, so it exists first as
+                # "running" and is finalised with the counts in the same transaction.
+                uow.imports.add_report(build("running", _counts(), {}, {}, 0))
                 stored = uow.traces.store(
                     import_id=import_id,
                     file_sha256=info.sha256,
@@ -218,30 +243,15 @@ class CommitImport:
                     emissions=emissions,
                     sessions=sessions,
                 )
-                report = ImportReport(
-                    status="committed",
-                    finished_at=self._clock.now(),
-                    records=_counts(**records),
-                    entities=dict(stored),
-                    warnings=dict(warnings),
-                    reject_count=len(rejects),
-                    **base,
+                report = build(
+                    "committed", _counts(**records), dict(stored), dict(warnings), len(rejects)
                 )
-                uow.imports.add_report(report)
+                uow.imports.update_report(report)
                 uow.imports.add_results(import_id, info.sha256, outcomes, rejects)
                 uow.commit()
             return report
         except Exception as exc:  # noqa: BLE001 - a failed import is reported, never half-visible
-            report = ImportReport(
-                status="failed",
-                finished_at=self._clock.now(),
-                records=_counts(),
-                entities={},
-                warnings={},
-                reject_count=0,
-                error=f"{type(exc).__name__}: {exc}",
-                **base,
-            )
+            report = build("failed", _counts(), {}, {}, 0, error=f"{type(exc).__name__}: {exc}")
             self._persist(report, info.sha256, [], [])
             return report
 
@@ -249,7 +259,7 @@ class CommitImport:
         self,
         report: ImportReport,
         file_sha256: str,
-        outcomes: Sequence[tuple[str, str, dict[str, int], dict[str, int]]],
+        outcomes: Sequence[RecordOutcome],
         rejects: Sequence[RejectRow],
     ) -> None:
         with self._uow_factory() as uow:

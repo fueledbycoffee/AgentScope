@@ -1,0 +1,666 @@
+"""SQLAlchemy implementations of the application ports."""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import func, insert, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.orm import Session
+
+from agentscope_app.application.dto import (
+    Coverage,
+    DiagnosticRow,
+    FileInfo,
+    ImportRef,
+    ImportReport,
+    MappingRecord,
+    MappingRef,
+    Metric,
+    ModelCallRow,
+    RawRecordRef,
+    RecordOutcome,
+    RejectRow,
+    SessionDetail,
+    SessionSummary,
+    ToolCallRow,
+    UploadInfo,
+)
+from agentscope_app.application.dto import (
+    RawRecord as RawRecordDTO,
+)
+from agentscope_app.domain.mapping.interpreter import Emission
+from agentscope_app.domain.reducer import SessionAggregate
+from agentscope_app.infrastructure.db import models as m
+
+_SESSION_TOKENS_DEFINITION = (
+    "Sum of input_tokens over this session's model calls with a known value; "
+    "coverage is known calls over all calls."
+)
+
+
+def _new_id(prefix: str) -> str:
+    return f"{prefix}_{uuid.uuid4().hex[:20]}"
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+class SqlAlchemyUploads:
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def add(self, info: UploadInfo) -> None:
+        if self._s.get(m.RawFile, info.sha256) is None:
+            self._s.add(
+                m.RawFile(
+                    sha256=info.sha256,
+                    size_bytes=info.size_bytes,
+                    storage_key="",
+                    created_at=_now(),
+                )
+            )
+        self._s.add(
+            m.Upload(
+                id=info.upload_id,
+                sha256=info.sha256,
+                filename=info.filename,
+                format=info.format,
+                record_count=info.record_count,
+                preview=[
+                    {"locator": r.locator, "payload": r.payload, "error": r.error}
+                    for r in info.preview
+                ],
+                created_at=_now(),
+            )
+        )
+
+    def get(self, upload_id: str) -> UploadInfo | None:
+        row = self._s.get(m.Upload, upload_id)
+        if row is None:
+            return None
+        raw_file = self._s.get(m.RawFile, row.sha256)
+        already = SqlAlchemyImports(self._s).find_committed_any_source(row.sha256)
+        return UploadInfo(
+            upload_id=row.id,
+            filename=row.filename,
+            sha256=row.sha256,
+            size_bytes=raw_file.size_bytes if raw_file else 0,
+            format=row.format,
+            record_count=row.record_count,
+            preview=tuple(
+                RawRecordDTO(p["locator"], p.get("payload"), p.get("error")) for p in row.preview
+            ),
+            already_imported=tuple(already),
+        )
+
+
+class SqlAlchemyMappings:
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    @staticmethod
+    def _to_dto(row: m.Mapping) -> MappingRecord:
+        return MappingRecord(
+            id=row.id,
+            name=row.name,
+            source=row.source,
+            revision=row.revision,
+            created_by=row.created_by,
+            input_format=row.input_format,
+            document=dict(row.document),
+            content_hash=row.content_hash,
+            created_at=row.created_at,
+        )
+
+    def list(self) -> Sequence[MappingRecord]:
+        rows = self._s.scalars(select(m.Mapping).order_by(m.Mapping.name, m.Mapping.revision))
+        return [self._to_dto(r) for r in rows]
+
+    def get(self, mapping_id: str) -> MappingRecord | None:
+        row = self._s.get(m.Mapping, mapping_id)
+        return None if row is None else self._to_dto(row)
+
+    def find_by_hash(self, content_hash: str) -> MappingRecord | None:
+        row = self._s.scalar(select(m.Mapping).where(m.Mapping.content_hash == content_hash))
+        return None if row is None else self._to_dto(row)
+
+    def add(self, record: MappingRecord) -> None:
+        self._s.add(
+            m.Mapping(
+                id=record.id,
+                name=record.name,
+                source=record.source,
+                revision=record.revision,
+                created_by=record.created_by,
+                input_format=record.input_format,
+                document=dict(record.document),
+                content_hash=record.content_hash,
+                created_at=record.created_at,
+            )
+        )
+
+
+class SqlAlchemyImports:
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def find_committed(self, file_sha256: str, source: str) -> Sequence[ImportRef]:
+        stmt = (
+            select(m.Import)
+            .join(m.ImportFile, m.ImportFile.import_id == m.Import.id)
+            .where(
+                m.ImportFile.sha256 == file_sha256,
+                m.Import.source == source,
+                m.Import.status == "committed",
+            )
+            .order_by(m.Import.started_at)
+        )
+        return [ImportRef(r.id, r.started_at) for r in self._s.scalars(stmt)]
+
+    def find_committed_any_source(self, file_sha256: str) -> Sequence[ImportRef]:
+        stmt = (
+            select(m.Import)
+            .join(m.ImportFile, m.ImportFile.import_id == m.Import.id)
+            .where(m.ImportFile.sha256 == file_sha256, m.Import.status == "committed")
+            .order_by(m.Import.started_at)
+        )
+        return [ImportRef(r.id, r.started_at) for r in self._s.scalars(stmt)]
+
+    def add_report(self, report: ImportReport) -> None:
+        self._s.add(
+            m.Import(
+                id=report.import_id,
+                status=report.status,
+                source=report.source,
+                mapping_id=report.mapping.id,
+                mapping_name=report.mapping.name,
+                mapping_revision=report.mapping.revision,
+                started_at=report.started_at,
+                finished_at=report.finished_at,
+                records=dict(report.records),
+                entities=dict(report.entities),
+                warnings=dict(report.warnings),
+                reject_count=report.reject_count,
+                error=report.error,
+            )
+        )
+        for f in report.files:
+            if self._s.get(m.RawFile, f.sha256) is None:
+                self._s.add(
+                    m.RawFile(
+                        sha256=f.sha256, size_bytes=f.size_bytes, storage_key="", created_at=_now()
+                    )
+                )
+            self._s.add(
+                m.ImportFile(
+                    id=_new_id("if"),
+                    import_id=report.import_id,
+                    sha256=f.sha256,
+                    filename=f.filename,
+                    size_bytes=f.size_bytes,
+                    format=f.format,
+                    record_count=f.record_count,
+                )
+            )
+        self._s.flush()
+
+    def update_report(self, report: ImportReport) -> None:
+        row = self._s.get(m.Import, report.import_id)
+        if row is None:
+            raise KeyError(report.import_id)
+        row.status = report.status
+        row.finished_at = report.finished_at
+        row.records = dict(report.records)
+        row.entities = dict(report.entities)
+        row.warnings = dict(report.warnings)
+        row.reject_count = report.reject_count
+        row.error = report.error
+        self._s.flush()
+
+    def add_results(
+        self,
+        import_id: str,
+        file_sha256: str,
+        outcomes: Sequence[RecordOutcome],
+        rejects: Sequence[RejectRow],
+    ) -> None:
+        if outcomes:
+            self._s.execute(
+                sqlite_insert(m.RawRecord)
+                .values(
+                    [
+                        {"file_sha256": file_sha256, "locator": o.locator, "payload": o.payload}
+                        for o in outcomes
+                    ]
+                )
+                .on_conflict_do_nothing(index_elements=["file_sha256", "locator"])
+            )
+            self._s.execute(
+                insert(m.RecordResult),
+                [
+                    {
+                        "import_id": import_id,
+                        "locator": o.locator,
+                        "file_sha256": file_sha256,
+                        "outcome": o.outcome,
+                        "entity_counts": o.entity_counts,
+                        "warning_counts": o.warning_counts,
+                    }
+                    for o in outcomes
+                ],
+            )
+        if rejects:
+            self._s.execute(
+                insert(m.Reject),
+                [
+                    {
+                        "import_id": import_id,
+                        "locator": r.locator,
+                        "rule_id": r.rule_id,
+                        "path": r.path,
+                        "code": r.code,
+                        "field": r.field,
+                        "message": r.message,
+                        "payload": r.payload if isinstance(r.payload, dict) else None,
+                    }
+                    for r in rejects
+                ],
+            )
+
+    def _to_dto(self, row: m.Import) -> ImportReport:
+        files = self._s.scalars(select(m.ImportFile).where(m.ImportFile.import_id == row.id))
+        return ImportReport(
+            import_id=row.id,
+            status=row.status,
+            source=row.source,
+            mapping=MappingRef(row.mapping_id, row.mapping_name, row.mapping_revision),
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+            files=tuple(
+                FileInfo(f.filename, f.sha256, f.size_bytes, f.format, f.record_count)
+                for f in files
+            ),
+            records={k: int(v) for k, v in row.records.items()},
+            entities={k: int(v) for k, v in row.entities.items()},
+            warnings={k: int(v) for k, v in row.warnings.items()},
+            reject_count=row.reject_count,
+            error=row.error,
+        )
+
+    def get(self, import_id: str) -> ImportReport | None:
+        row = self._s.get(m.Import, import_id)
+        return None if row is None else self._to_dto(row)
+
+    def list(self, limit: int, offset: int) -> Sequence[ImportReport]:
+        stmt = select(m.Import).order_by(m.Import.started_at.desc()).limit(limit).offset(offset)
+        return [self._to_dto(r) for r in self._s.scalars(stmt)]
+
+    def rejects(
+        self, import_id: str, code: str | None, limit: int, offset: int
+    ) -> Sequence[RejectRow]:
+        stmt = select(m.Reject).where(m.Reject.import_id == import_id)
+        if code:
+            stmt = stmt.where(m.Reject.code == code)
+        stmt = stmt.order_by(m.Reject.id).limit(limit).offset(offset)
+        return [
+            RejectRow(r.locator, r.rule_id, r.path, r.code, r.field, r.message, r.payload)
+            for r in self._s.scalars(stmt)
+        ]
+
+
+class SqlAlchemyTraces:
+    def __init__(self, session: Session) -> None:
+        self._s = session
+
+    def store(
+        self,
+        *,
+        import_id: str,
+        file_sha256: str,
+        source: str,
+        mapping_id: str,
+        emissions: Sequence[Emission],
+        sessions: dict[str, SessionAggregate],
+    ) -> dict[str, int]:
+        counts = {"session": 0, "model_call": 0, "tool_call": 0}
+        session_ids = self._upsert_sessions(source, sessions, import_id, counts)
+        contributions: list[dict[str, Any]] = []
+        model_call_ids: dict[str, str] = {}  # occurrence key -> id
+        model_rows: list[dict[str, Any]] = []
+        tool_rows: list[dict[str, Any]] = []
+        for e in emissions:
+            f = e.fields
+            if e.entity == "session":
+                sid = session_ids.get(str(f.get("external_id")))
+                if sid is not None:
+                    contributions.append(
+                        self._contribution(e, import_id, mapping_id, session_id=sid)
+                    )
+                continue
+            sid = session_ids.get(str(f.get("session_external_id")))
+            if sid is None:
+                continue
+            if e.entity == "model_call":
+                row_id = _new_id("mc")
+                model_call_ids[e.occurrence.key] = row_id
+                model_rows.append(
+                    {
+                        "id": row_id,
+                        "session_id": sid,
+                        "import_id": import_id,
+                        "source": source,
+                        "occurrence_key": e.occurrence.key,
+                        "file_sha256": e.occurrence.file_sha256,
+                        "locator": e.occurrence.locator,
+                        "emission_path": e.occurrence.emission_path,
+                        "native_key": list(e.native_key) if e.native_key else None,
+                        "sequence": f.get("sequence"),
+                        "provider": f.get("provider"),
+                        "model": f.get("model"),
+                        "token_semantics": f.get("token_semantics"),
+                        "started_at": _bind_dt(f.get("started_at")),
+                        "ended_at": _bind_dt(f.get("ended_at")),
+                        "input_tokens": f.get("input_tokens"),
+                        "output_tokens": f.get("output_tokens"),
+                        "cache_read_tokens": f.get("cache_read_tokens"),
+                        "cache_creation_tokens": f.get("cache_creation_tokens"),
+                        "reasoning_tokens": f.get("reasoning_tokens"),
+                        "is_error": f.get("is_error"),
+                        "error_message": f.get("error_message"),
+                    }
+                )
+                contributions.append(
+                    self._contribution(e, import_id, mapping_id, model_call_id=row_id)
+                )
+            elif e.entity == "tool_call":
+                row_id = _new_id("tc")
+                parent = e.parent_occurrence.key if e.parent_occurrence else None
+                tool_rows.append(
+                    {
+                        "id": row_id,
+                        "session_id": sid,
+                        "model_call_id": model_call_ids.get(parent) if parent else None,
+                        "import_id": import_id,
+                        "source": source,
+                        "occurrence_key": e.occurrence.key,
+                        "file_sha256": e.occurrence.file_sha256,
+                        "locator": e.occurrence.locator,
+                        "emission_path": e.occurrence.emission_path,
+                        "native_key": list(e.native_key) if e.native_key else None,
+                        "sequence": f.get("sequence"),
+                        "tool_name": f.get("tool_name"),
+                        "started_at": _bind_dt(f.get("started_at")),
+                        "ended_at": _bind_dt(f.get("ended_at")),
+                        "wall_latency_ms": f.get("wall_latency_ms"),
+                        "internal_latency_ms": f.get("internal_latency_ms"),
+                        "is_error": f.get("is_error"),
+                        "exit_code": f.get("exit_code"),
+                        "status": f.get("status"),
+                    }
+                )
+                contributions.append(
+                    self._contribution(e, import_id, mapping_id, tool_call_id=row_id)
+                )
+        if model_rows:
+            self._s.execute(insert(m.ModelCall), model_rows)
+            counts["model_call"] = len(model_rows)
+        if tool_rows:
+            self._s.execute(insert(m.ToolCall), tool_rows)
+            counts["tool_call"] = len(tool_rows)
+        if contributions:
+            self._s.execute(insert(m.EntityContribution), contributions)
+        self._s.flush()
+        return {k: v for k, v in counts.items() if v}
+
+    @staticmethod
+    def _contribution(
+        e: Emission,
+        import_id: str,
+        mapping_id: str,
+        *,
+        session_id: str | None = None,
+        model_call_id: str | None = None,
+        tool_call_id: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "import_id": import_id,
+            "mapping_id": mapping_id,
+            "file_sha256": e.occurrence.file_sha256,
+            "locator": e.occurrence.locator,
+            "emission_path": e.occurrence.emission_path,
+            "rule_id": e.rule_id,
+            "session_id": session_id,
+            "model_call_id": model_call_id,
+            "tool_call_id": tool_call_id,
+        }
+
+    def _upsert_sessions(
+        self,
+        source: str,
+        sessions: dict[str, SessionAggregate],
+        import_id: str,
+        counts: dict[str, int],
+    ) -> dict[str, str]:
+        ids: dict[str, str] = {}
+        if not sessions:
+            return ids
+        existing = {
+            row.external_id: row
+            for row in self._s.scalars(
+                select(m.Session).where(
+                    m.Session.source == source, m.Session.external_id.in_(list(sessions))
+                )
+            )
+        }
+        for external_id, agg in sessions.items():
+            row = existing.get(external_id)
+            if row is None:
+                row = m.Session(
+                    id=_new_id("ses"),
+                    source=source,
+                    external_id=external_id,
+                    agent=agg.agent,
+                    repo=agg.repo,
+                    user=agg.user,
+                    declared_started_at=agg.declared_started_at,
+                    declared_ended_at=agg.declared_ended_at,
+                    observed_start_at=agg.observed_start_at,
+                    observed_end_at=agg.observed_end_at,
+                    model_call_count=agg.model_call_count,
+                    tool_call_count=agg.tool_call_count,
+                )
+                self._s.add(row)
+                counts["session"] += 1
+            else:
+                for attr in ("agent", "repo", "user", "declared_started_at", "declared_ended_at"):
+                    if getattr(row, attr) is None and getattr(agg, attr) is not None:
+                        setattr(row, attr, getattr(agg, attr))
+                if agg.observed_start_at is not None and (
+                    row.observed_start_at is None or agg.observed_start_at < row.observed_start_at
+                ):
+                    row.observed_start_at = agg.observed_start_at
+                if agg.observed_end_at is not None and (
+                    row.observed_end_at is None or agg.observed_end_at > row.observed_end_at
+                ):
+                    row.observed_end_at = agg.observed_end_at
+                row.model_call_count += agg.model_call_count
+                row.tool_call_count += agg.tool_call_count
+            ids[external_id] = row.id
+            for d in agg.conflicts:
+                self._s.add(
+                    m.SessionDiagnostic(
+                        session_id=row.id,
+                        import_id=import_id,
+                        code=d.code,
+                        field=d.field,
+                        message=d.message,
+                        locator=d.occurrence.locator,
+                    )
+                )
+        self._s.flush()
+        return ids
+
+    def _token_metric(self, session_id: str) -> Metric:
+        known, total, total_tokens = self._s.execute(
+            select(
+                func.count(m.ModelCall.input_tokens),
+                func.count(m.ModelCall.id),
+                func.sum(m.ModelCall.input_tokens),
+            ).where(m.ModelCall.session_id == session_id)
+        ).one()
+        return Metric(
+            value=int(total_tokens) if known else None,
+            definition=_SESSION_TOKENS_DEFINITION,
+            unit="tokens",
+            coverage=Coverage(int(known), int(total)),
+        )
+
+    def _summary(self, row: m.Session) -> SessionSummary:
+        return SessionSummary(
+            id=row.id,
+            source=row.source,
+            external_id=row.external_id,
+            agent=row.agent,
+            observed_start_at=row.observed_start_at,
+            observed_end_at=row.observed_end_at,
+            model_call_count=row.model_call_count,
+            tool_call_count=row.tool_call_count,
+            input_tokens=self._token_metric(row.id),
+        )
+
+    def list_sessions(
+        self, *, source: str | None, agent: str | None, limit: int, offset: int
+    ) -> Sequence[SessionSummary]:
+        stmt = select(m.Session)
+        if source:
+            stmt = stmt.where(m.Session.source == source)
+        if agent:
+            stmt = stmt.where(m.Session.agent == agent)
+        stmt = (
+            stmt.order_by(m.Session.observed_start_at.desc().nulls_last(), m.Session.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        return [self._summary(r) for r in self._s.scalars(stmt)]
+
+    def get_session(self, session_id: str) -> SessionDetail | None:
+        row = self._s.get(m.Session, session_id)
+        if row is None:
+            return None
+        calls = self._s.scalars(
+            select(m.ModelCall)
+            .where(m.ModelCall.session_id == session_id)
+            .order_by(m.ModelCall.started_at.nulls_last(), m.ModelCall.sequence, m.ModelCall.id)
+        ).all()
+        tools = self._s.scalars(
+            select(m.ToolCall)
+            .where(m.ToolCall.session_id == session_id)
+            .order_by(m.ToolCall.started_at.nulls_last(), m.ToolCall.sequence, m.ToolCall.id)
+        ).all()
+        diagnostics = self._s.scalars(
+            select(m.SessionDiagnostic).where(m.SessionDiagnostic.session_id == session_id)
+        ).all()
+        return SessionDetail(
+            summary=self._summary(row),
+            declared_started_at=row.declared_started_at,
+            declared_ended_at=row.declared_ended_at,
+            repo=row.repo,
+            user=row.user,
+            model_calls=tuple(
+                ModelCallRow(
+                    id=c.id,
+                    sequence=c.sequence,
+                    provider=c.provider,
+                    model=c.model,
+                    started_at=c.started_at,
+                    ended_at=c.ended_at,
+                    input_tokens=c.input_tokens,
+                    output_tokens=c.output_tokens,
+                    cache_read_tokens=c.cache_read_tokens,
+                    cache_creation_tokens=c.cache_creation_tokens,
+                    reasoning_tokens=c.reasoning_tokens,
+                    token_semantics=c.token_semantics,
+                    is_error=c.is_error,
+                    raw_record=RawRecordRef(c.file_sha256, c.locator),
+                )
+                for c in calls
+            ),
+            tool_calls=tuple(
+                ToolCallRow(
+                    id=t.id,
+                    model_call_id=t.model_call_id,
+                    sequence=t.sequence,
+                    tool_name=t.tool_name,
+                    started_at=t.started_at,
+                    ended_at=t.ended_at,
+                    wall_latency_ms=t.wall_latency_ms,
+                    internal_latency_ms=t.internal_latency_ms,
+                    is_error=t.is_error,
+                    exit_code=t.exit_code,
+                    status=t.status,
+                    raw_record=RawRecordRef(t.file_sha256, t.locator),
+                )
+                for t in tools
+            ),
+            diagnostics=tuple(DiagnosticRow(d.code, d.field, d.message) for d in diagnostics),
+        )
+
+    def raw_record(self, file_sha256: str, locator: str) -> Any:
+        row = self._s.scalar(
+            select(m.RawRecord).where(
+                m.RawRecord.file_sha256 == file_sha256, m.RawRecord.locator == locator
+            )
+        )
+        return None if row is None else row.payload
+
+    def metrics_summary(self, *, source: str | None, agent: str | None) -> dict[str, Any]:
+        session_filter = []
+        if source:
+            session_filter.append(m.Session.source == source)
+        if agent:
+            session_filter.append(m.Session.agent == agent)
+        sessions = int(self._s.scalar(select(func.count(m.Session.id)).where(*session_filter)) or 0)
+        calls_stmt = (
+            select(
+                func.count(m.ModelCall.id),
+                func.count(m.ModelCall.input_tokens),
+                func.sum(m.ModelCall.input_tokens),
+            )
+            .join(m.Session, m.Session.id == m.ModelCall.session_id)
+            .where(*session_filter)
+        )
+        total_calls, known, tokens = self._s.execute(calls_stmt).one()
+        tool_calls = int(
+            self._s.scalar(
+                select(func.count(m.ToolCall.id))
+                .join(m.Session, m.Session.id == m.ToolCall.session_id)
+                .where(*session_filter)
+            )
+            or 0
+        )
+        by_semantics = {
+            (tag or "unknown"): int(total)
+            for tag, total in self._s.execute(
+                select(m.ModelCall.token_semantics, func.sum(m.ModelCall.input_tokens))
+                .join(m.Session, m.Session.id == m.ModelCall.session_id)
+                .where(*session_filter, m.ModelCall.input_tokens.is_not(None))
+                .group_by(m.ModelCall.token_semantics)
+            )
+        }
+        return {
+            "sessions": sessions,
+            "model_calls": int(total_calls or 0),
+            "tool_calls": tool_calls,
+            "input_tokens_known": int(known or 0),
+            "input_tokens_sum": int(tokens) if tokens is not None else None,
+            "by_semantics": by_semantics,
+        }
+
+
+def _bind_dt(value: Any) -> datetime | None:
+    return value if isinstance(value, datetime) else None

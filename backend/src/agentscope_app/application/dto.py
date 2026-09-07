@@ -64,6 +64,17 @@ class MappingRecord:
 
 
 @dataclass(frozen=True)
+class RecordOutcome:
+    """One source record's outcome in one import, with its payload for provenance."""
+
+    locator: str
+    outcome: str  # accepted | partial | rejected | ignored | duplicate
+    entity_counts: dict[str, int]
+    warning_counts: dict[str, int]
+    payload: Any = None
+
+
+@dataclass(frozen=True)
 class RejectRow:
     locator: str
     rule_id: str

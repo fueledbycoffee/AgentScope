@@ -193,7 +193,7 @@ def test_commit_import_persists_everything_once_and_reports_counts() -> None:
     stored = h.uow.traces.stored
     assert len(stored) == 1 and set(stored[0]["sessions"]) == {"claude:s1", "codex:s2", "claude:s3"}
     assert h.uow.imports.get("imp_0002") == report
-    assert [o[1] for o in h.uow.imports.results["imp_0002"]] == ["accepted"] * 3 + [
+    assert [o.outcome for o in h.uow.imports.results["imp_0002"]] == ["accepted"] * 3 + [
         "rejected",
         "accepted",
     ]

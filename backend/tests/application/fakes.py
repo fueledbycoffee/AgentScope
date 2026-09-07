@@ -15,6 +15,7 @@ from agentscope_app.application.dto import (
     ImportReport,
     MappingRecord,
     RawRecord,
+    RecordOutcome,
     RejectRow,
     SessionDetail,
     SessionSummary,
@@ -114,7 +115,7 @@ class FakeMappings:
 class FakeImports:
     def __init__(self) -> None:
         self.reports: dict[str, ImportReport] = {}
-        self.results: dict[str, list[tuple[str, str, dict[str, int], dict[str, int]]]] = {}
+        self.results: dict[str, list[RecordOutcome]] = {}
         self.reject_rows: dict[str, list[RejectRow]] = {}
 
     def find_committed(self, file_sha256: str, source: str) -> Sequence[ImportRef]:
@@ -129,11 +130,15 @@ class FakeImports:
     def add_report(self, report: ImportReport) -> None:
         self.reports[report.import_id] = report
 
+    def update_report(self, report: ImportReport) -> None:
+        assert report.import_id in self.reports
+        self.reports[report.import_id] = report
+
     def add_results(
         self,
         import_id: str,
         file_sha256: str,
-        outcomes: Sequence[tuple[str, str, dict[str, int], dict[str, int]]],
+        outcomes: Sequence[RecordOutcome],
         rejects: Sequence[RejectRow],
     ) -> None:
         self.results[import_id] = list(outcomes)

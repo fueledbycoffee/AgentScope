@@ -20,6 +20,9 @@ cd backend
 uv sync --locked --all-groups
 cp ../.env.example .env          # then fill in your LLM endpoint and key
 uv run uvicorn agentscope_app.interfaces.api.main:app --reload
+# On first start the backend creates ./data/agentscope.sqlite3, runs the migrations and
+# loads the bundled mappings from backend/mappings/. Try it: open http://127.0.0.1:8000/docs
+# and upload fixtures/tracelab/tracelab-sample.jsonl.gz.
 uv run pytest                    # tests
 uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run lint-imports
 
@@ -33,6 +36,8 @@ pnpm test && pnpm typecheck && pnpm lint && pnpm build
 CI runs all of the above on every pull request; `ci-required` is the single status check that must pass before merging to `main`.
 
 Layout: `backend/src/agentscope_app/{domain,application,infrastructure,interfaces}` follows Clean Architecture with the dependency direction enforced by import-linter (see `backend/pyproject.toml`). `web/` is the single-page front end.
+
+Documentation index: [`docs/README.md`](docs/README.md). The import pipeline's components and tables are described in [`docs/architecture/import-pipeline.md`](docs/architecture/import-pipeline.md); the HTTP contract in [`docs/api/v0.1.md`](docs/api/v0.1.md).
 
 ## Licence
 

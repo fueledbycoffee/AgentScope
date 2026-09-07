@@ -15,6 +15,7 @@ from agentscope_app.application.dto import (
     ImportReport,
     MappingRecord,
     RawRecord,
+    RecordOutcome,
     RejectRow,
     SessionDetail,
     SessionSummary,
@@ -69,28 +70,23 @@ class MappingRepository(Protocol):
     def add(self, record: MappingRecord) -> None: ...
 
 
-class RecordOutcome(Protocol):
-    """Per-record outcome persisted for the import report (see dto.ImportReport.records)."""
-
-    locator: str
-    outcome: str  # accepted | partial | rejected | ignored | duplicate
-    entity_counts: dict[str, int]
-    warning_counts: dict[str, int]
-
-
 class ImportRepository(Protocol):
     def find_committed(self, file_sha256: str, source: str) -> Sequence[ImportRef]: ...
 
     def add_report(self, report: ImportReport) -> None: ...
 
+    def update_report(self, report: ImportReport) -> None:
+        """Replace a previously added report (status, counts, finished_at)."""
+        ...
+
     def add_results(
         self,
         import_id: str,
         file_sha256: str,
-        outcomes: Sequence[tuple[str, str, dict[str, int], dict[str, int]]],
+        outcomes: Sequence[RecordOutcome],
         rejects: Sequence[RejectRow],
     ) -> None:
-        """``outcomes`` are (locator, outcome, entity_counts, warning_counts)."""
+        """Persist per-record outcomes (and their raw payloads) and rejects."""
         ...
 
     def get(self, import_id: str) -> ImportReport | None: ...
