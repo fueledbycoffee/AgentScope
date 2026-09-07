@@ -97,14 +97,14 @@ def parse_mapping(raw: Any) -> ParsedMapping:
         return ParsedMapping(None, tuple(issues.items))
     issues.unknown_keys(raw, _DOC_KEYS, "")
 
-    if raw.get("dsl_version") != DSL_VERSION:
+    if not _is_version(raw.get("dsl_version"), DSL_VERSION):
         issues.error(
             "schema",
             "dsl_version",
             "unsupported_version",
             f"dsl_version must be {DSL_VERSION}, got {raw.get('dsl_version')!r}",
         )
-    if raw.get("target_schema_version") != TARGET_SCHEMA_VERSION:
+    if not _is_version(raw.get("target_schema_version"), TARGET_SCHEMA_VERSION):
         issues.error(
             "schema",
             "target_schema_version",
@@ -159,6 +159,10 @@ def parse_mapping(raw: Any) -> ParsedMapping:
         notes=notes,
     )
     return ParsedMapping(spec, tuple(issues.items))
+
+
+def _is_version(value: Any, expected: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value == expected
 
 
 def _required_string(obj: Mapping[str, Any], key: str, issues: _Issues) -> str:

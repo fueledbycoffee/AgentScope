@@ -335,3 +335,10 @@ def test_parent_issues_use_document_indexes_even_after_invalid_rules() -> None:
     parsed = parse_mapping(doc)
     assert ("rules[1].parent", "unknown_parent") in codes(parsed)
     assert ("rules[0]", "not_an_object") in codes(parsed)
+
+
+def test_boolean_versions_are_not_accepted() -> None:
+    parsed = variant(lambda d: d.__setitem__("dsl_version", True))
+    assert ("dsl_version", "unsupported_version") in codes(parsed)
+    parsed = variant(lambda d: d.__setitem__("target_schema_version", True))
+    assert ("target_schema_version", "unsupported_version") in codes(parsed)

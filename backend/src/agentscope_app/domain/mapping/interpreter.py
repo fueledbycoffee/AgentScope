@@ -118,12 +118,26 @@ def _holds(cond: Condition, item: Any, root: Any) -> bool:
     if value is MISSING:
         return cond.op in ("ne", "not_in")
     if cond.op == "eq":
-        return bool(value == cond.value)
+        return _json_equal(value, cond.value)
     if cond.op == "ne":
-        return bool(value != cond.value)
-    if cond.op == "in":
-        return value in cond.value
-    return value not in cond.value
+        return not _json_equal(value, cond.value)
+    matched = any(_json_equal(value, candidate) for candidate in cond.value)
+    return matched if cond.op == "in" else not matched
+
+
+def _json_equal(a: Any, b: Any) -> bool:
+    """Equality with JSON types: booleans never equal numbers, containers recurse."""
+    if isinstance(a, bool) or isinstance(b, bool):
+        return isinstance(a, bool) and isinstance(b, bool) and a is b
+    if isinstance(a, int | float) and isinstance(b, int | float):
+        return a == b
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_json_equal(x, y) for x, y in zip(a, b, strict=True))
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_json_equal(a[k], b[k]) for k in a)
+    if type(a) is not type(b):
+        return False
+    return bool(a == b)
 
 
 def _emit(
@@ -220,6 +234,8 @@ def _evaluate(
             )
         if fm.on_missing == "default":
             value = fm.default
+            if value is None:
+                return None
         else:
             warnings.append(
                 Diagnostic(

@@ -50,6 +50,10 @@ def _version_as_string(d: dict[str, Any]) -> None:
     d["dsl_version"] = "1"
 
 
+def _version_as_boolean(d: dict[str, Any]) -> None:
+    d["target_schema_version"] = True
+
+
 def _wildcard_in_field(d: dict[str, Any]) -> None:
     d["rules"][0]["fields"]["external_id"]["path"] = "$.ids[*]"
 
@@ -67,6 +71,7 @@ def _no_source_in_field(d: dict[str, Any]) -> None:
         _bad_operator,
         _bad_transform,
         _version_as_string,
+        _version_as_boolean,
         _wildcard_in_field,
         _no_source_in_field,
     ],

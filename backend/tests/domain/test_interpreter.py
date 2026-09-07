@@ -474,3 +474,64 @@ def test_tiny_fractions_and_decimal_overflow_follow_the_field_policy() -> None:
     assert result.rejects == ()
     assert [e.fields["wall_latency_ms"] for e in result.emissions] == [None, None, None]
     assert [w.code for w in result.warnings] == ["invalid_value"] * 3
+
+
+def test_null_default_yields_null_without_coercion() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "model_call",
+                "entity": "model_call",
+                "select": "$",
+                "fields": {
+                    "session_external_id": {"path": "$.sid"},
+                    "model": {"path": "$.model", "on_missing": "default", "default": None},
+                },
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    result = apply_mapping(spec, {"sid": "s"}, file_sha256="f", locator="line:1")
+    assert result.rejects == () and result.emissions[0].fields["model"] is None
+
+
+def test_predicates_use_json_typed_equality() -> None:
+    doc: dict[str, Any] = {
+        "dsl_version": 1,
+        "target_schema_version": 1,
+        "name": "x",
+        "source": "test",
+        "input_format": "jsonl",
+        "rules": [
+            {
+                "id": "s",
+                "entity": "session",
+                "select": "$.rows[*]",
+                "where": [
+                    {"path": "$.flag", "op": "eq", "value": False},
+                    {"path": "$.n", "op": "not_in", "value": [True, "1"]},
+                    {"path": "$.tags", "op": "eq", "value": [1, False]},
+                ],
+                "fields": {"external_id": {"path": "$.id"}},
+            }
+        ],
+    }
+    spec = parse_mapping(doc).spec
+    assert spec is not None
+    record = {
+        "rows": [
+            {"id": "keep", "flag": False, "n": 1, "tags": [1, False]},
+            {"id": "drop-zero-flag", "flag": 0, "n": 1, "tags": [1, False]},
+            {"id": "drop-true-n", "flag": False, "n": True, "tags": [1, False]},
+            {"id": "drop-tags", "flag": False, "n": 1, "tags": [1, 0]},
+            {"id": "keep-float", "flag": False, "n": 1.0, "tags": [1.0, False]},
+        ]
+    }
+    result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+    assert [e.fields["external_id"] for e in result.emissions] == ["keep", "keep-float"]
