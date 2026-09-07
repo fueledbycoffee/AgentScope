@@ -23,7 +23,7 @@ Represent a mapping as a declarative, versioned contract with these parts:
 
 | Part | Required contract content |
 | --- | --- |
-| Identity | Logical mapping ID, immutable revision, parent revision (none for the first revision), content hash. |
+| Identity | Logical mapping ID, immutable revision, parent revision (none for the first revision), content hash belong to the stored mapping record (`mappings` table); the executable document carries `dsl_version`, `target_schema_version`, `name`, `source`, `input_format`, `rules`, `unmapped`, `notes`. |
 | Compatibility | `dsl_version` and `target_schema_version`. |
 | Input | Format, reader options and expected required fields. |
 | Rules | Rule ID, predicate, collection selector, target entity, identity fields and parent reference. |
@@ -40,13 +40,16 @@ The complete allowed capability set is:
 
 - Object-key and array-index access.
 - Bounded iteration over named arrays.
-- Root, current-item and parent scopes.
+- Two path scopes: `$` (current item) and `@root` (root record); parent linkage
+  uses the rule-level `parent` reference, not a path scope.
 - Existence, equality and membership predicates.
-- Trim and explicit enum/boolean maps.
-- Strict integer and decimal parsing.
-- Timestamp parsing and unit conversion.
-- Ordered coalescing, constants and composite keys.
-- Bounded JSON decoding of a string field.
+- Allowlisted transforms: `trim`, `lower`, `upper`, `enum_map`, `json_decode`
+  (bounded JSON decoding of a string field).
+- Per-field `type` coercion: `string`, `integer`, `number`, `boolean`, `timestamp`,
+  with `timestamp_format: iso8601 | epoch_s | epoch_ms` for timestamps.
+- `unit: {from, to}` for millisecond fields.
+- Ordered coalescing with `paths: [...]` (first present wins), constants with
+  `literal`, and composite keys with `native_key: [fields]`.
 
 Explicitly exclude **expressions, regex programs, recursion, joins, aggregation
 and generated code**. This is not full JSONPath or a general programming

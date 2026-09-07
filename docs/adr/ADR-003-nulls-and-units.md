@@ -28,11 +28,16 @@ Distinguish four source states in profiles and execution diagnostics:
 | Empty string | `{"tokens": ""}` | A present textual value, not implicitly null or zero. |
 | Failed conversion | `{"tokens": "many"}` parsed as integer | A supplied value violates the declared conversion. |
 
-A mapping declares its null/error policy: `required`, `nullable`, `default`,
-`warn` or `reject`. The contract must specify which states it accepts or
-collapses to canonical null. Preserve their original distinction in diagnostics
-and raw provenance even when the canonical result is null. An explicit default
-is not permission to invent a missing measurement. **Missing is never zero.**
+A mapping declares per-field `on_missing: null | default | reject` (default
+`null`; `default` needs a `default` value), `on_invalid: null | reject` (default
+`reject`), and `empty_as_missing: bool` (default `false`). `required` belongs to
+the target schema, not the mapping: `session.external_id`,
+`model_call.session_external_id`, `tool_call.tool_name`, and
+`tool_call.session_external_id` unless a parent is declared.
+Preserve source-state distinctions in diagnostics (warning codes `absent`,
+`null`, `empty`, `invalid_value`) and raw provenance even when the canonical
+result is null. An explicit default is not permission to invent a missing
+measurement. **Missing is never zero.**
 
 Use these canonical representations:
 

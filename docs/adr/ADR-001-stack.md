@@ -51,8 +51,9 @@ Maintain four layers under `backend/src/agentscope_app/`:
 
 The import-linter ordering is interfaces → infrastructure → application →
 domain; inward imports may skip a layer. Its framework/client deny-lists also
-protect the core. Use Pydantic at boundaries, including contract parsing, rather
-than in domain entities. Keep those deny-lists current as dependencies are added.
+protect the core. Use Pydantic at HTTP and settings boundaries; the mapping
+contract parser is framework-free domain code. Keep those deny-lists current as
+dependencies are added.
 
 Cut CSV, a CLI product surface, and a Postgres compatibility promise from
 v0.1.0. Docker is not an installation or release gate; an optional Dockerfile
