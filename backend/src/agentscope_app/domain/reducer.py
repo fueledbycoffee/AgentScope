@@ -114,6 +114,19 @@ def reduce_sessions(emissions: Iterable[Emission]) -> dict[str, SessionAggregate
     return sessions
 
 
+def _would_reverse(session: SessionAggregate, name: str, incoming: object) -> bool:
+    """True when filling ``name`` with ``incoming`` makes declared end precede start."""
+    if not isinstance(incoming, datetime):
+        return False
+    if name == "started_at":
+        other = session.declared_ended_at
+        return other is not None and other < incoming
+    if name == "ended_at":
+        other = session.declared_started_at
+        return other is not None and incoming < other
+    return False
+
+
 def _merge_session_fields(acc: _Accumulator, emission: Emission) -> None:
     session = acc.aggregate
     for name in _MERGED_FIELDS:
@@ -123,6 +136,18 @@ def _merge_session_fields(acc: _Accumulator, emission: Emission) -> None:
         attr = f"declared_{name}" if name.endswith("_at") else name
         current = getattr(session, attr)
         if current is None:
+            if _would_reverse(session, name, incoming):
+                acc.conflicts.append(
+                    Diagnostic(
+                        emission.rule_id,
+                        emission.occurrence,
+                        "reversed_interval",
+                        f"{name} {incoming!r} would make the declared interval end before "
+                        "it starts; ignored",
+                        name,
+                    )
+                )
+                continue
             setattr(session, attr, incoming)
         elif current != incoming:
             acc.conflicts.append(

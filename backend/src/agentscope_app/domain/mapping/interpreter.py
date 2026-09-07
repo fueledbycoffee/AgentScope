@@ -164,6 +164,7 @@ def _bounds(fm: FieldMapping, item: Any, root: Any) -> tuple[Any, str]:
     except ValueError as exc:
         raise ConversionError("selector_limit", str(exc)) from exc
     parsed = []
+    seen_states: set[str] = set()
     for candidate in candidates:
         value = candidate
         for transform in fm.transforms:  # transforms run on each raw candidate first
@@ -171,12 +172,17 @@ def _bounds(fm: FieldMapping, item: Any, root: Any) -> tuple[Any, str]:
                 break
             value = apply_transform(transform, value)
         if value is None:
+            seen_states.add("null")
             continue
         if fm.empty_as_missing and isinstance(value, str) and value.strip() == "":
+            seen_states.add("empty")
             continue
         parsed.append(coerce(value, FieldType.TIMESTAMP, timestamp_format=fm.timestamp_format))
     if not parsed:
-        return MISSING, "absent"
+        # Keep the missingness distinction: nothing selected, only nulls, or only empties.
+        if not seen_states:
+            return MISSING, "absent"
+        return None, "empty" if "empty" in seen_states else "null"
     return (min(parsed) if fm.bounds == "min" else max(parsed)), "present"
 
 

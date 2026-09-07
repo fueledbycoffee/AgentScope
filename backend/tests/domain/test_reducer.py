@@ -91,3 +91,24 @@ def test_reduction_scales_linearly_with_contributions() -> None:
     assert s.model_call_count == 60_000 and len(s.contributions) == 60_000
     assert [c.code for c in s.conflicts] == ["implicit_session"]
     assert elapsed < 5, elapsed  # quadratic concatenation took tens of seconds at this size
+
+
+def test_merging_declared_bounds_never_creates_a_reversed_interval() -> None:
+    emissions = [
+        session(1, external_id="s1", started_at=ts(2)),
+        session(2, external_id="s1", ended_at=ts(1)),
+        session(3, external_id="s1", ended_at=ts(5)),
+    ]
+    s = reduce_sessions(emissions)["s1"]
+    assert s.declared_started_at == ts(2) and s.declared_ended_at == ts(5)
+    assert [(c.code, c.field, c.occurrence.locator) for c in s.conflicts] == [
+        ("reversed_interval", "ended_at", "line:2")
+    ]
+    reversed_start = reduce_sessions(
+        [
+            session(1, external_id="s2", ended_at=ts(1)),
+            session(2, external_id="s2", started_at=ts(2)),
+        ]
+    )["s2"]
+    assert reversed_start.declared_started_at is None
+    assert [c.code for c in reversed_start.conflicts] == ["reversed_interval"]

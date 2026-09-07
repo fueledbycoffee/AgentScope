@@ -675,7 +675,7 @@ def test_bounds_honour_empty_as_missing() -> None:
         spec, {"sid": "s", "events": [{"ts": ""}]}, file_sha256="f", locator="line:1"
     )
     assert only_empty.rejects == () and only_empty.emissions[0].fields["started_at"] is None
-    assert ("started_at", "absent") in {(w.field, w.code) for w in only_empty.warnings}
+    assert ("started_at", "empty") in {(w.field, w.code) for w in only_empty.warnings}
     mixed = apply_mapping(
         spec,
         {"sid": "s", "events": [{"ts": " "}, {"ts": "2026-01-01T00:00:00Z"}]},
@@ -727,3 +727,17 @@ def test_reversed_intervals_are_rejected_with_explanation() -> None:
         locator="line:2",
     )
     assert same_instant.rejects == ()
+
+
+def test_bounds_preserve_missingness_states() -> None:
+    spec = parse_mapping(_bounds_doc(empty_as_missing=True, on_missing="null")).spec
+    assert spec is not None
+    cases = {
+        "absent": {"sid": "s"},
+        "null": {"sid": "s", "events": [{"ts": None}]},
+        "empty": {"sid": "s", "events": [{"ts": ""}, {"ts": None}]},
+    }
+    for expected, record in cases.items():
+        result = apply_mapping(spec, record, file_sha256="f", locator="line:1")
+        assert result.rejects == () and result.emissions[0].fields["started_at"] is None
+        assert [(w.field, w.code) for w in result.warnings] == [("started_at", expected)], expected
