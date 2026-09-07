@@ -28,11 +28,14 @@ Guarantees this module keeps:
 
 from __future__ import annotations
 
+import codecs
 import json
 import math
 import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
 from typing import Any, Final
 
 import httpx2
@@ -84,10 +87,19 @@ _UNSUPPORTED_PARAMETER: Final = re.compile(
     r"response_format"
 )
 _ERROR_QUOTE_CHARS: Final = 200
+_MAX_RESPONSE_BYTES: Final = 4 * 1024 * 1024
 _CANARY_ERROR: Final = (
     "The assistant endpoint at {host} returned the configured credential inside its reply; "
     "the reply was discarded"
 )
+
+
+@dataclass
+class _Budget:
+    """What one ``complete`` call may still spend: time, and a single 429 retry."""
+
+    deadline: float
+    retry_429: bool = True
 
 
 class OpenAICompatibleAssistant:
@@ -142,7 +154,7 @@ class OpenAICompatibleAssistant:
     def complete(
         self, prepared: PreparedContext, *, repair: RepairRequest | None = None
     ) -> AssistantReply:
-        deadline = self._clock() + self._timeout_s
+        budget = _Budget(deadline=self._clock() + self._timeout_s)
         messages: list[dict[str, str]] = [
             {"role": "system", "content": PREAMBLE},
             {"role": "user", "content": prepared.text},
@@ -164,15 +176,15 @@ class OpenAICompatibleAssistant:
         notes: list[str] = []
         if self._json_mode != "off":
             body["response_format"] = {"type": "json_object"}
-        response = self._post(body, deadline, retry_429=True)
+        response = self._post(body, budget)
         if self._rejects_json_mode(response, body):
             # the server said, explicitly, that it does not take response_format: nothing was
-            # generated, so ask once more without it and remember for this configuration
+            # generated, so ask once more without it (same budget) and remember the answer
             self._json_mode = "off"
             self.json_mode_negotiated_off = True
             body.pop("response_format")
             notes.append("json_mode_off_after_rejection")
-            response = self._post(body, deadline, retry_429=True)
+            response = self._post(body, budget)
         self.last_request_body = body
         return self._reply(response, tuple(notes))
 
@@ -181,14 +193,32 @@ class OpenAICompatibleAssistant:
     def _remaining(self, deadline: float) -> float:
         return deadline - self._clock()
 
-    def _post(self, body: dict[str, Any], deadline: float, *, retry_429: bool) -> httpx2.Response:
+    def _post(self, body: dict[str, Any], budget: _Budget) -> httpx2.Response:
+        """One HTTP attempt within the budget, streamed so the deadline can interrupt a slow
+        body; at most one extra attempt after a 429 whose Retry-After fits the budget."""
         while True:
-            remaining = self._remaining(deadline)
+            remaining = self._remaining(budget.deadline)
             if remaining <= 0:
                 raise AssistantError("timeout", self._timed_out())
             timeout = httpx2.Timeout(remaining, connect=min(10.0, remaining))
             try:
-                response = self._client.post("/chat/completions", json=body, timeout=timeout)
+                with self._client.stream(
+                    "POST", "/chat/completions", json=body, timeout=timeout
+                ) as streamed:
+                    content = bytearray()
+                    for chunk in streamed.iter_bytes():
+                        if self._clock() > budget.deadline:
+                            raise AssistantError("timeout", self._timed_out())
+                        content.extend(chunk)
+                        if len(content) > _MAX_RESPONSE_BYTES:
+                            raise AssistantError(
+                                "malformed",
+                                f"The assistant endpoint at {self._host} sent more than "
+                                f"{_MAX_RESPONSE_BYTES} bytes; the reply was discarded",
+                            )
+                    response = httpx2.Response(
+                        streamed.status_code, headers=streamed.headers, content=bytes(content)
+                    )
             except httpx2.TimeoutException:
                 raise AssistantError("timeout", self._timed_out()) from None
             except httpx2.HTTPError as exc:
@@ -197,10 +227,10 @@ class OpenAICompatibleAssistant:
                     f"Could not reach the assistant endpoint at {self._host} "
                     f"({type(exc).__name__}); check AGENTSCOPE_LLM_BASE_URL",
                 ) from None
-            if response.status_code == 429 and retry_429:
+            if response.status_code == 429 and budget.retry_429:
                 wait = _retry_after(response, default=1.0)
-                if wait < self._remaining(deadline):
-                    retry_429 = False
+                if wait < self._remaining(budget.deadline):
+                    budget.retry_429 = False
                     self._sleep(wait)
                     continue
             return response
@@ -311,21 +341,22 @@ class OpenAICompatibleAssistant:
         raise AssistantError(
             "malformed",
             f"The assistant endpoint at {host} reported an unsupported finish_reason "
-            f"{_short(str(finish), 40)!r}",
+            f"{_short(self._scrub(str(finish)), 40)!r}",
         )
 
     def _guard(self, reply: AssistantReply) -> AssistantReply:
-        """The key never travels back: a reply that contains it is refused whole."""
-        if self._key and (self._key in reply.text or self._key in reply.model):
+        """The key never travels back: a reply that contains it, literally or behind JSON or
+        backslash escapes, is refused whole."""
+        if self._key and (_contains(reply.text, self._key) or _contains(reply.model, self._key)):
             raise AssistantError("malformed", _CANARY_ERROR.format(host=self._host))
         return reply
 
+    def _scrub(self, text: str) -> str:
+        return text.replace(self._key, "<key>") if self._key else text
+
     def _quote(self, response: httpx2.Response) -> str:
         """A short excerpt of the provider's error message, key-scrubbed and redacted."""
-        text = _error_message(response)
-        if self._key:
-            text = text.replace(self._key, "<key>")
-        text = redact_text(text, long_text=False)[0]
+        text = redact_text(self._scrub(_error_message(response)), long_text=False)[0]
         return _short(text, _ERROR_QUOTE_CHARS)
 
 
@@ -387,15 +418,42 @@ def _error_message(response: httpx2.Response) -> str:
         return "<unreadable body>"
 
 
+def _contains(text: str, needle: str) -> bool:
+    """Whether ``needle`` occurs in ``text`` literally or once escapes are decoded."""
+    if needle in text:
+        return True
+    if "\\" not in text:
+        return False
+    try:
+        decoded = json.dumps(json.loads(text), ensure_ascii=False)
+        if needle in decoded:
+            return True
+    except ValueError:
+        pass
+    try:
+        if needle in codecs.decode(text, "unicode_escape"):
+            return True
+    except (UnicodeDecodeError, ValueError):
+        pass
+    return False
+
+
 def _retry_after(response: httpx2.Response, *, default: float) -> float:
+    """Seconds to wait from a Retry-After header in either form; never negative."""
     value = response.headers.get("Retry-After")
     if value is None:
         return default
     try:
         seconds = float(value)
+        return seconds if math.isfinite(seconds) and seconds >= 0 else default
     except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError):
         return default
-    return seconds if math.isfinite(seconds) and seconds >= 0 else default
+    wait = when.timestamp() - time.time()
+    return max(0.0, wait)
 
 
 def _short(text: str, limit: int) -> str:

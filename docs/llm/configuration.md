@@ -11,7 +11,7 @@ backend, nothing else.
 | `AGENTSCOPE_LLM_BASE_URL` | Endpoint root, ending in `/v1` (or `/api/v1` for OpenRouter), exactly once; the adapter appends `/chat/completions`. Absolute `http(s)`, no credentials, query or fragment | `https://openrouter.ai/api/v1` |
 | `AGENTSCOPE_LLM_MODEL` | Model id exactly as the endpoint expects it | (must be set) |
 | `AGENTSCOPE_LLM_API_KEY` | Sent as `Authorization: Bearer …` when non-empty; leave empty for local servers | empty |
-| `AGENTSCOPE_LLM_TIMEOUT_S` | Deadline of one generation call (positive seconds). A run with a repair takes at most twice this | `60` |
+| `AGENTSCOPE_LLM_TIMEOUT_S` | Deadline of one generation call (positive seconds). A run with a repair takes at most twice this. Kept as text and parsed by the adapter: a typo disables the assistant, not the application | `60` |
 | `AGENTSCOPE_LLM_JSON_MODE` | `auto`, `on`, `off`: whether `response_format: {"type": "json_object"}` is sent (see below) | `auto` |
 | `AGENTSCOPE_LLM_MAX_TOKENS` | Upper bound on a reply (positive integer). A cut-off reply gets one repair, then fails clearly | `8192` |
 
@@ -94,10 +94,13 @@ validates every reply itself.
 
 ## Timeouts, retries and attempts
 
-- One `complete` call ends within `AGENTSCOPE_LLM_TIMEOUT_S` (a monotonic
-  deadline that caps every HTTP attempt inside it; connect is capped at 10 s).
+- One `complete` call ends within `AGENTSCOPE_LLM_TIMEOUT_S`: a monotonic
+  deadline that caps every HTTP attempt inside it (connect is capped at 10 s)
+  and is checked while the body streams in, so a reply that keeps trickling
+  bytes is cut off at the deadline too. Replies over 4 MiB are discarded.
 - The only replays are the JSON-mode negotiation above and one retry after a
-  `429` (honouring `Retry-After` when it fits the remaining time). `502`,
+  `429` per call, negotiation included (honouring `Retry-After` in seconds or
+  as an HTTP date when it fits the remaining time; otherwise the call fails). `502`,
   `503`, `504` and connection failures are never replayed: a request the
   server may have accepted is never sent twice.
 - The application makes at most two generation calls per run (the second is
@@ -132,6 +135,9 @@ uv --directory backend run python ../scripts/llm_smoke.py [--include-sample] [--
 
 It profiles the TraceLab fixture, prepares the context, runs the assistant and
 prints model, attempts, executable, issue codes, ambiguities and questions.
+`--save-recording NAME` stores the last response body under
+`backend/tests/llm_recordings/` with the configured key scrubbed everywhere
+(escaped forms included) and refuses to write if any trace of it remains.
 
 Evidence so far (ADR-005 wants recorded live runs before a configuration is
 called tested):

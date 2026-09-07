@@ -84,14 +84,28 @@ def build_assistant(settings: Settings) -> MappingAssistant:
                 base_url=settings.llm_base_url,
                 model=settings.llm_model,
                 api_key=settings.llm_api_key.get_secret_value(),
-                timeout_s=settings.llm_timeout_s,
+                timeout_s=_number(settings.llm_timeout_s, "AGENTSCOPE_LLM_TIMEOUT_S"),
                 json_mode=settings.llm_json_mode,
-                max_tokens=settings.llm_max_tokens,
+                max_tokens=_integer(settings.llm_max_tokens, "AGENTSCOPE_LLM_MAX_TOKENS"),
             )
         except ValueError as exc:
             # an invalid assistant configuration never takes the application down
             return UnavailableMappingAssistant(settings.llm_provider, reason=str(exc))
     return UnavailableMappingAssistant(settings.llm_provider)
+
+
+def _number(text: str, variable: str) -> float:
+    try:
+        return float(text.strip())
+    except (ValueError, AttributeError):
+        raise ValueError(f"{variable} must be a number, got {text!r}") from None
+
+
+def _integer(text: str, variable: str) -> int:
+    try:
+        return int(text.strip())
+    except (ValueError, AttributeError):
+        raise ValueError(f"{variable} must be an integer, got {text!r}") from None
 
 
 def build_container(settings: Settings) -> Container:

@@ -591,3 +591,22 @@ def test_parseable_replies_are_sanitised_structurally_before_repair_and_diagnost
     assert "Alice" not in repair.candidate_text and "<path>" in repair.candidate_text
     assert '"api_key":"<token>"' in repair.candidate_text
     assert "Alice" not in outcome.diagnostics["raw_text"]
+
+
+def test_adapter_notes_from_both_attempts_reach_the_diagnostics() -> None:
+    class Noting:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(
+            self, prepared: PreparedContext, *, repair: RepairRequest | None = None
+        ) -> AssistantReply:
+            self.calls += 1
+            if repair is None:
+                return AssistantReply('{"mapping": {}}', "m", "stop", ("json_mode_off",))
+            return AssistantReply(json.dumps({"mapping": _tracelab_mapping()}), "m", "stop")
+
+    h = Harness()
+    h.run = RunAssistant(h.prepare, Noting())
+    outcome = h.go(h.request(h.tracelab_upload()))
+    assert outcome.attempts == 2 and outcome.diagnostics["adapter_notes"] == ["json_mode_off"]

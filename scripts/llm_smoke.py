@@ -24,6 +24,21 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "fixtures" / "tracelab" / "tracelab-sample.jsonl.gz"
 
 
+def scrub(value: object, key: str) -> object:
+    """Replace the configured key everywhere in a captured payload, escapes included."""
+    if not key:
+        return value
+    if isinstance(value, str):
+        text = value.replace(key, "<key>")
+        escaped = json.dumps(key)[1:-1]
+        return text.replace(escaped, "<key>") if escaped != key else text
+    if isinstance(value, dict):
+        return {str(scrub(k, key)): scrub(v, key) for k, v in value.items()}
+    if isinstance(value, list):
+        return [scrub(v, key) for v in value]
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--file", type=Path, default=FIXTURE)
@@ -98,9 +113,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"questions={list(proposal.questions)}")
     if args.save_recording and captured:
         target = ROOT / "backend" / "tests" / "llm_recordings" / f"{args.save_recording}.json"
-        body = captured[-1]
-        target.write_text(json.dumps(body, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-        print(f"saved body of the last response to {target.relative_to(ROOT)}")
+        key = settings.llm_api_key.get_secret_value()
+        body = scrub(captured[-1], key)
+        text = json.dumps(body, indent=1, ensure_ascii=False) + "\n"
+        if key and (key in text or key in json.dumps(body)):
+            print("refusing to save: the configured key is still present in the capture")
+            return 3
+        target.write_text(text, encoding="utf-8")
+        print(f"saved body of the last response to {target.relative_to(ROOT)} (key scrubbed)")
     return 0 if proposal is not None and proposal.executable else 2
 
 

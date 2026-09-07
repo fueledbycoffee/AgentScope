@@ -503,7 +503,9 @@ def test_build_assistant_keeps_startup_independent_of_the_assistant() -> None:
     for bad in (
         {"llm_model": ""},
         {"llm_model": "m", "llm_json_mode": "x"},
-        {"llm_model": "m", "llm_timeout_s": -1},
+        {"llm_model": "m", "llm_timeout_s": "-1"},
+        {"llm_model": "m", "llm_timeout_s": "abc"},
+        {"llm_model": "m", "llm_max_tokens": "1.5"},
         {"llm_model": "m", "llm_base_url": "nope"},
     ):
         unavailable = build_assistant(Settings(**base, llm_provider="openai_compatible", **bad))
@@ -525,3 +527,127 @@ def test_recordings_are_labelled_and_carry_no_secrets() -> None:
             sidecar = RECORDINGS / name.replace(".json", ".provenance.json")
             assert sidecar.exists(), name
             assert json.loads(sidecar.read_text())["kind"] == "captured"
+
+
+# --- regressions from the adversarial review of PR #38 ----------------------------------------
+
+
+def test_the_key_is_caught_behind_json_and_backslash_escapes() -> None:
+    for key in (KEY, CANARY):
+        escaped = "".join(f"\\u{ord(c):04x}" for c in key)  # \uXXXX per character
+        body = completion('{"mapping": {}, "questions": ["' + escaped + '"]}', "stop")
+        with pytest.raises(AssistantError) as caught:
+            adapter(Server(ok(body)), api_key=key).complete(prepared())
+        assert caught.value.kind == "malformed" and key not in caught.value.message
+        finish = ok(
+            {"model": "m", "choices": [{"finish_reason": key, "message": {"content": "x"}}]}
+        )
+        with pytest.raises(AssistantError) as caught:
+            adapter(Server(finish), api_key=key).complete(prepared())
+        assert key not in caught.value.message and "<key>" in caught.value.message
+
+
+def test_the_deadline_interrupts_a_body_that_keeps_trickling() -> None:
+    clock = Clock()
+
+    def slow_chunks() -> Any:
+        for piece in (b'{"model": "m", ', b'"choices": ', b"[]}"):
+            clock.now += 20  # each chunk arrives 20 s later; the read timeout alone never fires
+            yield piece
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, stream=httpx2.ByteStream(b"".join(slow_chunks())))
+
+    class Trickle(httpx2.BaseTransport):
+        def handle_request(self, request: httpx2.Request) -> httpx2.Response:
+            def gen() -> Any:
+                yield from slow_chunks()
+
+            return httpx2.Response(200, stream=_IterStream(gen()))
+
+    client = OpenAICompatibleAssistant(
+        base_url="https://openrouter.ai/api/v1",
+        model="m",
+        timeout_s=30,
+        clock=clock,
+        sleep=lambda _s: None,
+        transport=Trickle(),
+    )
+    with pytest.raises(AssistantError) as caught:
+        client.complete(prepared())
+    assert caught.value.kind == "timeout"
+
+
+class _IterStream(httpx2.SyncByteStream):
+    def __init__(self, chunks: Any) -> None:
+        self._chunks = chunks
+
+    def __iter__(self) -> Any:
+        yield from self._chunks
+
+
+def test_oversized_bodies_are_discarded() -> None:
+    class Huge(httpx2.BaseTransport):
+        def handle_request(self, request: httpx2.Request) -> httpx2.Response:
+            def gen() -> Any:
+                for _ in range(5):
+                    yield b"x" * (1024 * 1024)
+
+            return httpx2.Response(200, stream=_IterStream(gen()))
+
+    client = OpenAICompatibleAssistant(
+        base_url="https://openrouter.ai/api/v1", model="m", transport=Huge()
+    )
+    with pytest.raises(AssistantError) as caught:
+        client.complete(prepared())
+    assert caught.value.kind == "malformed" and "bytes" in caught.value.message
+
+
+def test_retry_after_dates_are_honoured_and_a_far_one_declines_the_retry() -> None:
+    from datetime import UTC, datetime, timedelta
+    from email.utils import format_datetime
+
+    far = format_datetime(datetime.now(UTC) + timedelta(seconds=120))
+    server = Server(
+        httpx2.Response(429, headers={"Retry-After": far}, text=""),
+        ok(recording("synthetic_openrouter_ok")),
+    )
+    sleeps: list[float] = []
+    with pytest.raises(AssistantError) as caught:
+        adapter(server, sleep=sleeps.append).complete(prepared())  # 120 s does not fit 60 s
+    assert caught.value.kind == "provider" and sleeps == [] and len(server.requests) == 1
+    soon = format_datetime(datetime.now(UTC) + timedelta(seconds=5))
+    server = Server(
+        httpx2.Response(429, headers={"Retry-After": soon}, text=""),
+        ok(recording("synthetic_openrouter_ok")),
+    )
+    adapter(server, sleep=sleeps.append).complete(prepared())
+    assert len(sleeps) == 1 and 3.0 <= sleeps[0] <= 5.0
+
+
+def test_negotiation_does_not_reset_the_single_429_retry() -> None:
+    server = Server(
+        httpx2.Response(429, text="busy"),
+        httpx2.Response(400, json=recording("synthetic_lmstudio_400_response_format")),
+        httpx2.Response(429, text="busy"),
+        ok(recording("synthetic_openrouter_ok")),
+    )
+    with pytest.raises(AssistantError) as caught:
+        adapter(server).complete(prepared())
+    assert caught.value.kind == "provider" and len(server.requests) == 3  # 429, 400, 429: stop
+
+
+def test_startup_survives_unparseable_numeric_assistant_settings(tmp_path: Path) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url=f"sqlite:///{tmp_path / 'db.sqlite3'}",
+        raw_file_dir=tmp_path / "raw",
+        llm_provider="openai_compatible",
+        llm_model="m",
+        llm_timeout_s="abc",
+    )
+    assistant = build_assistant(settings)
+    assert isinstance(assistant, UnavailableMappingAssistant)
+    with pytest.raises(AssistantError) as caught:
+        assistant.complete(prepared())
+    assert "AGENTSCOPE_LLM_TIMEOUT_S" in caught.value.message
