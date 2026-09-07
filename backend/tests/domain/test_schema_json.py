@@ -1,0 +1,81 @@
+import copy
+import json
+from collections.abc import Callable
+from importlib import resources
+from typing import Any
+
+import jsonschema
+import pytest
+
+from agentscope_app.domain.mapping.parser import parse_mapping
+from tests.domain.test_parser import VALID
+
+SCHEMA: dict[str, Any] = json.loads(
+    resources.files("agentscope_app.domain.mapping")
+    .joinpath("mapping-dsl-v1.schema.json")
+    .read_text(encoding="utf-8")
+)
+
+
+def test_schema_is_a_valid_draft_2020_12_schema() -> None:
+    jsonschema.Draft202012Validator.check_schema(SCHEMA)
+
+
+def test_valid_document_passes_schema_and_parser() -> None:
+    jsonschema.validate(VALID, SCHEMA)
+    assert parse_mapping(VALID).is_executable
+
+
+def _rules_not_a_list(d: dict[str, Any]) -> None:
+    d["rules"] = "x"
+
+
+def _path_not_a_string(d: dict[str, Any]) -> None:
+    d["rules"][0]["fields"] = {"external_id": {"path": 3}}
+
+
+def _bad_policy(d: dict[str, Any]) -> None:
+    d["rules"][0]["fields"]["external_id"]["on_missing"] = "explode"
+
+
+def _bad_operator(d: dict[str, Any]) -> None:
+    d["rules"][1]["where"][0]["op"] = "matches"
+
+
+def _bad_transform(d: dict[str, Any]) -> None:
+    d["rules"][2]["fields"]["tool_name"]["transforms"] = [{"eval": {}}]
+
+
+def _version_as_string(d: dict[str, Any]) -> None:
+    d["dsl_version"] = "1"
+
+
+def _wildcard_in_field(d: dict[str, Any]) -> None:
+    d["rules"][0]["fields"]["external_id"]["path"] = "$.ids[*]"
+
+
+def _no_source_in_field(d: dict[str, Any]) -> None:
+    d["rules"][0]["fields"]["external_id"] = {"transforms": ["trim"]}
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        _rules_not_a_list,
+        _path_not_a_string,
+        _bad_policy,
+        _bad_operator,
+        _bad_transform,
+        _version_as_string,
+        _wildcard_in_field,
+        _no_source_in_field,
+    ],
+)
+def test_schema_and_parser_agree_on_structural_rejections(
+    mutate: Callable[[dict[str, Any]], None],
+) -> None:
+    doc = copy.deepcopy(VALID)
+    mutate(doc)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(doc, SCHEMA)
+    assert not parse_mapping(doc).is_executable

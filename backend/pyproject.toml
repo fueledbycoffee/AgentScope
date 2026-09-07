@@ -19,6 +19,7 @@ dev = [
     "mypy>=1.11",
     "import-linter>=2.1",
     "httpx2>=2.12.0",
+    "jsonschema>=4.23",
 ]
 
 [build-system]
