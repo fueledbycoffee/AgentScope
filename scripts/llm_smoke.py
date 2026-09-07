@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import tempfile
 import time
@@ -24,19 +25,46 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "fixtures" / "tracelab" / "tracelab-sample.jsonl.gz"
 
 
+_ESCAPE = re.compile(r"\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})|\\(/)")
+
+
+def decode_escapes(text: str) -> str:
+    """Resolve \\uXXXX, \\xNN and \\/ escapes (repeatedly) so a key cannot hide behind them."""
+    for _ in range(3):
+        decoded = _ESCAPE.sub(
+            lambda m: chr(int(m.group(1) or m.group(2), 16)) if (m.group(1) or m.group(2)) else "/",
+            text,
+        )
+        if decoded == text:
+            return text
+        text = decoded
+    return text
+
+
 def scrub(value: object, key: str) -> object:
-    """Replace the configured key everywhere in a captured payload, escapes included."""
+    """Replace the configured key everywhere in a captured payload, escaped forms decoded first."""
     if not key:
         return value
     if isinstance(value, str):
-        text = value.replace(key, "<key>")
-        escaped = json.dumps(key)[1:-1]
-        return text.replace(escaped, "<key>") if escaped != key else text
+        return decode_escapes(value).replace(key, "<key>")
     if isinstance(value, dict):
         return {str(scrub(k, key)): scrub(v, key) for k, v in value.items()}
     if isinstance(value, list):
         return [scrub(v, key) for v in value]
     return value
+
+
+def still_contains(value: object, key: str) -> bool:
+    """Whether the key survives anywhere in the payload, in any string, escapes decoded."""
+    if not key:
+        return False
+    if isinstance(value, str):
+        return key in value or key in decode_escapes(value)
+    if isinstance(value, dict):
+        return any(still_contains(k, key) or still_contains(v, key) for k, v in value.items())
+    if isinstance(value, list):
+        return any(still_contains(v, key) for v in value)
+    return False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -116,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         key = settings.llm_api_key.get_secret_value()
         body = scrub(captured[-1], key)
         text = json.dumps(body, indent=1, ensure_ascii=False) + "\n"
-        if key and (key in text or key in json.dumps(body)):
+        if still_contains(body, key):
             print("refusing to save: the configured key is still present in the capture")
             return 3
         target.write_text(text, encoding="utf-8")

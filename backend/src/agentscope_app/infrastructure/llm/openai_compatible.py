@@ -32,6 +32,7 @@ import codecs
 import json
 import math
 import re
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -127,6 +128,7 @@ class OpenAICompatibleAssistant:
         )
         self._model = model.strip()
         self._json_mode = json_mode
+        self._configured_json_mode = json_mode
         self._max_tokens = max_tokens
         self._timeout_s = float(timeout_s)
         self._sleep = sleep
@@ -205,19 +207,16 @@ class OpenAICompatibleAssistant:
                 with self._client.stream(
                     "POST", "/chat/completions", json=body, timeout=timeout
                 ) as streamed:
-                    content = bytearray()
-                    for chunk in streamed.iter_bytes():
-                        if self._clock() > budget.deadline:
-                            raise AssistantError("timeout", self._timed_out())
-                        content.extend(chunk)
-                        if len(content) > _MAX_RESPONSE_BYTES:
-                            raise AssistantError(
-                                "malformed",
-                                f"The assistant endpoint at {self._host} sent more than "
-                                f"{_MAX_RESPONSE_BYTES} bytes; the reply was discarded",
-                            )
+                    content = self._read_within(streamed, budget)
+                    # iter_bytes() already decoded any content-encoding: drop those headers
+                    headers = [
+                        (k, v)
+                        for k, v in streamed.headers.raw
+                        if k.lower()
+                        not in (b"content-encoding", b"content-length", b"transfer-encoding")
+                    ]
                     response = httpx2.Response(
-                        streamed.status_code, headers=streamed.headers, content=bytes(content)
+                        streamed.status_code, headers=headers, content=bytes(content)
                     )
             except httpx2.TimeoutException:
                 raise AssistantError("timeout", self._timed_out()) from None
@@ -235,6 +234,42 @@ class OpenAICompatibleAssistant:
                     continue
             return response
 
+    def _read_within(self, streamed: httpx2.Response, budget: _Budget) -> bytes:
+        """Read the whole body, or stop at the deadline whatever the socket is doing.
+
+        The read runs in a helper thread; the caller waits at most the remaining time and
+        closes the response if the reader has not finished, which aborts the blocked read.
+        """
+        result: dict[str, Any] = {}
+
+        def reader() -> None:
+            content = bytearray()
+            try:
+                for chunk in streamed.iter_bytes():
+                    content.extend(chunk)
+                    if len(content) > _MAX_RESPONSE_BYTES:
+                        result["too_large"] = True
+                        return
+                result["content"] = bytes(content)
+            except Exception as exc:  # noqa: BLE001 - reported to the caller, mapped there
+                result["error"] = exc
+
+        worker = threading.Thread(target=reader, name="agentscope-llm-read", daemon=True)
+        worker.start()
+        worker.join(max(0.0, self._remaining(budget.deadline)))
+        if worker.is_alive():
+            streamed.close()
+            raise AssistantError("timeout", self._timed_out())
+        if result.get("too_large"):
+            raise AssistantError(
+                "malformed",
+                f"The assistant endpoint at {self._host} sent more than "
+                f"{_MAX_RESPONSE_BYTES} bytes; the reply was discarded",
+            )
+        if "error" in result:
+            raise result["error"]
+        return bytes(result.get("content", b""))
+
     def _timed_out(self) -> str:
         return (
             f"The assistant endpoint at {self._host} did not answer within "
@@ -242,9 +277,11 @@ class OpenAICompatibleAssistant:
         )
 
     def _rejects_json_mode(self, response: httpx2.Response, body: dict[str, Any]) -> bool:
-        if response.status_code != 400 or self._json_mode != "auto":
+        # decided from the request that was actually sent (another thread may already have
+        # switched the shared mode off after the same rejection); "on" never falls back
+        if response.status_code != 400 or "response_format" not in body:
             return False
-        if "response_format" not in body:
+        if self._configured_json_mode == "on":
             return False
         return _UNSUPPORTED_PARAMETER.search(_error_message(response)) is not None
 
@@ -352,7 +389,11 @@ class OpenAICompatibleAssistant:
         return reply
 
     def _scrub(self, text: str) -> str:
-        return text.replace(self._key, "<key>") if self._key else text
+        """Key-scrub a diagnostic string, escapes decoded first so nothing hides behind them."""
+        if not self._key:
+            return text
+        decoded = _decode_escapes(text)
+        return decoded.replace(self._key, "<key>")
 
     def _quote(self, response: httpx2.Response) -> str:
         """A short excerpt of the provider's error message, key-scrubbed and redacted."""
@@ -418,15 +459,35 @@ def _error_message(response: httpx2.Response) -> str:
         return "<unreadable body>"
 
 
+_ESCAPE = re.compile(r"\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})|\\(/)")
+
+
+def _decode_escapes(text: str) -> str:
+    """Resolve ``\\uXXXX``, ``\\xNN`` and ``\\/`` escapes so a credential cannot hide behind them.
+
+    Applied repeatedly until stable (an escape can encode a backslash of another escape).
+    """
+    for _ in range(3):
+        decoded = _ESCAPE.sub(
+            lambda m: chr(int(m.group(1) or m.group(2), 16)) if (m.group(1) or m.group(2)) else "/",
+            text,
+        )
+        if decoded == text:
+            return text
+        text = decoded
+    return text
+
+
 def _contains(text: str, needle: str) -> bool:
     """Whether ``needle`` occurs in ``text`` literally or once escapes are decoded."""
     if needle in text:
         return True
     if "\\" not in text:
         return False
+    if needle in _decode_escapes(text):
+        return True
     try:
-        decoded = json.dumps(json.loads(text), ensure_ascii=False)
-        if needle in decoded:
+        if needle in json.dumps(json.loads(text), ensure_ascii=False):
             return True
     except ValueError:
         pass

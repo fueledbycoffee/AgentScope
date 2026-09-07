@@ -12,6 +12,7 @@ import pytest
 
 from agentscope_app.application.assistant_contract import PROMPT_VERSION
 from agentscope_app.application.dto import (
+    AssistantReply,
     AssistantRequest,
     MappingIdentity,
     PreparedContext,
@@ -547,35 +548,25 @@ def test_the_key_is_caught_behind_json_and_backslash_escapes() -> None:
         assert key not in caught.value.message and "<key>" in caught.value.message
 
 
-def test_the_deadline_interrupts_a_body_that_keeps_trickling() -> None:
-    clock = Clock()
-
-    def slow_chunks() -> Any:
-        for piece in (b'{"model": "m", ', b'"choices": ', b"[]}"):
-            clock.now += 20  # each chunk arrives 20 s later; the read timeout alone never fires
-            yield piece
-
-    def handle(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(200, stream=httpx2.ByteStream(b"".join(slow_chunks())))
+def test_a_trickling_body_is_cut_at_the_deadline_in_wall_time() -> None:
+    import time as real_time
 
     class Trickle(httpx2.BaseTransport):
         def handle_request(self, request: httpx2.Request) -> httpx2.Response:
             def gen() -> Any:
-                yield from slow_chunks()
+                for piece in (b'{"model": "m", ', b'"choices": ', b"[]}"):
+                    real_time.sleep(0.25)  # each chunk arrives inside the read timeout
+                    yield piece
 
             return httpx2.Response(200, stream=_IterStream(gen()))
 
     client = OpenAICompatibleAssistant(
-        base_url="https://openrouter.ai/api/v1",
-        model="m",
-        timeout_s=30,
-        clock=clock,
-        sleep=lambda _s: None,
-        transport=Trickle(),
+        base_url="https://openrouter.ai/api/v1", model="m", timeout_s=0.4, transport=Trickle()
     )
+    started = real_time.perf_counter()
     with pytest.raises(AssistantError) as caught:
         client.complete(prepared())
-    assert caught.value.kind == "timeout"
+    assert caught.value.kind == "timeout" and real_time.perf_counter() - started < 1.0
 
 
 class _IterStream(httpx2.SyncByteStream):
@@ -651,3 +642,86 @@ def test_startup_survives_unparseable_numeric_assistant_settings(tmp_path: Path)
     with pytest.raises(AssistantError) as caught:
         assistant.complete(prepared())
     assert "AGENTSCOPE_LLM_TIMEOUT_S" in caught.value.message
+
+
+# --- regressions from the second adversarial pass of PR #38 -----------------------------------
+
+
+def test_escaped_credentials_in_provider_errors_are_scrubbed() -> None:
+    for key in (KEY, CANARY):
+        escaped = key.replace("-", "\\u002d")
+        body = {"error": {"message": f"upstream saw {escaped} and \\u0073k-x fail"}}
+        server = Server(httpx2.Response(500, json=body))
+        with pytest.raises(AssistantError) as caught:
+            adapter(server, api_key=key).complete(prepared())
+        assert key not in caught.value.message and "<key>" in caught.value.message
+        assert "u002d" not in caught.value.message
+
+
+def test_gzip_compressed_completions_are_read_once() -> None:
+    import gzip
+
+    payload = gzip.compress(json.dumps(recording("synthetic_openrouter_ok")).encode())
+    server = Server(httpx2.Response(200, content=payload, headers={"Content-Encoding": "gzip"}))
+    reply = adapter(server).complete(prepared())
+    assert reply.finish == "stop" and reply.text.startswith("{")
+
+
+def test_the_deadline_bounds_a_blocking_read_in_wall_time() -> None:
+    import time as real_time
+
+    class Blocking(httpx2.BaseTransport):
+        def handle_request(self, request: httpx2.Request) -> httpx2.Response:
+            def gen() -> Any:
+                yield b'{"model": "m", '
+                real_time.sleep(2.0)  # the socket blocks well past the budget
+                yield b'"choices": []}'
+
+            return httpx2.Response(200, stream=_IterStream(gen()))
+
+    client = OpenAICompatibleAssistant(
+        base_url="https://openrouter.ai/api/v1", model="m", timeout_s=0.3, transport=Blocking()
+    )
+    started = real_time.perf_counter()
+    with pytest.raises(AssistantError) as caught:
+        client.complete(prepared())
+    elapsed = real_time.perf_counter() - started
+    assert caught.value.kind == "timeout" and elapsed < 1.0, elapsed
+
+
+def test_concurrent_negotiations_both_recover() -> None:
+    import threading
+
+    rejection = recording("synthetic_lmstudio_400_response_format")
+    lock = threading.Lock()
+    seen: list[dict[str, Any]] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        body = json.loads(request.content)
+        with lock:
+            seen.append(body)
+        if "response_format" in body:
+            return httpx2.Response(400, json=rejection)
+        return ok(recording("synthetic_lmstudio_ok"))
+
+    client = OpenAICompatibleAssistant(
+        base_url="http://localhost:1234/v1",
+        model="local",
+        transport=httpx2.MockTransport(handle),
+        sleep=lambda _s: None,
+    )
+    results: list[Any] = []
+
+    def worker() -> None:
+        try:
+            results.append(client.complete(prepared()))
+        except AssistantError as exc:  # pragma: no cover - the assertion below reports it
+            results.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    assert all(isinstance(r, AssistantReply) for r in results), results
+    assert len(seen) in (3, 4)  # both first attempts rejected, both retried without the parameter

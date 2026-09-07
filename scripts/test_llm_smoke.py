@@ -15,7 +15,11 @@ class ScrubTests(unittest.TestCase):
         text = str(scrubbed)
         self.assertNotIn(key, text)
         self.assertEqual(scrubbed["choices"][0]["message"]["content"], "said <key>")
+        self.assertEqual(scrubbed["escaped"], "<key>")  # the \u002d-encoded form too
+        self.assertEqual(scrubbed["choices"][0]["message"]["reasoning"], ["<key>", {"k": "<key>"}])
         self.assertIn("<key>", scrubbed)
+        self.assertFalse(llm_smoke.still_contains(scrubbed, key))
+        self.assertTrue(llm_smoke.still_contains({"x": key.replace("-", "\\u002d")}, key))
         self.assertEqual(llm_smoke.scrub({"a": 1}, ""), {"a": 1})
 
 
