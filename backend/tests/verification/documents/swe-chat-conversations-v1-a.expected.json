@@ -1,0 +1,23 @@
+{
+  "table": "conversations",
+  "accepted": 3,
+  "rejected": 0,
+  "entities": {
+    "session": 1,
+    "model_call": 2,
+    "tool_call": 1
+  },
+  "provenance": {
+    "run": "A-conversations-6",
+    "model": "dots-studio/dots-3-note-preview:free",
+    "date": "2026-09-07",
+    "human_corrections": 4,
+    "generation_calls": 2,
+    "corrections": [
+      "$.timestamp -> $.timestamp.iso",
+      "tool_call where role == tool_use",
+      "model_call where role == assistant",
+      "notes set by the reviewer"
+    ]
+  }
+}

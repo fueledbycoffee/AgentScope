@@ -1,6 +1,7 @@
 # Second source through the UI, two model configurations (issue #16)
 
-Status: **in progress** (runs on the evening of 2026-09-07, continued 2026-09-08).
+Status: **complete** (all runs on the evening of 2026-09-07; report finalised
+2026-09-07 23:45 local).
 Definitions and gates: `docs/superpowers/plans/2026-09-07-second-source-two-models.md`
 (revision 2, §0). This report records what the runs showed and nothing more.
 
@@ -17,7 +18,7 @@ Definitions and gates: `docs/superpowers/plans/2026-09-07-second-source-two-mode
 | Context versions | context 1, prompt 1, profiler 1, sanitizer 2 |
 | Dataset | SWE-chat excerpt `data/samples/swe-chat-1/` built by `scripts/sample_swe_chat.py --per-agent 1` (manifest in that directory: upstream hashes, seed, output hashes); 12 sessions, 518 conversation rows; not committed (dataset terms) |
 | Tools | uv lock and pnpm lock at the tested commit; Playwright 1.63 |
-| Tested commit | *(filled at the end)* |
+| Tested commit | branch `feat/16-second-source` at the commit that adds this line (the PR's head; the runs used the application as of `fef4d61`, whose backend and web code equal that head: only docs, fixtures and the harness changed after) |
 
 ## Source audit (aggregate only, `scripts/audit_swe_chat.py`)
 
@@ -86,7 +87,7 @@ was included in the pre-checks.
 | A-conversations-3 | A | conversations | off | — | stopped on purpose (same locator defect) | | | | | |
 | A-conversations-4 | A | conversations | off | 2 | executable after the built-in repair (`$.timestamp.iso` by itself) | model_call `where` → `role == "assistant"`, `notes` string; the tool_call `where` correction was **lost by a harness flag-parsing defect** (repeated `--set-where` kept only the last) | rev 1 `map_d1ae…` | 518 accepted | committed 518/518: 9 sessions, **149 model calls (correct)**, 132 tool calls and 386 `missing_required` emission rejects (the presence test again) | superseded by A-conversations-5 |
 | A-conversations-5 | A | conversations | off | 2 | draft: **every path written as a bare column name** (`session_id`, `timestamp`, …), a new variance of the same model | both `where` predicates and notes applied; not executable (invalid paths) | — | — | — | rerun as A-conversations-6 with a systematic `$.` prefix correction |
-| A-conversations-6 | A | conversations | off | | | + bare paths prefixed (`--fix-bare-paths`) | | | | |
+| A-conversations-6 | A | conversations | off | 2 | executable after the built-in repair (this reply used `$.`-prefixed paths, so the bare-path correction was not needed) | 4: `$.timestamp` → `$.timestamp.iso`; tool_call `where` → `role == "tool_use"`; model_call `where` → `role == "assistant"`; `notes` set by the reviewer | rev 1 `map_1c8a…` | 246 accepted, 272 ignored (rows emitting nothing), 0 rejected | committed 518/518: **9 sessions, 149 model calls, 88 tool calls, 0 reject rows** | snapshot restored, `AGENTSCOPE_LLM_PROVIDER=none`: control prepare 200 then run **503**; import committed with identical counts; zero assistant run requests (`replay-A-conversations-6`) |
 
 ## Findings so far
 
@@ -120,10 +121,14 @@ was included in the pre-checks.
 
 ## Replay without the assistant
 
-*(filled after the runs: pre-import snapshot restored, backend started with
-`AGENTSCOPE_LLM_PROVIDER=none`, control call answers 503, import through the
-Import page with the saved revision, identical counts, zero assistant
-requests)*
+Four replays (`replay-A-sessions-3`, `replay-B-sessions-2`,
+`replay-B-conversations-5`, `replay-A-conversations-6`): the pre-import
+snapshot restored into a fresh backend started with
+`AGENTSCOPE_LLM_PROVIDER=none` and an empty key; a control prepare answered
+200 and the following run **503 assistant_unavailable**; the import through the
+Import page with the saved revision committed with counts identical to the
+live run (12 sessions; 9 sessions, 149 model calls, 88 tool calls); the
+browser request log contains zero assistant run requests.
 
 The API regression test `backend/tests/verification/test_replay_without_assistant.py`
 replays every reviewed final document under `backend/tests/verification/documents/`
@@ -137,9 +142,45 @@ any call.
 | sessions: live proposal | yes | yes |
 | sessions: human-assisted completion | **yes**, zero manual edits (run A-sessions-3; the two earlier runs show the model's variance: wrapper path, then a wrong `ended_at`) | **yes**, zero manual edits (B-sessions-2) |
 | conversations: live proposal | yes (executable after the built-in repair in runs 4 and 6; drafts in 2 and 5) | yes (executable, one call) |
-| conversations: human-assisted completion | pending (run 6) | **yes**, four recorded corrections (accessor, two role predicates, notes) |
-| replay passed | yes (sessions; UI replay and API regression test) | yes (sessions and conversations; UI replays with the 503 control, API regression test for both documents) |
+| conversations: human-assisted completion | **yes**, four recorded corrections (accessor, two role predicates, notes) | **yes**, the same four corrections |
+| replay passed | yes (both tables; UI replays with the 503 control; API regression test on the final documents) | yes (both tables; UI replays with the 503 control; API regression test on the final documents) |
 
 Coverage: sessions **partial** (token and tool aggregates unmapped by design);
 conversations **partial** (no provider field; token semantics unknown; latency
 and status fields absent from the source).
+
+## Final documents
+
+Committed under `backend/tests/verification/documents/` after review (paths,
+role predicates and notes only; no source values):
+`swe-chat-sessions-v1.json` (A-sessions-3; B-sessions-2 produced a document
+with the same fields), `swe-chat-conversations-v1.json` (B-conversations-5:
+richer, with `token_semantics: unknown`, `is_error`, latency and status fields
+mapped to source columns the audit shows are mostly null),
+`swe-chat-conversations-v1-a.json` (A-conversations-6: the minimal set). Each
+carries an `.expected.json` with the outcomes computed on the synthetic
+SWE-shaped table (sessions: 3 accepted, 3 session emissions; conversations:
+6 rows accepted, 1 session, 2 model calls, 1 tool call). None is bundled under
+`backend/mappings/` yet: the conversations semantics (thinking rows as calls;
+result rows dropped) are a reviewer's choice for this excerpt, recorded here,
+and belong to the source's own documentation before they ship as defaults
+(#17).
+
+## What this shows, and what it does not
+
+- Two distinct models from two vendors completed the workflow on both tables
+  through the UI with human corrections, and their saved mappings replay
+  identically with no assistant. The models were right about the field set
+  almost every time and wrong about three things repeatedly: addressing a
+  Parquet timestamp wrapper by its object path, guessing an end time, and
+  turning a presence test into a role predicate for tool rows. The application
+  caught each (validation, preview rejects, the reducer's interval guard) and
+  the corrections are small and recorded.
+- Variance between identical requests was large (a missing `where`, bare
+  column names, an object in `notes`): a proposal must be read, not trusted;
+  `executable` is a contract statement only.
+- The free tier is not a dependable substrate: one model retired, two were
+  rate-limited or overloaded all evening, a small one was cut off twice.
+- Not shown: correctness of the conversations semantics for the full dataset
+  (the excerpt has 12 sessions), any hosted or local endpoint other than
+  OpenRouter, and the field table or report entry point of #39.
