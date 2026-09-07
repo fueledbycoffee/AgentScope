@@ -1,7 +1,7 @@
 import { useId, useRef } from 'react'
 import type { MappingIssue } from '../api/types'
 import { IconButton } from '../components'
-import { lineFor } from './lineFor'
+import { lineFor } from './jsonText'
 
 export interface DocumentEditorProps {
   text: string

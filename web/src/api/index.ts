@@ -5,6 +5,7 @@ import type {
   SessionDetail, Upload, ValidationResult,
 } from './types'
 export type * from './types'
+import { envelopeWithRawJson } from '../assist/jsonText'
 
 export class ApiError extends Error {
   readonly status: number
@@ -68,9 +69,35 @@ export const getMetricsSummary = (scope?: Scope) => request<MetricsSummary>(`/me
 // --- mapping assistant -----------------------------------------------------------------------
 export const profileUpload = (uploadId: string) =>
   request<ProfileReport>(`/uploads/${encodeURIComponent(uploadId)}/profile`, { method: 'POST' })
-export const prepareContext = (body: AssistantRequest) => request<PreparedContext>('/assistant/prepare', post(body))
-export const runAssistant = (body: AssistantRequest, contextSha256: string) =>
-  request<AssistantOutcome>('/assistant/run', post({ ...body, context_sha256: contextSha256 }))
+/**
+ * Assistant requests: `current_mapping` is the editor's text embedded verbatim (never parsed and
+ * re-serialised by the browser), so the server sees exactly the numbers the user wrote.
+ */
+export interface AssistantRequestText extends Omit<AssistantRequest, 'current_mapping'> { current_mapping_text?: string | null }
+function assistantBody(body: AssistantRequestText, extra: Record<string, unknown> = {}): RequestInit {
+  const { current_mapping_text, ...fields } = body
+  const json = current_mapping_text
+    ? envelopeWithRawJson({ ...fields, ...extra }, 'current_mapping', current_mapping_text)
+    : JSON.stringify({ ...fields, ...extra })
+  return { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: json }
+}
+export const prepareContext = (body: AssistantRequestText) => request<PreparedContext>('/assistant/prepare', assistantBody(body))
+/** The parsed outcome plus the raw response text, from which the proposal's mapping is taken verbatim. */
+export async function runAssistant(body: AssistantRequestText, contextSha256: string): Promise<{ outcome: AssistantOutcome; rawText: string }> {
+  const response = await fetch('/api/assistant/run', assistantBody(body, { context_sha256: contextSha256 }))
+  const rawText = await response.text()
+  if (!response.ok) {
+    let error: ErrorDetail = { code: 'http_error', message: `Request failed (${response.status})`, details: [] }
+    try {
+      const parsed = JSON.parse(rawText)
+      if (typeof parsed?.error?.code === 'string' && typeof parsed.error.message === 'string') {
+        error = { ...parsed.error, details: Array.isArray(parsed.error.details) ? parsed.error.details : [] }
+      }
+    } catch { /* non-JSON error page */ }
+    throw new ApiError(response.status, error)
+  }
+  return { outcome: JSON.parse(rawText) as AssistantOutcome, rawText }
+}
 export const getMappingSchema = () => request<{ [key: string]: Json }>('/mappings/schema')
 /**
  * The editor's text is embedded as-is inside the request envelope, so numbers travel exactly as the

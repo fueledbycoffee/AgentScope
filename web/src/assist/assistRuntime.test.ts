@@ -78,7 +78,7 @@ describe('identity and request building', () => {
     expect('request' in revise).toBe(true)
     if ('request' in revise) {
       expect(revise.request.kind).toBe('revise')
-      expect(revise.request.current_mapping).toEqual({ name: 'assisted', source: 'tracelab', rules: [] })
+      expect(revise.request.current_mapping_text).toBe(state.documentText) // the text itself, verbatim
       expect(revise.request.history).toHaveLength(20)
       expect(revise.omitted).toBe(state.turns.length - 20)
     }
@@ -147,11 +147,11 @@ describe('prepare, acknowledge, run', () => {
     if (!('request' in started)) throw new Error('could not start')
     const second = startPrepare(started.state, 'second')
     expect('request' in second).toBe(false)
-    const failed = requestFailed(started.state, started.generation, 409, 'stale')
+    const failed = requestFailed(started.state, started.generation, 502, 'assistant_failed')
     expect(failed.busy).toBe('none')
     expect(failed.prepared).toBeNull()
-    expect(failed.notices[0].text).toMatch(/prepared again/)
-    expect(failed.pendingMessage).toBe('first')
+    expect(failed.notices[0].text).toBe('assistant_failed')
+    expect(failed.pendingMessage).toBe('first') // the draft stays for the user
   })
 
   it('renders a refusal as an assistant turn and leaves the document alone', () => {
@@ -200,5 +200,48 @@ describe('gates', () => {
     let state = setDocumentText(ready(), '{"dsl_version": 1}')
     state = validationArrived(state, state.documentVersion, [{ stage: 'schema', path: 'rules', code: 'no_rules', message: 'x', severity: 'error' }], false)
     expect(canSave(state)).toMatch(/Fix the validation errors/)
+  })
+})
+
+
+describe('review regressions (PR #40)', () => {
+  it('proposes again after a refusal left the document empty', () => {
+    const state = ready()
+    const started = startPrepare(state, 'try')
+    if (!('request' in started)) throw new Error('could not start')
+    const running = preparedArrived(started.state, started.generation, started.request, prepared('d9'))
+    const refused = outcomeArrived(running, started.generation, outcome(null, { diagnostics: { finish: 'refusal', model: 'm', raw_text: '', failure: 'refusal', context_sha256: 'd9', sample_included: false } }))
+    const again = buildRequest(refused, 'please try again')
+    expect('request' in again && again.request.kind).toBe('propose')
+  })
+
+  it('re-prepares once after a 409, keeping the message, then stops', () => {
+    const state = ready()
+    const started = startPrepare(state, 'first')
+    if (!('request' in started)) throw new Error('could not start')
+    const running = preparedArrived(started.state, started.generation, started.request, prepared('d1'))
+    const stale = requestFailed(running, running.generation, 409, 'stale')
+    expect(stale.busy).toBe('preparing')
+    expect(stale.pendingMessage).toBe('first')
+    expect(stale.generation).toBe(running.generation + 1)
+    const prepared2 = preparedArrived(stale, stale.generation, started.request, prepared('d2'))
+    const staleAgain = requestFailed(prepared2, prepared2.generation, 409, 'stale')
+    expect(staleAgain.busy).toBe('none') // one automatic retry only
+    expect(staleAgain.notices.at(-1)?.text).toBe('stale')
+  })
+
+  it('shows the explanations in the assistant turn and takes the mapping text verbatim', () => {
+    const state = ready()
+    const started = startPrepare(state, 'analyse')
+    if (!('request' in started)) throw new Error('could not start')
+    const running = preparedArrived(started.state, started.generation, started.request, prepared('d1'))
+    const withExplanation = outcome({ name: 'assisted', source: 'tracelab', rules: [] })
+    withExplanation.proposal!.explanations = [{ target: 'session.external_id', path: '$.session_id', why: 'one per record', confidence: 0.95 }]
+    const raw = '{"proposal":{"mapping":{"name":"assisted","source":"tracelab","rules":[],"where_value":9007199254740993,"literal":1.0},"explanations":[],"ambiguities":[],"questions":[],"model":"m","executable":true},"issues":[],"attempts":1,"diagnostics":{}}'
+    const next = outcomeArrived(running, started.generation, withExplanation, raw)
+    expect(next.turns.at(-1)?.content).toContain('Why (1 field):')
+    expect(next.turns.at(-1)?.content).toContain('session.external_id ← $.session_id (95%): one per record')
+    expect(next.documentText).toContain('9007199254740993')
+    expect(next.documentText).toContain('"literal": 1.0')
   })
 })

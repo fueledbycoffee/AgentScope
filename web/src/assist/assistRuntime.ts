@@ -14,14 +14,15 @@
  */
 import type {
   AssistantOutcome,
-  AssistantRequest,
   ChatHistoryTurn,
   ImportPreview,
   MappingIssue,
   PreparedContext,
   SavedMapping,
 } from '../api/types'
+import type { AssistantRequestText as AssistantRequest } from '../api'
 import type { ChatTurn } from './Conversation'
+import { extractMappingText, prettyJson }  from './jsonText'
 
 export const HISTORY_LIMIT = 20
 export const TURN_LIMIT = 4_000
@@ -43,6 +44,8 @@ export interface AssistState {
   prepared: { generation: number; request: AssistantRequest; response: PreparedContext } | null
   /** The digest the user acknowledged in the payload drawer, when a sample is on. */
   acknowledged: string | null
+  /** How many times the current message was re-prepared after a 409; one automatic retry. */
+  staleRetries: number
   lastOutcome: { generation: number; outcome: AssistantOutcome } | null
   validation: { documentVersion: number; issues: MappingIssue[]; executable: boolean } | null
   saved: { documentText: string; record: SavedMapping } | null
@@ -65,6 +68,7 @@ export function initialState(uploadId: string): AssistState {
     pendingMessage: null,
     prepared: null,
     acknowledged: null,
+    staleRetries: 0,
     lastOutcome: null,
     validation: null,
     saved: null,
@@ -150,7 +154,8 @@ export function buildRequest(state: AssistState, message: string): { request: As
   const identity = identityProblem(state.identity)
   if (identity) return { problem: identity }
   const { history, omitted } = projectHistory(state.turns)
-  if (state.documentText.trim() === '' && state.turns.length === 0) {
+  if (state.documentText.trim() === '') {
+    // no document yet (first message, or the model refused so far): ask for a proposal
     return { request: { kind: 'propose', upload_id: state.uploadId, identity: state.identity, include_sample: state.includeSample, message, history }, omitted }
   }
   const parsed = parseDocument(state.documentText)
@@ -164,7 +169,8 @@ export function buildRequest(state: AssistState, message: string): { request: As
       upload_id: state.uploadId,
       identity: state.identity,
       include_sample: state.includeSample,
-      current_mapping: parsed.document as AssistantRequest['current_mapping'],
+      // the text itself travels: the browser never re-serialises the document's numbers
+      current_mapping_text: state.documentText,
       message,
       history,
     },
@@ -176,7 +182,7 @@ export function startPrepare(state: AssistState, message: string): { state: Assi
   if (state.busy !== 'none') return { state }
   const built = buildRequest(state, message)
   if ('problem' in built) return { state: { ...state, notices: [...state.notices, { kind: 'error', text: built.problem }] } }
-  const next: AssistState = { ...state, busy: 'preparing', pendingMessage: message, omittedHistory: built.omitted, notices: [] }
+  const next: AssistState = { ...state, busy: 'preparing', pendingMessage: message, omittedHistory: built.omitted, notices: [], staleRetries: 0 }
   return { state: next, request: built.request, generation: next.generation }
 }
 
@@ -212,25 +218,41 @@ function receipt(outcome: AssistantOutcome): string {
   return `proposal applied · ${outcome.proposal.model} · ${outcome.attempts} call${outcome.attempts > 1 ? 's' : ''} · ${validity}${notes}`
 }
 
+const EXPLANATIONS_SHOWN = 30
+
 function assistantText(outcome: AssistantOutcome): string {
   if (outcome.proposal === null) return `The assistant did not return a proposal (${outcome.diagnostics.failure ?? 'no reason given'}). The document is unchanged.`
   const lines: string[] = []
   for (const q of outcome.proposal.questions) lines.push(q)
   for (const a of outcome.proposal.ambiguities) lines.push(`${a.target}: ${a.options.join(' or ')} — ${a.what_settles_it}`)
   if (lines.length === 0) lines.push('Proposal applied, no open questions.')
+  const explanations = outcome.proposal.explanations
+  if (explanations.length > 0) {
+    lines.push('', `Why (${explanations.length} field${explanations.length === 1 ? '' : 's'}):`)
+    for (const e of explanations.slice(0, EXPLANATIONS_SHOWN)) {
+      lines.push(`${e.target} ← ${e.path} (${Math.round(e.confidence * 100)}%): ${e.why}`)
+    }
+    if (explanations.length > EXPLANATIONS_SHOWN) lines.push(`… ${explanations.length - EXPLANATIONS_SHOWN} more`)
+  }
   return lines.join('\n')
 }
 
 let turnCounter = 0
 const newId = (prefix: string) => `${prefix}-${++turnCounter}`
 
-export function outcomeArrived(state: AssistState, generation: number, outcome: AssistantOutcome): AssistState {
+export function outcomeArrived(state: AssistState, generation: number, outcome: AssistantOutcome, rawText?: string): AssistState {
   if (generation !== state.generation || state.busy !== 'running') return state
   const userTurn: ChatTurn = { id: newId('u'), role: 'user', content: state.pendingMessage ?? '' }
   const assistantTurn: ChatTurn = { id: newId('a'), role: 'assistant', content: assistantText(outcome), meta: receipt(outcome) }
   let next: AssistState = { ...state, busy: 'none', pendingMessage: null, prepared: null, acknowledged: null, lastOutcome: { generation, outcome }, turns: [...state.turns, userTurn, assistantTurn] }
   if (outcome.proposal !== null) {
-    next = editDocument(next, JSON.stringify(outcome.proposal.mapping, null, 2), state.documentText || null)
+    // the server's own text, re-indented without parsing numbers; parsed JSON only as a fallback
+    let mappingText: string | null = null
+    if (rawText) {
+      try { mappingText = extractMappingText(rawText) } catch { mappingText = null }
+    }
+    const applied = mappingText !== null ? prettyJson(mappingText) : JSON.stringify(outcome.proposal.mapping, null, 2)
+    next = editDocument(next, applied, state.documentText || null)
     next = { ...next, validation: { documentVersion: next.documentVersion, issues: outcome.issues, executable: outcome.proposal.executable } }
   }
   return next
@@ -239,8 +261,17 @@ export function outcomeArrived(state: AssistState, generation: number, outcome: 
 /** A failed request: the draft stays, the context is dropped; 409 means "prepare again". */
 export function requestFailed(state: AssistState, generation: number, status: number, message: string): AssistState {
   if (generation !== state.generation) return state
-  const text = status === 409 ? 'The context changed since it was shown; it will be prepared again.' : message
-  return { ...invalidate({ ...state, busy: 'none' }), notices: [...state.notices, { kind: status >= 500 ? 'error' : 'warn', text }] }
+  if (status === 409 && state.pendingMessage !== null && state.staleRetries < 1) {
+    // the server's view of the context moved: prepare the same message again (needs a new
+    // acknowledgement when a sample is on); one automatic retry, then the user decides
+    return {
+      ...invalidate({ ...state, busy: 'none' }),
+      busy: 'preparing',
+      staleRetries: state.staleRetries + 1,
+      notices: [...state.notices, { kind: 'warn', text: 'The context changed since it was shown; preparing it again.' }],
+    }
+  }
+  return { ...invalidate({ ...state, busy: 'none' }), notices: [...state.notices, { kind: status >= 500 ? 'error' : 'warn', text: message }] }
 }
 
 // --- gates: validate → save → preview → import -------------------------------------------------

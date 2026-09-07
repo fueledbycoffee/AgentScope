@@ -115,7 +115,7 @@ export default function AssistPage() {
     if (inFlight.current?.kind === 'run' && inFlight.current.generation === run.generation) return
     inFlight.current = { kind: 'run', generation: run.generation }
     runAssistant(run.request, run.digest)
-      .then(outcome => update(s => outcomeArrived(s, run.generation, outcome)))
+      .then(({ outcome, rawText }) => update(s => outcomeArrived(s, run.generation, outcome, rawText)))
       .catch(error => { const { status, message } = messageOf(error); update(s => requestFailed(s, run.generation, status, message)) })
   }, [state, update])
 
