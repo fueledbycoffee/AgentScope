@@ -20,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import asdict
 from typing import Any
 
@@ -111,16 +111,24 @@ class ProfileFile:
         return ProfileReport(upload_id, profile, cached=False)
 
     def compute(self, info: UploadInfo) -> dict[str, Any]:
+        positions: list[int] = []  # reader index of each profiled (decodable) record
+
+        def decodable(stream: Any) -> Iterator[Any]:
+            for index, record in enumerate(self._reader.read(stream, info.format)):
+                if record.error is None:
+                    positions.append(index)
+                    yield record.payload
+
         with self._store.open(info.sha256) as stream:
-            payloads = (
-                r.payload for r in self._reader.read(stream, info.format) if r.error is None
-            )
             # one more than the limit so the profiler knows there is more; the exact
             # remainder comes from the upload's record count
             profile = profile_records(
-                itertools.islice(payloads, self._limits.records + 1), limits=self._limits
+                itertools.islice(decodable(stream), self._limits.records + 1),
+                limits=self._limits,
             )
         document = profile.to_dict()
+        # sample indices are reader positions, so a malformed line never shifts them
+        document["coverage_sample"] = [positions[i] for i in profile.coverage_sample]
         beyond = info.record_count - profile.inspected
         if beyond > 0:
             document["truncated"]["records"] = beyond
@@ -165,7 +173,11 @@ class PrepareContext:
             document = self._document(request, info, profile, samples, history, message, mapping)
             document["truncated"] = dict(sorted(truncated.items()))
             document["redaction"]["counts"] = _counts(
-                request, samples, history, [] if message is None else [request.message or ""]
+                request,
+                samples,
+                history,
+                [] if message is None else [request.message or ""],
+                extra=[document["profile"].get("redactions", {}), redact_text(info.filename)[1]],
             )
             if examples < 5:
                 document["profile"] = _reduce_examples(document["profile"], examples)
@@ -297,7 +309,9 @@ class RunAssistant:
             diagnostics={
                 "finish": attempt.reply.finish,
                 "model": attempt.reply.model,
-                "raw_text": _bounded(attempt.reply.text, MAX_RAW_TEXT_BYTES),
+                "raw_text": _bounded(
+                    redact_text(attempt.reply.text, long_text=False)[0], MAX_RAW_TEXT_BYTES
+                ),
                 "failure": attempt.terminal_failure,
                 "context_sha256": prepared.sha256,
                 "sample_included": prepared.sample_included,
@@ -308,9 +322,10 @@ class RunAssistant:
         try:
             reply = self._assistant.complete(prepared, repair=repair)
         except AssistantError as exc:
+            message = _bounded(redact_text(exc.message, long_text=False)[0], 2_000)
             if exc.kind == "unavailable":
-                raise AssistantUnavailableError(exc.message) from exc
-            raise AssistantFailedError(exc.message, [{"kind": exc.kind}]) from exc
+                raise AssistantUnavailableError(message) from exc
+            raise AssistantFailedError(message, [{"kind": exc.kind}]) from exc
         if reply.finish not in _FINISHES:
             raise AssistantFailedError(
                 f"Adapter returned an unknown finish state {reply.finish!r}",
@@ -376,7 +391,11 @@ class _Attempt:
     def repair_request(self) -> RepairRequest:
         candidate, _ = redact_text(self.reply.text, long_text=False)
         issues = [
-            {"path": i["path"], "code": i["code"], "message": redact_text(i["message"])[0]}
+            {
+                "path": redact_text(str(i["path"]), long_text=False)[0],
+                "code": i["code"],
+                "message": redact_text(str(i["message"]))[0],
+            }
             for i in self.issues
         ]
         if self.terminal_failure == "malformed":
@@ -457,9 +476,14 @@ def _counts(
     samples: list[dict[str, Any]],
     history: list[dict[str, Any]],
     messages: list[str],
+    *,
+    extra: Sequence[Mapping[str, int]] = (),
 ) -> dict[str, int]:
+    """Replacements inside the retained outgoing content, by reason."""
     total: dict[str, int] = {}
-    parts: list[dict[str, int]] = [s["counts"] for s in samples] + [h["counts"] for h in history]
+    parts: list[Mapping[str, int]] = [s["counts"] for s in samples]
+    parts += [h["counts"] for h in history]
+    parts += list(extra)
     for text in messages:
         parts.append(dict(redact_text(text)[1]))
     if request.current_mapping is not None:

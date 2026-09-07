@@ -52,7 +52,7 @@ def swe_sessions_parquet(rows: int = 3) -> bytes:
 
 
 def swe_conversations_parquet(rows: int = 4) -> bytes:
-    roles = ["user", "assistant", "tool", "assistant"]
+    roles = ["user", "assistant", "tool_use", "tool_result"]
     table = pa.table(
         {
             "turn_id": pa.array([f"turn-{i}" for i in range(rows)], pa.large_string()),
@@ -60,7 +60,7 @@ def swe_conversations_parquet(rows: int = 4) -> bytes:
             "turn_number": pa.array(list(range(rows)), pa.int64()),
             "role": pa.array(roles[:rows], pa.large_string()),
             "content": pa.array(["hello"] * rows, pa.large_string()),
-            "model": pa.array([None, "gpt-5.5", None, "gpt-5.5"][:rows], pa.large_string()),
+            "model": pa.array([None, "gpt-5.5", None, None][:rows], pa.large_string()),
             "timestamp": pa.array(
                 [
                     int(datetime(2026, 6, 1, 12, 0, i, tzinfo=UTC).timestamp()) * 10**6
@@ -68,12 +68,12 @@ def swe_conversations_parquet(rows: int = 4) -> bytes:
                 ],
                 pa.timestamp("us", tz="UTC"),
             ),
-            "input_tokens": pa.array([None, 10, None, 12][:rows], pa.int64()),
-            "output_tokens": pa.array([None, 5, None, 6][:rows], pa.int64()),
+            "input_tokens": pa.array([None, 10, None, None][:rows], pa.int64()),
+            "output_tokens": pa.array([None, 5, None, None][:rows], pa.int64()),
             "cache_creation_input_tokens": pa.array([None, 0, None, 0][:rows], pa.int64()),
             "cache_read_input_tokens": pa.array([None, 0, None, 0][:rows], pa.int64()),
-            "tool_name": pa.array([None, None, "Bash", None][:rows], pa.large_string()),
-            "tool_call_id": pa.array([None, None, "call_1", None][:rows], pa.large_string()),
+            "tool_name": pa.array([None, None, "Bash", "Bash"][:rows], pa.large_string()),
+            "tool_call_id": pa.array([None, None, "call_1", "call_1"][:rows], pa.large_string()),
             "agent": pa.array(["claude-code"] * rows, pa.large_string()),
         }
     )
@@ -135,7 +135,7 @@ def test_swe_conversations_shape_gets_calls_and_tools_with_unresolved_semantics(
     outcome, prepared, _ = Harness().propose("conversations.parquet", swe_conversations_parquet())
     fields = {f["path"]: f for f in prepared.document["profile"]["fields"]}
     assert fields["$.timestamp"]["wrapper"]["units"] == {"us": 4}
-    assert fields["$.tool_name"]["nulls"] == 3 and fields["$.tool_name"]["values"] == 4
+    assert fields["$.tool_name"]["nulls"] == 2 and fields["$.tool_name"]["values"] == 4
     assert outcome.proposal is not None and outcome.proposal.executable
     entities = [r["entity"] for r in outcome.proposal.mapping["rules"]]
     assert entities == ["session", "model_call", "tool_call"]
@@ -206,3 +206,26 @@ def test_unavailable_adapter_names_the_provider_and_the_fix() -> None:
         UnavailableMappingAssistant("openai_compatible").complete(None)  # type: ignore[arg-type]
     assert caught.value.kind == "unavailable"
     assert "openai_compatible" in caught.value.message and "fake" in caught.value.message
+
+
+def test_swe_conversations_draft_runs_clean_on_the_synthetic_rows() -> None:
+    from agentscope_app.domain.mapping.interpreter import apply_mapping
+
+    h = Harness()
+    outcome, _, upload_id = h.propose("conversations.parquet", swe_conversations_parquet())
+    assert outcome.proposal is not None
+    spec = parse_mapping(outcome.proposal.mapping).spec
+    assert spec is not None
+    info = h.uow.uploads.get(upload_id)
+    assert info is not None
+    rejects: list[Any] = []
+    entities: list[str] = []
+    with h.store.open(info.sha256) as stream:
+        for record in FormatRouter().read(stream, "parquet"):
+            result = apply_mapping(
+                spec, record.payload, file_sha256=info.sha256, locator=record.locator
+            )
+            rejects.extend(result.rejects)
+            entities.extend(e.entity for e in result.emissions)
+    assert rejects == []
+    assert entities.count("model_call") == 1 and entities.count("tool_call") == 1

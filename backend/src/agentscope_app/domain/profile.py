@@ -33,7 +33,7 @@ from typing import Any, Final
 
 from agentscope_app.domain.mapping.paths import _NAME as _KEY_NAME
 from agentscope_app.domain.mapping.paths import parse_path
-from agentscope_app.domain.redaction import redact_text, sanitize
+from agentscope_app.domain.redaction import key_sensitivity, redact_text, sanitize
 
 PROFILER_VERSION: Final = 1
 WRAPPER_KEY: Final = "_arrow"
@@ -106,7 +106,7 @@ class FieldStat:
     # working state, dropped by to_dict
     _seen: set[str] = field(default_factory=set, repr=False)
     _seen_capped: bool = field(default=False, repr=False)
-    _candidates: dict[str, Any] = field(default_factory=dict, repr=False)
+    _candidates: dict[str, tuple[Any, dict[str, int]]] = field(default_factory=dict, repr=False)
     _strings: int = field(default=0, repr=False)
     _iso: int = field(default=0, repr=False)
     _uuid: int = field(default=0, repr=False)
@@ -141,6 +141,7 @@ class FieldProfile:
     truncated: dict[str, int]
     nodes_visited: int
     coverage_sample: list[int]  # indices of the inspected records that first showed a path
+    redactions: dict[str, int]  # replacements inside the retained examples, by reason
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -148,6 +149,7 @@ class FieldProfile:
             "inspected": self.inspected,
             "nodes_visited": self.nodes_visited,
             "truncated": dict(self.truncated),
+            "redactions": dict(self.redactions),
             "coverage_sample": list(self.coverage_sample),
             "fields": [_stat_to_dict(s, self.inspected) for s in self.fields],
             "unaddressable": [
@@ -252,7 +254,7 @@ class _Profiler:
             stat.records += 1
         stat.values += 1
         kind = _wrapper_kind(value)
-        if kind is not None:
+        if kind is not None:  # a known Arrow wrapper; any other "_arrow" is an ordinary key
             self.observe_wrapper(stat, kind, value)
             return
         if isinstance(value, dict):
@@ -261,7 +263,7 @@ class _Profiler:
                 self.bump("depth")
                 return
             for key, item in value.items():
-                sensitive = _key_sensitivity(key)
+                sensitive = key_sensitivity(key)
                 if sensitive is not None:
                     self.note_withheld(path, str(key), sensitive)
                     continue
@@ -311,9 +313,10 @@ class _Profiler:
             accessors = [f"{stat.relative}.{member}" for member in _WRAPPER_ACCESSORS.get(kind, ())]
             stat.wrapper = {"kind": kind, "units": {}, "tz": {}, "accessors": accessors}
         for meta in ("unit", "tz"):
-            if meta in value:
+            if meta in value and value[meta] is not None:
                 bucket = stat.wrapper["units" if meta == "unit" else "tz"]
-                label = str(value[meta])
+                # metadata is source data too: redact and bound it like any string
+                label = redact_text(str(value[meta]), long_text=False)[0][:40]
                 bucket[label] = bucket.get(label, 0) + 1
         payload = value.get(_WRAPPER_PAYLOAD.get(kind, "value"))
         if payload is None:
@@ -379,28 +382,34 @@ class _Profiler:
 
     def example(self, stat: FieldStat, value: Any) -> None:
         shown: Any = value
+        counts: dict[str, int] = {}
         if isinstance(value, str):
-            redacted, _ = sanitize(value)
+            redacted, counts = sanitize(value)
             shown = redacted[: self.limits.example_chars]
         key = f"{type(shown).__name__}:{shown!r}"
         if key in stat._candidates:
             return
         if len(stat._candidates) < self.limits.examples:
-            stat._candidates[key] = shown
+            stat._candidates[key] = (shown, counts)
             return
-        longest = max(stat._candidates, key=lambda k: len(str(stat._candidates[k])))
-        if len(str(shown)) < len(str(stat._candidates[longest])):
+        longest = max(stat._candidates, key=lambda k: len(str(stat._candidates[k][0])))
+        if len(str(shown)) < len(str(stat._candidates[longest][0])):
             del stat._candidates[longest]
-            stat._candidates[key] = shown
+            stat._candidates[key] = (shown, counts)
 
     # -- finish ----------------------------------------------------------------------
 
     def finish(self, inspected: int) -> FieldProfile:
+        redactions: dict[str, int] = {}
         for stat in self.stats.values():
             seen = len(stat._seen)
             stat.distinct = min(seen, self.limits.distinct)
             stat.distinct_capped = seen >= self.limits.distinct or stat._seen_capped
-            stat.examples = sorted(stat._candidates.values(), key=lambda v: (len(str(v)), str(v)))
+            kept = sorted(stat._candidates.values(), key=lambda c: (len(str(c[0])), str(c[0])))
+            stat.examples = [shown for shown, _ in kept]
+            for _, counts in kept:
+                for reason, n in counts.items():
+                    redactions[reason] = redactions.get(reason, 0) + n
             stat.hints = _hints(stat, seen)
         return FieldProfile(
             version=PROFILER_VERSION,
@@ -411,6 +420,7 @@ class _Profiler:
             truncated=dict(sorted(self.truncated.items())),
             nodes_visited=self.budget.visited,
             coverage_sample=list(self.sample),
+            redactions=dict(sorted(redactions.items())),
         )
 
 
@@ -438,19 +448,9 @@ def profile_records(
 def _wrapper_kind(value: Any) -> str | None:
     if isinstance(value, dict):
         kind = value.get(WRAPPER_KEY)
-        if isinstance(kind, str):
+        if isinstance(kind, str) and kind in _WRAPPER_PAYLOAD:
             return kind
     return None
-
-
-def _key_sensitivity(key: Any) -> str | None:
-    """The redaction reason a key name would trigger, or None when it is safe to show."""
-    if not isinstance(key, str) or not key:
-        return None
-    shown, counts = redact_text(key, long_text=False)
-    if shown == key:
-        return None
-    return next(iter(sorted(counts))) if counts else "redacted"
 
 
 def _key_problem(key: Any, max_length: int) -> str | None:

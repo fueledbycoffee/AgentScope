@@ -95,19 +95,21 @@ def test_a_credential_that_would_cross_an_excerpt_boundary_is_recognised_whole()
     assert "<token>" in redact_text(text)[0]
 
 
-def test_sanitize_keeps_keys_and_shapes_and_counts_per_reason() -> None:
+def test_sanitize_keeps_shapes_withholds_sensitive_keys_and_counts_per_reason() -> None:
     value = {
         "user@example.com": {"path": "/Users/sean/x", "n": 1, "ok": True},
+        "meta": {"path": "/Users/sean/x", "n": 1, "ok": True},
         "list": ["a", "sean@example.com", {"_arrow": "binary", "base64": "QUJD"}],
         "ip": "10.0.0.1",
     }
     cleaned, counts = sanitize(value)
     assert cleaned == {
-        "user@example.com": {"path": "<path>", "n": 1, "ok": True},
+        "meta": {"path": "<path>", "n": 1, "ok": True},
         "list": ["a", "<email>", {"_arrow": "binary", "base64": "QUJD"}],
         "ip": "<ip>",
     }
-    assert counts == {"email": 1, "ip": 1, "path": 1}
+    # the sensitive key left with its whole subtree: its values are not counted
+    assert counts == {"email": 1, "ip": 1, "key_withheld": 1, "path": 1}
 
 
 def test_instruction_like_trace_text_stays_text() -> None:

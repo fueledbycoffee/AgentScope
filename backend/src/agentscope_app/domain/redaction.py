@@ -108,8 +108,26 @@ def redact_text(text: str, *, long_text: bool = True) -> tuple[str, Counter[str]
     return text, counts
 
 
+def key_sensitivity(key: Any) -> str | None:
+    """The redaction reason a key name would trigger, or None when it is safe to show.
+
+    Length is not a reason here: keys are bounded by whoever reports them.
+    """
+    if not isinstance(key, str) or not key:
+        return None
+    shown, counts = redact_text(key, long_text=False)
+    if shown == key:
+        return None
+    return next(iter(sorted(counts))) if counts else "redacted"
+
+
 def sanitize(value: Any) -> tuple[Any, dict[str, int]]:
-    """Redact every string inside a JSON value; keys and container shapes are kept."""
+    """Redact every string inside a JSON value; container shapes are kept.
+
+    Keys are never rewritten (a rewritten key would point at nothing): a key the
+    redactor would change is withheld together with its subtree and counted
+    under ``key_withheld``.
+    """
     counts: Counter[str] = Counter()
     result = _sanitize(value, counts)
     return result, dict(sorted(counts.items()))
@@ -121,7 +139,13 @@ def _sanitize(value: Any, counts: Counter[str]) -> Any:
         counts.update(found)
         return text
     if isinstance(value, dict):
-        return {key: _sanitize(item, counts) for key, item in value.items()}
+        clean: dict[Any, Any] = {}
+        for key, item in value.items():
+            if key_sensitivity(key) is not None:
+                counts["key_withheld"] += 1
+                continue
+            clean[key] = _sanitize(item, counts)
+        return clean
     if isinstance(value, list | tuple):
         return [_sanitize(item, counts) for item in value]
     return value

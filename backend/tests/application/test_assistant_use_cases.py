@@ -166,7 +166,8 @@ def test_sample_records_are_projected_sanitised_and_counted() -> None:
         and len(sample[0]["record"]["big"]) == 21
     )
     assert sample[1]["record"]["extra"] == "<path>"
-    assert prepared.redactions == {"email": 1, "path": 1}
+    # once in the profile examples, once in the sample records
+    assert prepared.redactions == {"email": 2, "path": 2}
     assert "sean@example.com" not in prepared.text and "/Users/sean" not in prepared.text
 
 
@@ -450,3 +451,108 @@ def _tracelab_mapping() -> dict[str, Any]:
     document = json.loads((BUNDLED / "tracelab-v1.json").read_text(encoding="utf-8"))
     document["name"], document["source"] = "tracelab-assist", "tracelab"
     return document
+
+
+# --- regressions from the adversarial review of PR #37 ----------------------------------------
+
+
+def test_samples_and_current_mapping_withhold_sensitive_keys_like_the_profile() -> None:
+    h = Harness()
+    upload_id = h.upload([{"session": "s1", "sean@example.com": {"secret": "private subtree"}}])
+    prepared = h.prepare.execute(h.request(upload_id, include_sample=True))
+    assert prepared.document["sample"][0]["record"] == {"session": "s1"}
+    assert prepared.redactions == {"key_withheld": 1}
+    assert "example.com" not in prepared.text and "private subtree" not in prepared.text
+    mapping = _tracelab_mapping()
+    mapping["rules"][0]["fields"]["/Users/sean/leak"] = {"literal": 1}
+    revise = h.request(upload_id, kind="revise", current_mapping=mapping, message="m")
+    prepared = h.prepare.execute(revise)
+    assert "/Users/sean" not in prepared.text
+    assert prepared.redactions["key_withheld"] == 1
+
+
+def test_wrapper_metadata_from_a_jsonl_file_is_untrusted() -> None:
+    h = Harness()
+    row = {
+        "x": {
+            "_arrow": "timestamp",
+            "value": 1,
+            "iso": "2026-01-01",
+            "unit": "ns",
+            "tz": "sean@example.com",
+        },
+        "y": {"_arrow": "sean@example.com", "value": 1},
+    }
+    upload_id = h.upload([row])
+    prepared = h.prepare.execute(h.request(upload_id))
+    assert "example.com" not in prepared.text
+    fields = {f["path"]: f for f in prepared.document["profile"]["fields"]}
+    assert fields["$.x"]["wrapper"]["tz"] == {"<email>": 1}
+    assert fields["$.y"]["types"] == {"object": 1}  # not a known wrapper kind: an ordinary object
+    assert "$.y.value" in fields
+
+
+def test_repair_issue_paths_and_raw_diagnostics_are_redacted() -> None:
+    class Leaky:
+        def __init__(self) -> None:
+            self.repairs: list[RepairRequest | None] = []
+
+        def complete(
+            self, prepared: PreparedContext, *, repair: RepairRequest | None = None
+        ) -> AssistantReply:
+            self.repairs.append(repair)
+            if repair is None:
+                return AssistantReply('{"mapping": {"sean@example.com": 1}}', "m", "stop")
+            return AssistantReply(
+                "Cannot process sk-or-v1-abcdefghijklmnopqrstuvwxyz0123", "m", "refusal"
+            )
+
+    h = Harness()
+    leaky = Leaky()
+    h.run = RunAssistant(h.prepare, leaky)
+    outcome = h.go(h.request(h.tracelab_upload()))
+    repair = leaky.repairs[1]
+    assert repair is not None and "example.com" not in repair.issues_text
+    assert "sk-or-v1" not in outcome.diagnostics["raw_text"]
+    assert "<token>" in outcome.diagnostics["raw_text"]
+
+
+def test_adapter_error_messages_are_redacted_before_they_become_http_details() -> None:
+    class Loud:
+        def complete(
+            self, prepared: PreparedContext, *, repair: RepairRequest | None = None
+        ) -> AssistantReply:
+            raise AssistantError(
+                "provider", "401 from https://u:p@host with key sk-or-v1-" + "a" * 30
+            )
+
+    h = Harness()
+    h.run = RunAssistant(h.prepare, Loud())
+    with pytest.raises(AssistantFailedError) as caught:
+        h.go(h.request(h.tracelab_upload()))
+    assert "u:p@" not in caught.value.message and "sk-or-v1" not in caught.value.message
+
+
+def test_a_malformed_line_does_not_shift_the_sample_onto_the_wrong_record() -> None:
+    h = Harness()
+    data = gzip.compress(b'not json\n{"session": "s1", "unique_field": 123}\n')
+    upload_id = h.store_upload.execute("x.jsonl.gz", data).upload_id
+    profile = h.profile_file.execute(upload_id).profile
+    assert profile["coverage_sample"] == [1]  # reader position, not position among decodable rows
+    prepared = h.prepare.execute(h.request(upload_id, include_sample=True))
+    assert prepared.sample_count == 1
+    assert prepared.document["sample"][0] == {
+        "locator": "line:2",
+        "record": {"session": "s1", "unique_field": 123},
+    }
+
+
+def test_redaction_counts_include_profile_examples_and_the_filename() -> None:
+    h = Harness()
+    upload_id = h.upload(
+        [{"session": "s1", "email": "sean@example.com"}], name="/Users/sean/t.jsonl.gz"
+    )
+    prepared = h.prepare.execute(h.request(upload_id))
+    assert prepared.redactions == {"email": 1, "path": 1}
+    assert prepared.document["profile"]["redactions"] == {"email": 1}
+    assert prepared.document["upload"]["filename"] == "<path>"

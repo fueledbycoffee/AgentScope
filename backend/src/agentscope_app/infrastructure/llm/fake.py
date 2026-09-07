@@ -211,7 +211,7 @@ class FakeMappingAssistant:
                     "id": "tool_call",
                     "entity": "tool_call",
                     "select": "$",
-                    "where": [{"path": "$.tool_name", "op": "exists"}],
+                    "where": [{"path": "$.role", "op": "eq", "value": "tool_use"}],
                     "fields": {
                         "session_external_id": {"path": "$.session_id", "on_missing": "reject"},
                         "external_id": {"path": "$.tool_call_id"},
@@ -231,7 +231,12 @@ class FakeMappingAssistant:
                     "Arrow timestamp (us, UTC) addressed by .iso",
                     0.9,
                 ),
-                _explain("tool_call.tool_name", "$.tool_name", "present only on tool rows", 0.85),
+                _explain(
+                    "tool_call.tool_name",
+                    "$.tool_name",
+                    "set on tool_use rows (role); tool_result rows are not calls",
+                    0.85,
+                ),
             ],
             "ambiguities": [
                 {
