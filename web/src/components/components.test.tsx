@@ -113,7 +113,7 @@ describe('ScopeBar', () => {
     expect(screen.getByLabelText('Source')).toBe(source) // same element, still focused
     expect(source).toHaveFocus()
     expect(screen.getByRole('status')).not.toHaveTextContent('offset')
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear scope' }))
     expect(screen.getByRole('status')).toHaveTextContent('')
     expect(screen.getByLabelText('Source')).toHaveValue('')
   })

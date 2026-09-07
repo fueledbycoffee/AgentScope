@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { commitImport, listMappings, previewImport, uploadFile } from '../api'
 import type { ImportPreview, ImportRequest, Mapping, Upload } from '../api'
-import { Counts, ErrorNotice, JsonView, ResourceState, Table } from '../components'
+import { Counts, ErrorNotice, Icon, IconButton, JsonView, ResourceState, Table } from '../components'
 import { useFileBar } from '../shellHooks'
 
 /** One previewed (file, mapping) pair waiting in the batch. */
@@ -67,15 +67,15 @@ export default function ImportPage() {
         {batch.map(pair => <tr key={pair.upload.upload_id}><td>{pair.upload.filename}</td><td className="hash">{pair.upload.sha256}</td><td>{pair.upload.record_count}</td>
           <td>{pair.mapping.name} · revision {pair.mapping.revision}</td><td>{pair.mapping.source}</td>
           <td>{pair.preview.records.sampled} sampled · {pair.preview.rejects.length} rejects</td>
-          <td><button type="button" disabled={!!busy} onClick={() => setBatch(batch.filter(item => item !== pair))}>Remove {pair.upload.filename}</button></td></tr>)}
+          <td><IconButton name="trash" label={`Remove ${pair.upload.filename}`} className="btn small icon-only" disabled={!!busy} onClick={() => setBatch(batch.filter(item => item !== pair))} /></td></tr>)}
       </Table>
       {!current && <>
         {batchMixed && <p className="error" role="alert">The mappings in this batch declare different sources. One import writes to one source.</p>}
         <p>Import {batch.length} {batch.length === 1 ? 'file' : 'files'} ({batch.reduce((total, pair) => total + pair.upload.record_count, 0)} records) into source <strong>{batch[0].mapping.source}</strong>, each with its own mapping, or add another file below.</p>
-        <button disabled={!!busy || batchMixed} onClick={() => void run('Importing…', async () => {
+        <button className="btn primary" disabled={!!busy || batchMixed} onClick={() => void run('Importing…', async () => {
           const report = await commitImport(requestFor(batch, batch[0].mapping.source))
           if (mounted.current) navigate(`/imports/${encodeURIComponent(report.import_id)}`)
-        })}>{batch.length === 1 ? 'Import' : `Import ${batch.length} files`}</button>
+        })}><Icon name="upload" />{batch.length === 1 ? 'Import' : `Import ${batch.length} files`}</button>
       </>}
     </section>}
     <label htmlFor="trace-file">{batch.length > 0 ? 'Add another trace file' : 'Trace file'}</label>
@@ -111,10 +111,10 @@ export default function ImportPage() {
       </select>
       {mappings.data && !mappings.data.some(item => item.input_format === upload.format) &&
         <p>No mappings available for {upload.format}.</p>}
-      <button disabled={!!busy || !mapping} onClick={() => {
+      <button className="btn" disabled={!!busy || !mapping} onClick={() => {
         setPreview(undefined)
         void run('Previewing…', async () => setPreview(await previewImport({ upload_id: upload.upload_id, mapping_id: mappingId, sample: 200 })))
-      }}>Preview</button>
+      }}><Icon name="eye" />Preview</button>
       {preview && mapping && <section><h2>Import preview</h2>
         <p>Source records and emitted observations are counted separately. One record can emit several entities.</p>
         <Counts title="Source records sampled" counts={preview.records} />
@@ -137,11 +137,11 @@ export default function ImportPage() {
         {duplicateInBatch && <p className="error" role="alert">This file has the same bytes as one already in the batch. Remove one of them.</p>}
         {mixedSources && <p className="error" role="alert">The mappings in this batch declare different sources. One import writes to one source.</p>}
         <div className="actions">
-          <button disabled={!!busy || duplicateInBatch || mixedSources || !source} onClick={() => void run('Importing…', async () => {
+          <button className="btn primary" disabled={!!busy || duplicateInBatch || mixedSources || !source} onClick={() => void run('Importing…', async () => {
             const report = await commitImport(requestFor(pairs, source!))
             if (mounted.current) navigate(`/imports/${encodeURIComponent(report.import_id)}`)
-          })}>{pairs.length === 1 ? 'Import' : `Import ${pairs.length} files`}</button>
-          <button type="button" disabled={!!busy || duplicateInBatch} onClick={() => { if (current) { setBatch([...batch, current]); resetCurrent() } }}>Add to batch and choose another file</button>
+          })}><Icon name="upload" />{pairs.length === 1 ? 'Import' : `Import ${pairs.length} files`}</button>
+          <button type="button" className="btn" disabled={!!busy || duplicateInBatch} onClick={() => { if (current) { setBatch([...batch, current]); resetCurrent() } }}><Icon name="plus" />Add to batch and choose another file</button>
         </div>
       </section>}
     </>}

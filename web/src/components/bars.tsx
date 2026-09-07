@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useScope } from '../scope'
 import type { ScopeKey } from '../scope'
+import { Icon, IconButton } from './icons'
 
 export interface Dimension { key: ScopeKey; label: string; options: string[] }
 
@@ -35,14 +36,14 @@ export function ScopeBar({ dimensions, receipt, loading }: { dimensions: Dimensi
   return <div className="bar" role="group" aria-label="Scope">
     <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>Scope</span>
     {dimensions.map(dimension => <ScopeInput key={dimension.key} dimension={dimension} value={scope[dimension.key] ?? ''} onChange={value => set({ [dimension.key]: value })} />)}
-    {active && <button type="button" className="btn quiet small" onClick={clear}>Clear</button>}
+    {active && <IconButton name="x" label="Clear scope" className="btn quiet small icon-only" onClick={clear} />}
     <div className="receipt" aria-live="polite">{loading ? <span className="skeleton" style={{ display: 'inline-block', width: 180, height: 12 }} /> : receipt}</div>
   </div>
 }
 
 /** A removable drill chip; #11 wires chart clicks to it. Gallery-only until then. */
 export function ScopeChip({ label, value, onRemove }: { label: string; value: string; onRemove: () => void }) {
-  return <span className="chip">{label} {value}<button type="button" aria-label={`Remove ${label} ${value}`} onClick={onRemove}>×</button></span>
+  return <span className="chip">{label} {value}<button type="button" aria-label={`Remove ${label} ${value}`} title={`Remove ${label} ${value}`} onClick={onRemove}><Icon name="x" size={12} /></button></span>
 }
 
 export function ScopeReceipt({ sessions, modelCalls, imports }: { sessions?: number | null; modelCalls?: number | null; imports?: number | null }) {
