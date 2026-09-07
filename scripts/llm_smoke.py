@@ -42,11 +42,18 @@ def decode_escapes(text: str) -> str:
 
 
 def scrub(value: object, key: str) -> object:
-    """Replace the configured key everywhere in a captured payload, escaped forms decoded first."""
+    """Replace the configured key everywhere in a captured payload.
+
+    A string is rewritten only when it contains the key (literally or behind escapes); other
+    strings keep their bytes, so unrelated escapes such as ``\\u0022`` inside a JSON reply survive.
+    """
     if not key:
         return value
     if isinstance(value, str):
-        return decode_escapes(value).replace(key, "<key>")
+        if key in value:
+            return value.replace(key, "<key>")
+        decoded = decode_escapes(value)
+        return decoded.replace(key, "<key>") if key in decoded else value
     if isinstance(value, dict):
         return {str(scrub(k, key)): scrub(v, key) for k, v in value.items()}
     if isinstance(value, list):
@@ -77,8 +84,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        import httpx2
-
         from agentscope_app.application.dto import AssistantRequest, MappingIdentity
         from agentscope_app.application.errors import ApplicationError
         from agentscope_app.infrastructure.settings import Settings
@@ -94,19 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"model={settings.llm_model}")
     container = build_container(settings)
 
-    captured: list[dict] = []
     adapter = container.run_assistant._assistant  # noqa: SLF001 - diagnostics hook
-    client = getattr(adapter, "_client", None)
-    if isinstance(client, httpx2.Client):
-
-        def record(response: httpx2.Response) -> None:
-            response.read()
-            try:
-                captured.append(response.json())
-            except ValueError:
-                captured.append({"raw": response.text[:2000]})
-
-        client.event_hooks["response"].append(record)
 
     info = container.store_upload.execute(args.file.name, args.file.read_bytes())
     request = AssistantRequest(
@@ -139,10 +132,15 @@ def main(argv: list[str] | None = None) -> int:
         ambiguities = [a.target for a in proposal.ambiguities]
         print(f"explanations={len(proposal.explanations)} ambiguities={ambiguities}")
         print(f"questions={list(proposal.questions)}")
-    if args.save_recording and captured:
+    captured_text = getattr(adapter, "last_response_text", None)
+    if args.save_recording and captured_text:
         target = ROOT / "backend" / "tests" / "llm_recordings" / f"{args.save_recording}.json"
         key = settings.llm_api_key.get_secret_value()
-        body = scrub(captured[-1], key)
+        try:
+            captured = json.loads(captured_text)  # the adapter's bounded read, nothing more
+        except ValueError:
+            captured = {"raw": captured_text[:2000]}
+        body = scrub(captured, key)
         text = json.dumps(body, indent=1, ensure_ascii=False) + "\n"
         if still_contains(body, key):
             print("refusing to save: the configured key is still present in the capture")

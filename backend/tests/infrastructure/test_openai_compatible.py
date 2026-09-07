@@ -725,3 +725,29 @@ def test_concurrent_negotiations_both_recover() -> None:
         t.join(10)
     assert all(isinstance(r, AssistantReply) for r in results), results
     assert len(seen) in (3, 4)  # both first attempts rejected, both retried without the parameter
+
+
+def test_the_deadline_covers_slow_headers_too() -> None:
+    import time as real_time
+
+    class SlowHeaders(httpx2.BaseTransport):
+        def handle_request(self, request: httpx2.Request) -> httpx2.Response:
+            real_time.sleep(2.0)  # nothing comes back, not even headers
+            return ok(recording("synthetic_openrouter_ok"))
+
+    client = OpenAICompatibleAssistant(
+        base_url="https://openrouter.ai/api/v1", model="m", timeout_s=0.3, transport=SlowHeaders()
+    )
+    started = real_time.perf_counter()
+    with pytest.raises(AssistantError) as caught:
+        client.complete(prepared())
+    assert caught.value.kind == "timeout" and real_time.perf_counter() - started < 1.0
+    assert client.last_response_text is None
+
+
+def test_last_response_text_is_the_bounded_body_the_adapter_read() -> None:
+    server = Server(ok(recording("synthetic_openrouter_ok")))
+    client = adapter(server)
+    client.complete(prepared())
+    assert client.last_response_text is not None
+    assert json.loads(client.last_response_text)["choices"][0]["finish_reason"] == "stop"

@@ -22,6 +22,12 @@ class ScrubTests(unittest.TestCase):
         self.assertTrue(llm_smoke.still_contains({"x": key.replace("-", "\\u002d")}, key))
         self.assertEqual(llm_smoke.scrub({"a": 1}, ""), {"a": 1})
 
+    def test_unrelated_escapes_are_left_alone(self) -> None:
+        content = '{"mapping":{"notes":"a \\u0022quoted\\u0022 word \\/ slash"}}'
+        payload = {"choices": [{"message": {"content": content}}]}
+        scrubbed = llm_smoke.scrub(payload, "sk-or-v1-" + "k" * 40)
+        self.assertEqual(scrubbed["choices"][0]["message"]["content"], content)
+
 
 if __name__ == "__main__":
     unittest.main()

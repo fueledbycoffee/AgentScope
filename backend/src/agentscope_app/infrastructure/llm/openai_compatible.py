@@ -146,6 +146,7 @@ class OpenAICompatibleAssistant:
             transport=transport,
         )
         self.last_request_body: dict[str, Any] | None = None  # for tests and diagnostics
+        self.last_response_text: str | None = None  # the bounded body as read; for the smoke script
         self.json_mode_negotiated_off = False
 
     def close(self) -> None:
@@ -203,29 +204,7 @@ class OpenAICompatibleAssistant:
             if remaining <= 0:
                 raise AssistantError("timeout", self._timed_out())
             timeout = httpx2.Timeout(remaining, connect=min(10.0, remaining))
-            try:
-                with self._client.stream(
-                    "POST", "/chat/completions", json=body, timeout=timeout
-                ) as streamed:
-                    content = self._read_within(streamed, budget)
-                    # iter_bytes() already decoded any content-encoding: drop those headers
-                    headers = [
-                        (k, v)
-                        for k, v in streamed.headers.raw
-                        if k.lower()
-                        not in (b"content-encoding", b"content-length", b"transfer-encoding")
-                    ]
-                    response = httpx2.Response(
-                        streamed.status_code, headers=headers, content=bytes(content)
-                    )
-            except httpx2.TimeoutException:
-                raise AssistantError("timeout", self._timed_out()) from None
-            except httpx2.HTTPError as exc:
-                raise AssistantError(
-                    "unavailable",
-                    f"Could not reach the assistant endpoint at {self._host} "
-                    f"({type(exc).__name__}); check AGENTSCOPE_LLM_BASE_URL",
-                ) from None
+            response = self._exchange(body, timeout, budget)
             if response.status_code == 429 and budget.retry_429:
                 wait = _retry_after(response, default=1.0)
                 if wait < self._remaining(budget.deadline):
@@ -234,31 +213,46 @@ class OpenAICompatibleAssistant:
                     continue
             return response
 
-    def _read_within(self, streamed: httpx2.Response, budget: _Budget) -> bytes:
-        """Read the whole body, or stop at the deadline whatever the socket is doing.
+    def _exchange(
+        self, body: dict[str, Any], timeout: httpx2.Timeout, budget: _Budget
+    ) -> httpx2.Response:
+        """The whole HTTP exchange (connect, send, headers, body) inside the remaining budget.
 
-        The read runs in a helper thread; the caller waits at most the remaining time and
-        closes the response if the reader has not finished, which aborts the blocked read.
+        It runs in a helper thread; the caller waits at most the remaining time. On expiry the
+        caller reports a timeout at once and the helper dies on its own socket timeouts (which
+        are set to the same remaining time), so no phase of the exchange can outlive the budget.
+        The body is capped at ``_MAX_RESPONSE_BYTES`` while it streams.
         """
         result: dict[str, Any] = {}
 
-        def reader() -> None:
-            content = bytearray()
+        def worker() -> None:
             try:
-                for chunk in streamed.iter_bytes():
-                    content.extend(chunk)
-                    if len(content) > _MAX_RESPONSE_BYTES:
-                        result["too_large"] = True
-                        return
-                result["content"] = bytes(content)
-            except Exception as exc:  # noqa: BLE001 - reported to the caller, mapped there
+                with self._client.stream(
+                    "POST", "/chat/completions", json=body, timeout=timeout
+                ) as streamed:
+                    content = bytearray()
+                    for chunk in streamed.iter_bytes():
+                        content.extend(chunk)
+                        if len(content) > _MAX_RESPONSE_BYTES:
+                            result["too_large"] = True
+                            return
+                    # iter_bytes() already decoded any content-encoding: drop those headers
+                    headers = [
+                        (k, v)
+                        for k, v in streamed.headers.raw
+                        if k.lower()
+                        not in (b"content-encoding", b"content-length", b"transfer-encoding")
+                    ]
+                    result["response"] = httpx2.Response(
+                        streamed.status_code, headers=headers, content=bytes(content)
+                    )
+            except BaseException as exc:  # noqa: BLE001 - re-raised in the caller's thread
                 result["error"] = exc
 
-        worker = threading.Thread(target=reader, name="agentscope-llm-read", daemon=True)
-        worker.start()
-        worker.join(max(0.0, self._remaining(budget.deadline)))
-        if worker.is_alive():
-            streamed.close()
+        thread = threading.Thread(target=worker, name="agentscope-llm-exchange", daemon=True)
+        thread.start()
+        thread.join(max(0.0, self._remaining(budget.deadline)))
+        if thread.is_alive():
             raise AssistantError("timeout", self._timed_out())
         if result.get("too_large"):
             raise AssistantError(
@@ -267,8 +261,19 @@ class OpenAICompatibleAssistant:
                 f"{_MAX_RESPONSE_BYTES} bytes; the reply was discarded",
             )
         if "error" in result:
-            raise result["error"]
-        return bytes(result.get("content", b""))
+            error = result["error"]
+            if isinstance(error, httpx2.TimeoutException):
+                raise AssistantError("timeout", self._timed_out()) from None
+            if isinstance(error, httpx2.HTTPError):
+                raise AssistantError(
+                    "unavailable",
+                    f"Could not reach the assistant endpoint at {self._host} "
+                    f"({type(error).__name__}); check AGENTSCOPE_LLM_BASE_URL",
+                ) from None
+            raise error
+        response: httpx2.Response = result["response"]
+        self.last_response_text = response.text  # bounded by the read above; for the smoke script
+        return response
 
     def _timed_out(self) -> str:
         return (
