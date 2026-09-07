@@ -22,7 +22,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
@@ -64,6 +64,8 @@ layers = [
     "agentscope_app.domain",
 ]
 
+# Note: forbidden-module contracts are a deny-list of the frameworks and clients
+# this project uses or is likely to add. Keep them in sync when adding dependencies.
 [[tool.importlinter.contracts]]
 name = "Domain is framework-free"
 type = "forbidden"
@@ -72,7 +74,7 @@ forbidden_modules = [
     "fastapi", "starlette", "uvicorn",
     "sqlalchemy", "alembic",
     "pyarrow", "pandas",
-    "httpx", "requests", "openai", "anthropic",
+    "httpx", "httpx2", "requests", "openai", "anthropic",
     "pydantic", "pydantic_settings",
 ]
 
@@ -84,5 +86,6 @@ forbidden_modules = [
     "fastapi", "starlette", "uvicorn",
     "sqlalchemy", "alembic",
     "pyarrow", "pandas",
-    "httpx", "requests", "openai", "anthropic",
+    "httpx", "httpx2", "requests", "openai", "anthropic",
+    "pydantic_settings",
 ]

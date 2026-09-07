@@ -17,15 +17,15 @@ Requirements: [uv](https://docs.astral.sh/uv/) (provisions Python 3.12), Node 24
 ```bash
 # Backend (FastAPI)
 cd backend
-uv sync --all-groups
+uv sync --locked --all-groups
 cp ../.env.example .env          # then fill in your LLM endpoint and key
 uv run uvicorn agentscope_app.interfaces.api.main:app --reload
 uv run pytest                    # tests
-uv run ruff check . && uv run mypy && uv run lint-imports   # lint, types, architecture rules
+uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run lint-imports
 
 # Web (React + Vite), in a second terminal
 cd web
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev                         # proxies /api to the backend on :8000
 pnpm test && pnpm typecheck && pnpm lint && pnpm build
 ```
