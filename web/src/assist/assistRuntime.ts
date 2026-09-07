@@ -116,12 +116,23 @@ export function undoDocument(state: AssistState): AssistState {
   return editDocument(state, state.undo, null)
 }
 
+// The shapes the server's redactor rewrites (domain/redaction.py), approximated; the server stays
+// the authority and answers 400 with the field when the client lets something through.
+const REDACTABLE = [
+  /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/, // e-mail
+  /:\/\/[^/\s@]+@/, // URL user info
+  /(^|[^\w/])(\/Users\/|\/home\/|\/root(\/|$)|~\/|[A-Za-z]:\\Users\\)/, // home paths
+  /\bsk-(or-|ant-)?[A-Za-z0-9_-]{20,}/, /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/, /\bgithub_pat_[A-Za-z0-9_]{20,}/,
+  /\bxox[abp]-[A-Za-z0-9-]{10,}/, /\bAKIA[0-9A-Z]{16}\b/, /\bAIza[0-9A-Za-z_-]{30,}/, /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/,
+  /(^|[^\w.])\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?![\w.])/, // IPv4
+]
+
 /** The identity is the user's; it must not contain anything the server's redactor would rewrite. */
 export function identityProblem(identity: { name: string; source: string }): string | null {
   for (const [field, value] of Object.entries(identity)) {
     if (!value.trim()) return `${field} is required`
     if (value.length > 100) return `${field} must be at most 100 characters`
-    if (/[@/\\]|:\/\/|\bsk-|\bghp_|\d+\.\d+\.\d+\.\d+/.test(value)) return `${field} must not contain e-mail addresses, paths, credentials or IP addresses`
+    if (REDACTABLE.some(rule => rule.test(value))) return `${field} must not contain e-mail addresses, home paths, credentials or IP addresses`
   }
   return null
 }

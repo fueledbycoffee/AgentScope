@@ -21,6 +21,7 @@ import {
   identityProblem,
   initialState,
   outcomeArrived,
+  parseDocument,
   preparedArrived,
   previewArrived,
   requestFailed,
@@ -127,13 +128,21 @@ export default function AssistPage() {
   }
 
   const documentVersion = state.documentVersion
+  function documentProblem(): string | null {
+    const parsed = parseDocument(state.documentText)
+    return 'problem' in parsed ? parsed.problem : null
+  }
   function validate() {
+    const problem = documentProblem()
+    if (problem) { update(s => ({ ...s, notices: [...s.notices, { kind: 'error', text: problem }] })); return }
     update(s => setBusy(s, 'validating'))
     validateMappingText(state.documentText)
       .then(result => update(s => validationArrived(s, documentVersion, result.issues, result.executable)))
       .catch(error => update(s => ({ ...setBusy(s, 'none'), notices: [...s.notices, { kind: 'error', text: messageOf(error).message }] })))
   }
   function save() {
+    const problem = documentProblem()
+    if (problem) { update(s => ({ ...s, notices: [...s.notices, { kind: 'error', text: problem }] })); return }
     const text = state.documentText
     update(s => setBusy(s, 'saving'))
     saveMappingText(text)
@@ -219,7 +228,22 @@ export default function AssistPage() {
             onImport={doImport}
           />
         </div>
-        <Conversation turns={state.turns} busy={state.busy === 'preparing' || state.busy === 'running' || state.busy === 'awaiting_ack'} onSend={send} disabledReason={chatDisabled} status={busyLabel || undefined} />
+        <div className="stack">
+          <Conversation turns={state.turns} busy={state.busy !== 'none'} onSend={send} disabledReason={chatDisabled} status={busyLabel || undefined} />
+          {state.omittedHistory > 0 && <p className="muted" role="note">{state.omittedHistory} earlier turn{state.omittedHistory === 1 ? '' : 's'} stay visible here but are no longer sent to the assistant (history limit: 20 turns of 4,000 characters).</p>}
+          {state.pendingMessage !== null && state.busy === 'none' && (
+            <div className="notice warn" role="status">
+              <div>
+                <p className="title">Not sent</p>
+                <p className="mono">{state.pendingMessage}</p>
+                <div className="actions">
+                  <button type="button" className="btn small" onClick={() => send(state.pendingMessage ?? '')}>Send again</button>
+                  <button type="button" className="btn small" onClick={() => update(s => ({ ...s, pendingMessage: null }))}>Discard</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       {drawerOpen && state.prepared && (
         <PayloadDrawer

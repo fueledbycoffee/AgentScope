@@ -67,6 +67,10 @@ describe('identity and request building', () => {
     expect(identityProblem({ name: 'ok', source: '/Users/sean' })).toMatch(/must not contain/)
     expect(identityProblem({ name: 'a'.repeat(101), source: 'x' })).toMatch(/100/)
     expect(identityProblem(identity)).toBeNull()
+    // shapes the server keeps must pass here too
+    expect(identityProblem({ name: 'sk-traces', source: 'team/service' })).toBeNull()
+    expect(identityProblem({ name: 'v1.2.3', source: 'repo/sub' })).toBeNull()
+    expect(identityProblem({ name: 'sk-or-v1-' + 'k'.repeat(40), source: 'x' })).toMatch(/must not/)
   })
 
   it('proposes first, then revises with the current document and a bounded history', () => {
