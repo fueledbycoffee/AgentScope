@@ -108,3 +108,85 @@ export interface MetricsSummary {
   sessions: Metric; model_calls: Metric; tool_calls: Metric
   input_tokens: Metric & CoveredValue & { unit: string; by_semantics: Record<string, number | null> }
 }
+
+// --- mapping assistant (docs/api/v0.1.md, ADR-005) -------------------------------------------
+export interface FieldStat {
+  path: string
+  selector: string
+  relative: string
+  depth: number
+  records: number
+  missing: number
+  values: number
+  nulls: number
+  types: { [kind: string]: number }
+  distinct: number
+  distinct_capped: boolean
+  examples: Json[]
+  min: Json
+  max: Json
+  min_length: number | null
+  max_length: number | null
+  hints: string[]
+  wrapper: { kind: string; units: { [u: string]: number }; tz: { [z: string]: number }; accessors: string[] } | null
+}
+export interface FieldProfile {
+  version: number
+  inspected: number
+  total_records: number
+  nodes_visited: number
+  truncated: { [limit: string]: number }
+  redactions: { [reason: string]: number }
+  coverage_sample: number[]
+  fields: FieldStat[]
+  unaddressable: { parent: string; key: string; reason: string }[]
+  withheld: { parent: string; reason: string }[]
+}
+export interface ProfileReport { upload_id: string; profile: FieldProfile; cached: boolean }
+export interface ChatHistoryTurn { role: 'user' | 'assistant'; content: string }
+export interface AssistantRequest {
+  kind: 'propose' | 'revise'
+  upload_id: string
+  identity: { name: string; source: string }
+  include_sample?: boolean
+  current_mapping?: { [key: string]: Json } | null
+  message?: string | null
+  history?: ChatHistoryTurn[]
+}
+export interface PreparedContext {
+  kind: 'propose' | 'revise'
+  context_sha256: string
+  bytes: number
+  payload_text: string
+  payload: { [key: string]: Json }
+  redactions: { [reason: string]: number }
+  truncated: { [step: string]: number }
+  sample_included: boolean
+  sample_count: number
+}
+export interface FieldExplanation { target: string; path: string; why: string; confidence: number }
+export interface Ambiguity { target: string; options: string[]; what_settles_it: string }
+export interface MappingProposal {
+  mapping: { [key: string]: Json }
+  explanations: FieldExplanation[]
+  ambiguities: Ambiguity[]
+  questions: string[]
+  model: string
+  executable: boolean
+}
+export interface AssistantOutcome {
+  proposal: MappingProposal | null
+  issues: MappingIssue[]
+  attempts: number
+  diagnostics: {
+    finish: string
+    model: string
+    raw_text: string
+    failure: string | null
+    adapter_notes?: string[]
+    context_sha256: string
+    sample_included: boolean
+  }
+}
+export interface ValidationResult { issues: MappingIssue[]; executable: boolean }
+export interface SavedMapping extends Mapping { created: boolean }

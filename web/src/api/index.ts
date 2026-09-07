@@ -1,7 +1,8 @@
 import type {
-  ErrorDetail, ImportPreview, ImportReject, ImportReport, ImportRequest, ImportSummary,
-  Mapping, MappingDetail, MetricsSummary, Page, PreviewRequest, RawRecord, RecordRow, RejectSummary,
-  RawReference, Scope, Session, SessionDetail, Upload,
+  AssistantOutcome, AssistantRequest, ErrorDetail, ImportPreview, ImportReject, ImportReport, ImportRequest,
+  ImportSummary, Json, Mapping, MappingDetail, MetricsSummary, Page, PreparedContext, PreviewRequest,
+  ProfileReport, RawRecord, RecordRow, RejectSummary, RawReference, SavedMapping, Scope, Session,
+  SessionDetail, Upload, ValidationResult,
 } from './types'
 export type * from './types'
 
@@ -63,3 +64,21 @@ export const listSessions = (params?: Page & Scope) => request<Session[]>(`/sess
 export const getSession = (id: string) => request<SessionDetail>(`/sessions/${encodeURIComponent(id)}`)
 export const getRawRecord = (reference: RawReference) => request<RawRecord>(`/raw-records${query(reference)}`)
 export const getMetricsSummary = (scope?: Scope) => request<MetricsSummary>(`/metrics/summary${query(scope)}`)
+
+// --- mapping assistant -----------------------------------------------------------------------
+export const profileUpload = (uploadId: string) =>
+  request<ProfileReport>(`/uploads/${encodeURIComponent(uploadId)}/profile`, { method: 'POST' })
+export const prepareContext = (body: AssistantRequest) => request<PreparedContext>('/assistant/prepare', post(body))
+export const runAssistant = (body: AssistantRequest, contextSha256: string) =>
+  request<AssistantOutcome>('/assistant/run', post({ ...body, context_sha256: contextSha256 }))
+export const getMappingSchema = () => request<{ [key: string]: Json }>('/mappings/schema')
+/**
+ * The editor's text is embedded as-is inside the request envelope, so numbers travel exactly as the
+ * user typed them (no browser parse/re-serialise between the editor and the server).
+ */
+const rawDocumentBody = (documentText: string): RequestInit => ({
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: `{"document":${documentText}}`,
+})
+export const validateMappingText = (documentText: string) =>
+  request<ValidationResult>('/mappings/validate', rawDocumentBody(documentText))
+export const saveMappingText = (documentText: string) => request<SavedMapping>('/mappings', rawDocumentBody(documentText))
