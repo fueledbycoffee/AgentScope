@@ -130,27 +130,37 @@ shasum -a 256 data/raw/swe-chat/sessions.parquet data/raw/swe-chat/conversations
 Row counts and column names were read from Parquet footers with pyarrow; no
 content was inspected beyond the schema.
 
-Schema notes relevant to normalisation (from the footers):
+Schema notes relevant to normalisation. Field names and types come from the
+Parquet footers; row granularity is what the
+[dataset card](https://huggingface.co/datasets/SALT-NLP/SWE-chat/blob/f66cca95b14caaa4177f7ed5eaa424608dadcffa/README.md)
+states ("one row per coding session", "one row per conversation turn") and has
+not yet been validated against the data. Token-accounting semantics (what the
+session-level and entry-level token columns count, and whether they reconcile)
+are unvalidated until the excerpt is profiled.
 
-- `sessions`: one row per coding session. `session_id`, `repo_id`, `user_id`,
-  `agent`, `created_at` (UTC), session-level totals `input_tokens`,
-  `output_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `api_call_count`,
-  `tool_call_count`, `turn_count`, `prompt_count`, `duration_seconds`, plus
-  attribution and repo metadata columns.
-- `conversations`: one row per **conversation entry**, not per model invocation.
-  `turn_id`, `session_id`, `turn_number`, `role`, `turn_type`, `is_continuation`,
-  `content`, `model`, `timestamp` (UTC), per-entry `input_tokens`, `output_tokens`,
-  `cache_creation_input_tokens`, `cache_read_input_tokens`, and tool fields
-  `tool_name`, `tool_call_id`, `file_path`, `command`, `tool_input_json`.
-  Whether one assistant entry equals one API call must be established from the
-  data (compare against `sessions.api_call_count`) before any model-call mapping
-  is trusted; see the identity rules in the consolidated plan.
+- `sessions` fields: `session_id`, `repo_id`, `user_id`, `agent`, `created_at`
+  (UTC), `input_tokens`, `output_tokens`, `cache_creation_tokens`,
+  `cache_read_tokens`, `api_call_count`, `tool_call_count`, `turn_count`,
+  `prompt_count`, `duration_seconds`, plus attribution and repo metadata columns.
+- `conversations` fields: `turn_id`, `session_id`, `turn_number`, `role`,
+  `turn_type`, `is_continuation`, `content`, `model`, `timestamp` (UTC),
+  `input_tokens`, `output_tokens`, `cache_creation_input_tokens`,
+  `cache_read_input_tokens`, and tool fields `tool_name`, `tool_call_id`,
+  `file_path`, `command`, `tool_input_json`. A conversation entry is not
+  necessarily a model invocation: whether one assistant entry equals one API call
+  must be established from the data (for example against `sessions.api_call_count`)
+  before any model-call mapping is trusted; see the identity rules in the
+  consolidated plan.
 
-The conversations file is far above the planned 25 MiB per-upload limit. Before
-UI integration, build a local excerpt: select whole sessions from `sessions.parquet`
-(deterministic, stratified by `agent`), then filter `conversations.parquet` by those
-`session_id`s, writing both tables as Parquet under `data/samples/swe-chat/` with a
-manifest. That script belongs to the second-source work (issues #8 and #16).
+The conversations file is far above the planned product limits (25 MiB per
+uploaded file, 100,000 records per batch). Before UI integration, build a local
+excerpt: select whole sessions from `sessions.parquet` (deterministic, stratified
+by `agent`), then filter `conversations.parquet` by those `session_id`s, writing
+both tables as Parquet under `data/samples/swe-chat/` with a manifest. The script
+must check both serialised outputs against the 25 MiB limit and both row counts
+against the 100,000-record limit, and either reduce the selection deterministically
+(drop the lowest-ranked whole sessions) or fail explicitly; it must never split a
+session. That script belongs to the second-source work (issues #8 and #16).
 
 Redistribution decision: **none committed**. The files stay under gitignored
 `data/raw/`; ODC-BY permits redistribution with attribution, but the excerpt will be
