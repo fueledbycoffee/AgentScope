@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Query, Request, Response, UploadFile
@@ -36,6 +38,9 @@ from agentscope_app.interfaces.api.schemas import (
 )
 
 router = APIRouter(prefix="/api")
+SCHEMA_PATH = (
+    Path(__file__).resolve().parents[2] / "domain" / "mapping" / "mapping-dsl-v1.schema.json"
+)
 
 Limit = Annotated[int, Query(ge=1, le=500)]
 Offset = Annotated[int, Query(ge=0)]
@@ -83,6 +88,23 @@ async def run_assistant(request: Request, body: AssistantRunBody) -> AssistantOu
     return await run_in_threadpool(
         _c(request).run_assistant.execute, body.to_request(), body.context_sha256
     )
+
+
+@router.get("/mappings/schema")
+def mapping_schema() -> dict[str, Any]:
+    """The DSL v1 JSON Schema, for client-side shape checks in the assistant UI."""
+    schema: dict[str, Any] = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    return schema
+
+
+@router.post("/mappings/validate")
+def validate_mapping(body: SaveMappingBody) -> dict[str, Any]:
+    """Validation issues of a document without saving it (the same stages as a save)."""
+    parsed = parse_mapping(body.document)
+    return {
+        "issues": [asdict(issue) for issue in parsed.issues],
+        "executable": parsed.is_executable,
+    }
 
 
 @router.post("/mappings")
