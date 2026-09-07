@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from agentscope_app.domain.errors import ConversionError
@@ -222,8 +223,13 @@ def _json_equal(a: Any, b: Any, depth: int = 0) -> bool:
         )
     if isinstance(a, bool) or isinstance(b, bool):
         return isinstance(a, bool) and isinstance(b, bool) and a is b
-    if isinstance(a, int | float) and isinstance(b, int | float):
-        return a == b
+    if isinstance(a, int | float | Decimal) and isinstance(b, int | float | Decimal):
+        # JSON numbers compare by value whatever the parser produced. A signalling
+        # NaN cannot come from JSON, but a decimal of that kind must not raise here.
+        try:
+            return bool(a == b)
+        except InvalidOperation:
+            return False
     if isinstance(a, list) and isinstance(b, list):
         return len(a) == len(b) and all(
             _json_equal(x, y, depth + 1) for x, y in zip(a, b, strict=True)

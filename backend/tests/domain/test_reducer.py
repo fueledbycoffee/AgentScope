@@ -122,3 +122,20 @@ def test_end_only_and_start_only_children_bound_the_observed_span() -> None:
     ]
     s = reduce_sessions(emissions)["s1"]
     assert s.observed_start_at == ts(9) and s.observed_end_at == ts(12)
+
+
+def test_seeded_reduction_matches_reducing_everything_at_once() -> None:
+    file_a = [session(1, external_id="s1", started_at=ts(12))]
+    file_b = [
+        session(2, external_id="s1", started_at=ts(14)),
+        session(3, external_id="s1", ended_at=ts(13)),
+        call(4, session_external_id="s1", started_at=ts(20), ended_at=ts(21)),
+    ]
+    together = reduce_sessions(file_a + file_b)["s1"]
+    first = reduce_sessions(file_a)
+    second = reduce_sessions(file_b, seeds=first)["s1"]
+    assert (second.declared_started_at, second.declared_ended_at) == (ts(12), ts(13))
+    assert (together.declared_started_at, together.declared_ended_at) == (ts(12), ts(13))
+    assert second.model_call_count == 1 and second.observed_start_at == ts(20)
+    assert [c.code for c in second.conflicts] == ["conflicting_value"]  # only this fold's
+    assert second.contributions == tuple(e.occurrence for e in file_b)

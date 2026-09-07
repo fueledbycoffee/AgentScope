@@ -36,6 +36,7 @@ build/
 
 # Node
 node_modules/
+.pnpm-store/
 web/dist/
 .vite/
 
