@@ -401,3 +401,91 @@ and URL synchronization; 4 hours for the four stages and batch orchestration;
 unit/integration/Playwright updates and screenshot capture; and 1 hour for the
 ADR amendment, full CI verification, and review fixes. No backend or API-contract
 work is included.
+
+## Revision after review
+
+This section supersedes conflicting details above and answers every numbered
+finding in `2026-09-08-guided-import-route-review-claude.md`.
+
+1. **P1 — accepted.** Every file with compatible candidates keeps a persistent
+   “Neither fits? Set up a new mapping with the assistant” link immediately below
+   its radio cards. It navigates to `/import/assist/:uploadId` with
+   `{ state: { upload } }`. When no mapping reads a file's format, the designed
+   empty state remains and the Mapping stop's stage primary action becomes the
+   assistant handoff; `StageBar` therefore accepts either a button action or a
+   link-shaped action. The reachable-candidate path is covered in the browser
+   smoke as well as the no-candidate rendering in focused import tests.
+2. **P2 — accepted, option (b).** `ImportEntry` continues to persist only
+   `mappingId`, while mapping-dependent selectors take the current `mappings`
+   resource. After mappings resolve, any id that is absent or incompatible with
+   its upload format is cleared together with that entry's preview and the URL is
+   re-clamped to Mapping. Mapping-dependent facts and Confirm never render while
+   the resource is unresolved or failed. A focused runtime test covers a stored
+   id that no longer resolves.
+3. **P2 — accepted.** Each stop owns an `<h1 tabIndex={-1}>`; advancing,
+   backtracking, browser history, and completed rail buttons move focus to that
+   heading. A new failure moves focus to its `role="alert"` notice. `StageBar`
+   wraps non-empty running text in `role="status"`. Focus after Continue and a
+   rail backtrack is asserted in a focused import route test and in Playwright.
+4. **P2 — accepted without changing the shared icon registry.** To stay inside
+   Phase 2's import-only edit surface, Back uses the existing `arrowRight` glyph
+   inside `IconButton`, rotated 180 degrees by the import-scoped stylesheet. It
+   retains the accessible name and visible tooltip without adding a shared icon
+   or falling back to a text-labelled secondary control.
+5. **P2 — accepted.** The estimate is revised to 14–16 hours: 3 hours for state,
+   persistence, and URL synchronization; 4 hours for stages and orchestration;
+   2 hours for styling/accessibility; 4–5 hours for focused tests, Playwright,
+   and screenshots; and 1–2 hours for the ADR, full verification, and fixes.
+   **Multi-file timebox decision:** proceed with the full per-file Mapping,
+   aggregate Preview, and atomic Confirm design. If the four stops plus reducer
+   are not green by the end of 2026-09-09, keep the current multi-file queue
+   interaction inside the same `/import` route, ship the complete guided
+   single-file path, and disclose the fallback in `PR_BODY.md`. The single-file
+   route still meets every criterion other than the optional richer batch
+   presentation.
+6. **P2 — accepted.** Versioned session data omits `upload.preview` and the
+   preview `rejects` and `emissions` arrays. It retains upload identity and
+   receipt metadata, mapping ids, counts, warnings, and entity totals required
+   for reachability and confirmation. After a restored Preview, detailed sample
+   rows are explicitly unavailable until the dry run is run again. A failed
+   `sessionStorage.setItem` shows a visible warning that the current import will
+   not survive reload. Focused tests cover the trimmed payload and write-failure
+   notice.
+7. **P3 — accepted.** The acceptance record now names the deliberate upload
+   telemetry deviation: the request/response API exposes no phase events, so the
+   live status names the ordered `storing -> hashing -> counting` work and exact
+   bytes without pretending the phases are advancing.
+8. **P3 — accepted.** The acceptance record also names the Confirm telemetry
+   deviation: the live region announces the exact total in one transaction,
+   while a progressing record counter would require backend telemetry that this
+   issue forbids.
+9. **P3 — declined as an edit request.** Phase 2 explicitly excludes
+   `web/src/App.test.tsx`; its decode-error and late-completion tests must remain
+   green unchanged, while equivalent moved-disclosure and stale-result coverage
+   is added under `web/src/import/` and in the smoke.
+10. **P3 — accepted.** Clean-storage deep links use a fresh browser context;
+    screenshot capture explicitly calls `page.setViewportSize({ width: 1440,
+    height: 1000 })` after the 900 px overflow check; and no redundant
+    route-specific reduced-motion override/test is added because the global
+    Console rule already disables all transitions under the configured reduced
+    motion preference.
+11. **P3 — accepted.** The scoped stylesheet moves to
+    `web/src/import/import.css` and is imported by `Import.tsx`.
+12. **P3 — accepted.** The ADR amendment records that icon-only secondary
+    actions with accessible names/tooltips are the current Console convention;
+    the older “no icons beyond” sentence meant decorative icon proliferation,
+    not a prohibition on the already-established action-icon set.
+13. **P3 — accepted.** A successful report clears persisted import state.
+    Browser Back therefore returns to `/import`, where stale `?step=4` is replaced
+    with canonical `?step=1`; Playwright asserts this reset.
+14. **P3 — accepted.** `Unavailable` never appears on this route: upload record
+    counts and preview measures are always known by contract, so measured zeroes
+    render as `0`.
+
+The Phase 2 tracked-file boundary also supersedes the earlier file and screenshot
+lists: implementation may touch `web/src/pages/Import.tsx`, new files under
+`web/src/import/` or `web/src/components/`, `web/src/App.tsx` only if the route
+needs wiring, `web/e2e/smoke.spec.ts`,
+`docs/adr/ADR-006-ui-design-direction.md`, and committed PNG evidence under
+`web/e2e/screenshots/45/`. It does not touch `web/src/App.test.tsx`, shared icon
+sources, any assistant file, any backend file, or any other route.
