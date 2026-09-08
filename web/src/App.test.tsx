@@ -1,9 +1,21 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, useNavigate } from 'react-router-dom'
+import type { ReactElement } from 'react'
+import { BrowserRouter, MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { serializeImportState } from './import/importRuntime'
-import { mapping, metrics, preview, rawRecord, reject, report, session, upload } from './test/fixtures'
+import { mapping, metricDefinitions, metricQueries, metrics, preview, rawRecord, reject, report, session, upload } from './test/fixtures'
+
+vi.mock('recharts', async importOriginal => {
+  const actual = await importOriginal<typeof import('recharts')>()
+  const React = await import('react')
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children, height }: { children: ReactElement<{ width?: number; height?: number }>; height?: number | string }) => (
+      React.cloneElement(children, { width: 800, height: typeof height === 'number' ? height : 300 })
+    ),
+  }
+})
 
 const fetchMock = vi.fn<typeof fetch>()
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -22,6 +34,9 @@ function defaultResponse(input: RequestInfo | URL, options?: RequestInit): Promi
   ]))
   if (url.pathname === '/api/imports/imp_1/rejects') return Promise.resolve(json([{ ...reject, payload: { bad: true } }]))
   if (url.pathname === '/api/metrics/summary') return Promise.resolve(json(metrics))
+  if (url.pathname === '/api/metrics/definitions') return Promise.resolve(json(metricDefinitions))
+  if (url.pathname === '/api/metrics/facets') return Promise.resolve(json({ sources: ['tracelab'], agents: ['claude-code', 'codex'], models: ['claude'] }))
+  if (url.pathname === '/api/metrics/query') return Promise.resolve(json(metricQueries[url.searchParams.get('metric_id') ?? '']))
   if (url.pathname === '/api/sessions') return Promise.resolve(json([session]))
   if (url.pathname === '/api/sessions/ses_1') return Promise.resolve(json(session))
   if (url.pathname === '/api/raw-records') return Promise.resolve(json({ ...rawRecord, locator: url.searchParams.get('locator') }))
@@ -68,7 +83,7 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', '') } })
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open') } })
 })
-afterEach(() => { sessionStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); fetchMock.mockReset() })
+afterEach(() => { sessionStorage.clear(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); fetchMock.mockReset() })
 
 describe('Import flow', () => {
   it('uploads multipart bytes, previews, confirms, and fetches the persisted report and rejects', async () => {
@@ -443,62 +458,379 @@ describe('Dashboard', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('renders all KPIs, a real zero, Unavailable with coverage, and expandable definitions', async () => {
+  it('keeps every KPI surface to label, value, coverage, and optional exact text', async () => {
     start('/dashboard')
-    const tokens = await screen.findByRole('region', { name: 'Input tokens' })
-    expect(within(tokens).getByText('Unavailable')).toBeInTheDocument()
-    expect(tokens).toHaveTextContent('coverage 0 / 2 calls')
-    expect(within(tokens).queryByText('0', { exact: true })).not.toBeInTheDocument()
-    expect(within(screen.getByRole('region', { name: 'Tool calls' })).getByText('0')).toBeInTheDocument()
+    const tokens = await screen.findByRole('region', { name: 'Input usage by accounting group' })
+    for (const label of ['Sessions', 'Model-call observations', 'Tool-call observations']) {
+      expect(screen.getAllByRole('region', { name: label })[0]).toBeInTheDocument()
+    }
+    expect(Array.from(tokens.children, child => child.className)).toEqual(['label', 'value accounting-groups', 'coverage-line'])
+    expect(tokens).toHaveTextContent('Claude186.5Mexact 186,454,781')
+    expect(tokens).toHaveTextContent('Codex367Mexact 366,993,096')
+    expect(tokens).toHaveTextContent('UnknownUnavailable')
+    expect(tokens).not.toHaveTextContent('Not comparable')
+    expect(tokens).not.toHaveTextContent('tracelab-claude')
+    expect(tokens).not.toHaveTextContent('not comparable: 3 token semantics in selection')
+    expect(tokens).not.toHaveTextContent('553448838')
+    expect(within(screen.getByRole('region', { name: 'Tool-call observations' })).getByText('0')).toBeInTheDocument()
     expect(within(screen.getAllByRole('region', { name: 'Sessions' })[0]).getByText('1')).toBeInTheDocument()
-    expect(within(screen.getByRole('region', { name: 'Model calls' })).getByText('2')).toBeInTheDocument()
-    fireEvent.click(within(tokens).getByRole('button', { name: 'Definition of Input tokens' }))
-    expect(screen.getByRole('dialog', { name: 'Input tokens' })).toHaveTextContent(metrics.input_tokens.definition)
+    const modelCalls = screen.getByRole('region', { name: 'Model-call observations' })
+    expect(Array.from(modelCalls.children, child => child.className)).toEqual(['label', 'value', 'coverage-line'])
+    expect(within(modelCalls).getByText('4,770')).toBeInTheDocument()
+    expect(modelCalls).toHaveTextContent('coverage 4,770 / 4,770')
+    const cost = screen.getByRole('region', { name: 'Scheduled cost' })
+    expect(Array.from(cost.children, child => child.className)).toEqual(['label', 'value', 'exact-line', 'coverage-line'])
+    expect(cost).toHaveTextContent('$132.88')
+    expect(cost).toHaveTextContent('exact 132.8761978')
+    expect(cost).toHaveTextContent('priced 32.5 % of recorded tokens · 4,622 / 4,919 calls')
+    expect(cost).not.toHaveTextContent('openrouter-2026-09-08-734d889de105+aliases-v1')
+    expect(cost).not.toHaveTextContent('294 calls unpriced')
+    expect(cost).not.toHaveTextContent('Estimate, not an invoice.')
+    const span = screen.getByRole('region', { name: 'Observed span' })
+    expect(Array.from(span.children, child => child.className)).toEqual(['label', 'value', 'coverage-line'])
+    expect(span).toHaveTextContent('1.0 min')
+    for (const chart of ['Activity by day', 'Tokens by model', 'Tool calls']) {
+      expect(screen.getByRole('region', { name: chart })).toBeInTheDocument()
+    }
+    expect(screen.queryByLabelText('Token usage totals')).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Tokens by model' })).toHaveTextContent('1 accounting group, not summed')
+    fireEvent.click(within(tokens).getByRole('button', { name: 'Definition of Input usage by accounting group' }))
+    const tokenDialog = screen.getByRole('dialog', { name: 'Input usage by accounting group' })
+    expect(tokenDialog).toHaveTextContent(metrics.input_tokens.definition)
+    expect(tokenDialog).toHaveTextContent('not comparable: 3 token semantics in selection')
+    expect(tokenDialog).toHaveTextContent('tracelab-claude: 186,454,781')
+    expect(tokenDialog).toHaveTextContent('Cache-read tokensUnavailable · coverage 0 / 2')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.click(within(cost).getByRole('button', { name: 'Definition of Scheduled cost' }))
+    const costDialog = screen.getByRole('dialog', { name: 'Scheduled cost' })
+    expect(costDialog).toHaveTextContent('tracelab-claude: 107.8042053')
+    expect(costDialog).toHaveTextContent('openrouter-2026-09-08-734d889de105+aliases-v1')
+    expect(costDialog).toHaveTextContent('294 calls unpriced')
+    expect(costDialog).toHaveTextContent('Estimate, not an invoice.')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.click(within(span).getByRole('button', { name: 'Definition of Observed span' }))
+    expect(screen.getByRole('dialog', { name: 'Observed span' })).toHaveTextContent('Neither active time nor task duration.')
   })
 
-  it('renders known input tokens and the semantics breakdown', async () => {
-    fetchMock.mockImplementation((url, options) => String(url).startsWith('/api/metrics/summary')
-      ? Promise.resolve(json({ ...metrics, input_tokens: { ...metrics.input_tokens, value: 123, coverage: { known: 1, total: 2 }, by_semantics: { 'tracelab-claude': 123 } } }))
-      : defaultResponse(url, options))
+  it('applies Source, Agent, Model, and Period to every canonical request and one receipt', async () => {
+    start('/overview?source=tracelab&agent=codex&model=claude&period=7d')
+    await screen.findByRole('region', { name: 'Input usage by accounting group' })
+    await screen.findByText(/UTC/, { selector: '.receipt *' })
+
+    await waitFor(() => {
+      const scoped = fetchMock.mock.calls.map(([value]) => new URL(String(value), 'http://localhost')).filter(url => (
+        ['/api/metrics/summary', '/api/metrics/facets', '/api/metrics/query', '/api/sessions'].includes(url.pathname)
+        && url.searchParams.get('source') === 'tracelab'
+        && url.searchParams.get('agent') === 'codex'
+        && url.searchParams.get('model') === 'claude'
+      ))
+      expect(scoped.some(url => url.pathname === '/api/metrics/summary' && url.searchParams.has('started_from') && url.searchParams.has('started_before'))).toBe(true)
+      expect(scoped.some(url => url.pathname === '/api/metrics/facets' && url.searchParams.has('started_from'))).toBe(true)
+      expect(scoped.some(url => url.pathname === '/api/sessions' && url.searchParams.get('limit') === '8')).toBe(true)
+      const queries = scoped.filter(url => url.pathname === '/api/metrics/query')
+      expect(new Set(queries.map(url => url.searchParams.get('metric_id')))).toEqual(new Set(Object.keys(metricQueries)))
+      const unknown = queries.find(url => url.searchParams.get('metric_id') === 'unknown_timestamps')!
+      expect(unknown.searchParams.has('started_from')).toBe(false)
+      expect(unknown.searchParams.has('started_before')).toBe(false)
+    })
+    expect(screen.getByRole('group', { name: 'Scope' })).toHaveTextContent('1 sessions · 4,770 model calls · from 1 imports')
+  })
+
+  it('round-trips an exact padded model through a token bar drill', async () => {
+    const paddedModel = ' padded-model '
+    fetchMock.mockImplementation((input, options) => {
+      const url = new URL(String(input), 'http://localhost')
+      const metricId = url.searchParams.get('metric_id')
+      if (url.pathname === '/api/metrics/query' && (metricId === 'input_tokens' || metricId === 'output_tokens')) {
+        const query = metricQueries[metricId]
+        return Promise.resolve(json({
+          ...query,
+          buckets: query.buckets.map(bucket => ({
+            ...bucket,
+            keys: [paddedModel],
+            result: {
+              ...bucket.result,
+              semantics_partitions: bucket.result.semantics_partitions.map(partition => ({
+                ...partition,
+                drill_scope: { ...partition.drill_scope, model: paddedModel },
+              })),
+            },
+          })),
+        }))
+      }
+      return defaultResponse(input, options)
+    })
+    start('/overview')
+    const chart = await screen.findByRole('region', { name: 'Tokens by model' })
+
+    fireEvent.click(within(chart).getByRole('button', { name: /padded-model.*input/i }))
+
+    await screen.findByRole('heading', { name: 'Sessions' })
+    expect(screen.getByText('accounting padded-model · Claude')).toBeInTheDocument()
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/sessions'
+        && url.searchParams.get('model') === paddedModel
+        && url.searchParams.get('token_semantics') === 'tracelab-claude'
+    })).toBe(true))
+  })
+
+  it('keeps the drilled model visible when an accounting drill is followed by a tool drill', async () => {
+    start('/overview')
+    const tokens = await screen.findByRole('region', { name: 'Tokens by model' })
+
+    fireEvent.click(within(tokens).getByRole('button', { name: /claude.*input/i }))
+    await screen.findByRole('heading', { name: 'Sessions' })
+    fireEvent.click(screen.getByRole('link', { name: 'Overview' }))
+    const tools = await screen.findByRole('region', { name: 'Tool calls' })
+    fireEvent.click(within(tools).getByRole('button', { name: /^Agent:/ }))
+
+    await screen.findByRole('heading', { name: 'Sessions' })
+    expect(screen.getByLabelText('Model')).toHaveValue('claude')
+    expect(screen.getByText('tool Agent')).toBeInTheDocument()
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/sessions'
+        && url.searchParams.get('model') === 'claude'
+        && url.searchParams.get('tool') === 'Agent'
+    })).toBe(true))
+  })
+
+  it('round-trips an exact padded model selected from the facet', async () => {
+    const paddedModel = ' padded-model '
+    fetchMock.mockImplementation((input, options) => {
+      const url = new URL(String(input), 'http://localhost')
+      if (url.pathname === '/api/metrics/facets') {
+        return Promise.resolve(json({ sources: ['tracelab'], agents: ['claude-code'], models: [paddedModel] }))
+      }
+      return defaultResponse(input, options)
+    })
+    start('/sessions')
+    const modelSelect = await screen.findByLabelText('Model') as HTMLSelectElement
+    await waitFor(() => expect([...modelSelect.options].some(option => option.value === paddedModel)).toBe(true))
+
+    fireEvent.change(modelSelect, { target: { value: paddedModel } })
+
+    expect(screen.getByLabelText('Model')).toHaveValue(paddedModel)
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/sessions' && url.searchParams.get('model') === paddedModel
+    })).toBe(true))
+  })
+
+  it.each(['/overview', '/sessions'])('shows stored drill bounds on %s after a relative-period bookmark moves to the next day', async pathname => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-09T12:00:00Z'))
+    const drill = encodeURIComponent(JSON.stringify({
+      version: 1,
+      label: 'day',
+      value: '2026-09-02 → 2026-09-09 UTC',
+      scope: {
+        started_from: '2026-09-02T00:00:00.000Z',
+        started_before: '2026-09-09T00:00:00.000Z',
+        activity_grain: 'model_call',
+      },
+    }))
+
+    start(`${pathname}?period=7d&drill=${drill}`)
+
+    const bar = screen.getByRole('group', { name: 'Scope' })
+    await waitFor(() => expect(bar).toHaveTextContent('2026-09-02 → 2026-09-09 UTC'))
+    expect(bar).not.toHaveTextContent('2026-09-03 → 2026-09-10 UTC')
+  })
+
+  it('keeps a tool bar mounted through hover and opens matching sessions on press and release', async () => {
+    start('/overview')
+    const chart = await screen.findByRole('region', { name: 'Tool calls' })
+    const bar = within(chart).getByRole('button', { name: /^Agent:/ })
+    expect(bar.tagName.toLowerCase()).toBe('rect')
+    fireEvent.mouseEnter(bar)
+    expect(within(chart).getByRole('button', { name: /^Agent:/ })).toBe(bar)
+    fireEvent.mouseDown(bar, { button: 0, clientX: 40, clientY: 20 })
+    expect(within(chart).getByRole('button', { name: /^Agent:/ })).toBe(bar)
+    fireEvent.mouseUp(bar, { button: 0, clientX: 40, clientY: 20 })
+
+    expect(await screen.findByRole('heading', { name: 'Sessions' })).toBeInTheDocument()
+    expect(screen.getByText('tool Agent')).toBeInTheDocument()
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/sessions' && url.searchParams.get('tool') === 'Agent'
+    })).toBe(true))
+  })
+
+  it('adds one history entry for a chart drill and Back restores the pre-drill dashboard', async () => {
+    window.history.replaceState(null, '', '/overview')
+    const before = window.history.length
+    render(<BrowserRouter><App /></BrowserRouter>)
+    const chart = await screen.findByRole('region', { name: 'Tool calls' })
+
+    fireEvent.click(within(chart).getByRole('button', { name: /^Agent:/ }))
+
+    expect(await screen.findByRole('heading', { name: 'Sessions' })).toBeInTheDocument()
+    expect(window.history.length).toBe(before + 1)
+    await act(async () => window.history.back())
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument()
+    expect(screen.queryByText('tool Agent')).not.toBeInTheDocument()
+  })
+
+  it('opens only attributable quality populations with the full returned drill scope', async () => {
     start('/dashboard')
-    const tokens = await screen.findByRole('region', { name: 'Input tokens' })
-    expect(tokens).toHaveTextContent('123')
-    expect(tokens).toHaveTextContent('coverage 1 / 2 calls')
-    expect(within(tokens).queryByText('Unavailable')).not.toBeInTheDocument()
-    fireEvent.click(within(tokens).getByRole('button', { name: 'Definition of Input tokens' }))
-    expect(screen.getByRole('dialog', { name: 'Input tokens' })).toHaveTextContent('tracelab-claude: 123')
+    await screen.findByRole('region', { name: 'Input usage by accounting group' })
+    fireEvent.click(screen.getByRole('button', { name: /1 missing usage/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'List these sessions' }))
+    await screen.findByRole('heading', { name: 'Sessions' })
+    expect(screen.getByText('quality missing usage')).toBeInTheDocument()
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/sessions' && url.searchParams.get('usage_missing') === 'true'
+    })).toBe(true))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
+    expect(screen.queryByText('quality missing usage')).not.toBeInTheDocument()
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => String(value) === '/api/sessions?limit=50&offset=0')).toBe(true))
   })
 
-  it('filters KPIs and sessions together and ignores late responses for an old scope', async () => {
+  it('removes a base model from the envelope and invalidates the drill on Period change', async () => {
+    const drill = encodeURIComponent(JSON.stringify({ version: 1, label: 'accounting', value: 'claude · tracelab-claude', scope: { model_is_unknown: true, token_semantics: 'tracelab-claude', activity_grain: 'model_call' } }))
+    start(`/dashboard?model=claude&drill=${drill}`)
+    await screen.findByText('accounting claude · tracelab-claude')
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: '' } })
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls.map(([value]) => new URL(String(value), 'http://localhost'))
+      expect(calls.some(url => url.pathname === '/api/metrics/summary' && url.searchParams.get('token_semantics') === 'tracelab-claude' && !url.searchParams.has('model') && !url.searchParams.has('model_is_unknown'))).toBe(true)
+    })
+    expect(screen.getByText('accounting claude · tracelab-claude')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Period (UTC)'), { target: { value: '30d' } })
+    await waitFor(() => expect(screen.queryByText('accounting claude · tracelab-claude')).not.toBeInTheDocument())
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/metrics/summary' && url.searchParams.has('started_from') && !url.searchParams.has('token_semantics')
+    })).toBe(true))
+  })
+
+  it('ignores late responses for an older scope', async () => {
+    start('/overview')
+    await screen.findByRole('region', { name: 'Input usage by accounting group' })
+    await screen.findByRole('option', { name: 'tracelab' })
     let finishOld!: (response: Response) => void
-    fetchMock.mockImplementation((url, options) => String(url) === '/api/metrics/summary'
+    fetchMock.mockImplementation((url, options) => String(url) === '/api/metrics/summary?source=tracelab'
       ? new Promise(resolve => { finishOld = resolve }) : defaultResponse(url, options))
-    start('/dashboard')
-    await screen.findByRole('table', { name: 'Sessions in scope' })
-    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'trace & lab' } })
-    fireEvent.keyDown(screen.getByLabelText('Source'), { key: 'Enter' })
-    fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'claude-code' } })
-    fireEvent.keyDown(screen.getByLabelText('Agent'), { key: 'Enter' })
-    await screen.findAllByRole('region', { name: 'Sessions' })
-    expect(fetchMock).toHaveBeenCalledWith('/api/metrics/summary?source=trace+%26+lab&agent=claude-code', undefined)
-    expect(fetchMock).toHaveBeenCalledWith('/api/sessions?source=trace+%26+lab&agent=claude-code&limit=8&offset=0', undefined)
-    await act(async () => finishOld(json({ ...metrics, sessions: { ...metrics.sessions, value: 999 } })))
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'tracelab' } })
+    await waitFor(() => expect(finishOld).toBeTypeOf('function'))
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: '' } })
+    await screen.findByRole('region', { name: 'Input usage by accounting group' })
+    await act(async () => finishOld(json({ ...metrics, sessions: { ...metrics.sessions, value: 999, value_text: '999' } })))
     for (const region of screen.getAllByRole('region', { name: 'Sessions' })) expect(region).not.toHaveTextContent('999')
+  })
+
+  it('hides stale dashboard numbers when a new scope has a core metric failure', async () => {
+    start('/overview')
+    await screen.findByRole('region', { name: 'Input usage by accounting group' })
+    await screen.findByRole('option', { name: 'tracelab' })
+    fetchMock.mockImplementation((url, options) => String(url) === '/api/metrics/summary?source=tracelab'
+      ? Promise.resolve(json({ error: { code: 'query_failed', message: 'Scoped metrics failed', details: [] } }, 500))
+      : defaultResponse(url, options))
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'tracelab' } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Scoped metrics failed')
+    expect(screen.queryByRole('region', { name: 'Input usage by accounting group' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'claude:native_1' })).toBeInTheDocument()
   })
 })
 
 describe('Scope in the shell', () => {
-  it('rail links keep the scope on data routes and the session receipt follows the current scope', async () => {
-    start('/overview?source=tracelab&agent=claude-code')
+  it('rail links keep scope and a session receipt counts the drilled tool population', async () => {
+    fetchMock.mockImplementation((input, options) => {
+      const url = new URL(String(input), 'http://localhost')
+      if (url.pathname === '/api/metrics/summary') {
+        const count = url.searchParams.get('tool') === 'Agent' ? '1' : '7'
+        return Promise.resolve(json({
+          ...metrics,
+          sessions: { ...metrics.sessions, value: Number(count), value_text: count },
+        }))
+      }
+      return defaultResponse(input, options)
+    })
+    start('/overview?source=tracelab&agent=claude-code&period=7d')
     await screen.findAllByRole('region', { name: 'Sessions' })
-    expect(screen.getByRole('link', { name: 'Sessions' })).toHaveAttribute('href', '/sessions?source=tracelab&agent=claude-code')
+    expect(screen.getByRole('link', { name: 'Sessions' })).toHaveAttribute('href', '/sessions?source=tracelab&agent=claude-code&period=7d')
     expect(screen.getByRole('link', { name: 'Imports' })).toHaveAttribute('href', '/imports')
+    const chart = await screen.findByRole('region', { name: 'Tool calls' })
+    fireEvent.click(within(chart).getByRole('button', { name: /^Agent:/ }))
+    await screen.findByRole('heading', { name: 'Sessions' })
     fireEvent.click(await screen.findByRole('link', { name: 'claude:native_1' })) // the table renders after the regions
     await screen.findByRole('heading', { name: 'Session detail' })
-    expect(fetchMock).toHaveBeenCalledWith('/api/metrics/summary?source=tracelab&agent=claude-code', undefined)
-    fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'codex' } })
-    fireEvent.keyDown(screen.getByLabelText('Agent'), { key: 'Enter' })
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/metrics/summary?source=tracelab&agent=codex', undefined))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/metrics/summary'
+        && url.searchParams.get('source') === 'tracelab'
+        && url.searchParams.get('agent') === 'claude-code'
+        && url.searchParams.get('tool') === 'Agent'
+        && url.searchParams.get('activity_grain') === 'tool_call'
+    })).toBe(true))
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Scope' })).toHaveTextContent('1 sessions'))
+  })
+
+  it('shows and clears Model and Period on session detail without a drill', async () => {
+    start('/sessions/ses_1?model=claude&period=7d')
+    await screen.findByRole('heading', { name: 'Session detail' })
+
+    expect(screen.getByLabelText('Model')).toHaveValue('claude')
+    expect(screen.getByLabelText('Period (UTC)')).toHaveValue('7d')
+    expect(screen.getByRole('button', { name: 'Clear all' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
+    await waitFor(() => expect(screen.getByLabelText('Model')).toHaveValue(''))
+    expect(screen.getByLabelText('Period (UTC)')).toHaveValue('')
+    expect(screen.queryByRole('button', { name: 'Clear all' })).not.toBeInTheDocument()
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => String(value) === '/api/metrics/summary')).toBe(true))
+  })
+
+  it('loads every session-detail facet and allows cleared values to be selected again', async () => {
+    const facets = {
+      sources: ['tracelab', 'other-source'],
+      agents: ['claude-code', 'codex'],
+      models: ['claude', 'gpt-5'],
+    }
+    fetchMock.mockImplementation((input, options) => {
+      const url = new URL(String(input), 'http://localhost')
+      if (url.pathname === '/api/metrics/facets') return Promise.resolve(json(facets))
+      return defaultResponse(input, options)
+    })
+    start('/sessions/ses_1?source=tracelab&agent=claude-code&model=claude')
+    await screen.findByRole('heading', { name: 'Session detail' })
+
+    for (const [label, values] of [
+      ['Source', facets.sources], ['Agent', facets.agents], ['Model', facets.models],
+    ] as const) {
+      const select = screen.getByLabelText(label)
+      await waitFor(() => {
+        for (const value of values) expect(within(select).getByRole('option', { name: value })).toBeInTheDocument()
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
+    await waitFor(() => expect(screen.getByLabelText('Model')).toHaveValue(''))
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'tracelab' } })
+    fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'claude-code' } })
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'claude' } })
+
+    expect(screen.getByLabelText('Source')).toHaveValue('tracelab')
+    expect(screen.getByLabelText('Agent')).toHaveValue('claude-code')
+    expect(screen.getByLabelText('Model')).toHaveValue('claude')
+  })
+})
+
+describe('Metric definitions', () => {
+  it('renders every server definition with an anchor and complete trust metadata', async () => {
+    start('/definitions#input_tokens')
+    const table = await screen.findByRole('table', { name: 'Metric definitions' })
+    expect(within(table).getAllByRole('row')).toHaveLength(metricDefinitions.length + 1)
+    const definition = metricDefinitions.find(item => item.id === 'input_tokens')!
+    const anchor = document.getElementById('input_tokens')!
+    expect(anchor).toHaveTextContent(`${definition.label}input_tokens · v1`)
+    const row = anchor.closest('tr')!
+    expect(row).toHaveTextContent(definition.formula)
+    expect(row).toHaveTextContent(definition.null_handling)
+    expect(row).toHaveTextContent(definition.comparability_rule)
   })
 })
 

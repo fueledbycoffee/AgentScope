@@ -10,7 +10,20 @@ import { fileURLToPath } from 'node:url'
 test.describe.configure({ mode: 'serial' })
 
 const FIXTURE = fileURLToPath(new URL('../../fixtures/tracelab/tracelab-sample.jsonl.gz', import.meta.url))
-const TOTALS = { sessions: 80, model_calls: 4770, tool_calls: 5723, input_tokens: 553447877, coverage: { known: 4770, total: 4770 }, by_semantics: { 'tracelab-claude': 186454781, 'tracelab-codex': 366993096 } }
+const TOTALS = {
+  sessions: '80', model_calls: '4770', tool_calls: '5723',
+  input_tokens: {
+    value_text: null,
+    recorded_sum_text: '553447877',
+    comparability: 'mixed',
+    reason: 'not comparable: 2 token semantics in selection',
+    coverage: { known: 4770, total: 4770 },
+    partitions: {
+      'tracelab-claude': { value_text: '186454781', coverage: { known: 1583, total: 1583 } },
+      'tracelab-codex': { value_text: '366993096', coverage: { known: 3187, total: 3187 } },
+    },
+  },
+}
 const CODEX = { sessions: 40, model_calls: 3187 }
 
 let firstImportId = ''
@@ -58,8 +71,23 @@ async function summary(page: Page) {
   return response.json()
 }
 
-function comparable(body: { sessions: { value: number }; model_calls: { value: number }; tool_calls: { value: number }; input_tokens: { value: number; coverage: object; by_semantics: object } }) {
-  return { sessions: body.sessions.value, model_calls: body.model_calls.value, tool_calls: body.tool_calls.value, input_tokens: body.input_tokens.value, coverage: body.input_tokens.coverage, by_semantics: body.input_tokens.by_semantics }
+function dashboardTruth(body: {
+  sessions: { value_text: string }; model_calls: { value_text: string }; tool_calls: { value_text: string }
+  input_tokens: { value_text: string | null; recorded_sum_text: string | null; comparability: string; reason: string; coverage: object; semantics_partitions: { semantics: string; value_text: string | null; coverage: object }[] }
+}) {
+  return {
+    sessions: body.sessions.value_text,
+    model_calls: body.model_calls.value_text,
+    tool_calls: body.tool_calls.value_text,
+    input_tokens: {
+      value_text: body.input_tokens.value_text,
+      recorded_sum_text: body.input_tokens.recorded_sum_text,
+      comparability: body.input_tokens.comparability,
+      reason: body.input_tokens.reason,
+      coverage: body.input_tokens.coverage,
+      partitions: Object.fromEntries(body.input_tokens.semantics_partitions.map(item => [item.semantics, { value_text: item.value_text, coverage: item.coverage }])),
+    },
+  }
 }
 
 test('day-1 path: guided import, deep links, report, re-import leaves totals unchanged', async ({ page, browser }) => {
@@ -156,16 +184,42 @@ test('day-1 path: guided import, deep links, report, re-import leaves totals unc
   await expect(page.getByRole('heading', { name: 'Import a trace file' })).toBeVisible()
   await page.goForward()
 
-  expect(comparable(await summary(page))).toEqual(TOTALS)
+  expect(dashboardTruth(await summary(page))).toEqual(TOTALS)
   await page.getByRole('link', { name: 'Open dashboard' }).click()
   await expect(page).toHaveURL(/\/overview/)
   await expect(page.getByRole('region', { name: 'Sessions' }).first()).toContainText('80')
-  await expect(page.getByRole('region', { name: 'Model calls' })).toContainText('4,770')
-  await expect(page.getByRole('region', { name: 'Tool calls' })).toContainText('5,723')
-  const tokens = page.getByRole('region', { name: 'Input tokens' })
-  await expect(tokens).toContainText('553.4M')
-  await expect(tokens).toContainText('exact 553,447,877')
-  await expect(tokens).toContainText('coverage 4,770 / 4,770 calls')
+  await expect(page.getByRole('region', { name: 'Model-call observations' })).toContainText('4,770')
+  await expect(page.getByRole('region', { name: 'Tool-call observations' })).toContainText('5,723')
+  const tokens = page.getByRole('region', { name: 'Input usage by accounting group' })
+  // the card surface: the accounting groups as compact rows, abbreviated with the exact value under
+  // each; the comparability reason and the raw semantics ids live in the definition popover
+  await expect(tokens).toContainText('Claude')
+  await expect(tokens).toContainText('186.5M')
+  await expect(tokens).toContainText('exact 186,454,781')
+  await expect(tokens).toContainText('Codex')
+  await expect(tokens).toContainText('367M')
+  await expect(tokens).toContainText('exact 366,993,096')
+  await expect(tokens).toContainText(/coverage 4,?770 \/ 4,?770 calls/)
+  await expect(tokens).not.toContainText('553,447,877')
+  await expect(tokens).not.toContainText('Not comparable')
+  await tokens.getByRole('button', { name: /Definition/ }).click()
+  const tokensPop = page.getByRole('dialog')
+  await expect(tokensPop).toContainText('2 token semantics')
+  await expect(tokensPop).toContainText('tracelab-claude')
+  await page.keyboard.press('Escape')
+  const cost = page.getByRole('region', { name: 'Scheduled cost' })
+  // one dollar figure (money adds across accounting groups), its exact line, one priced-coverage line;
+  // the split, schedule version, unpriced calls and caveats are in the popover
+  await expect(cost).toContainText('$132.88')
+  await expect(cost).toContainText('exact 132.8761978')
+  await expect(cost).toContainText(/priced .*% of recorded tokens/)
+  await expect(cost).not.toContainText('Not comparable')
+  await expect(cost).not.toContainText('openrouter-2026')
+  await cost.getByRole('button', { name: /Definition/ }).click()
+  const costPop = page.getByRole('dialog')
+  await expect(costPop).toContainText('openrouter-2026-09-08')
+  await expect(costPop).toContainText('148 calls unpriced')
+  await page.keyboard.press('Escape')
 
   // the same bytes again: the File stop names the earlier import, the report is a duplicate
   await page.goto('/import')
@@ -184,14 +238,14 @@ test('day-1 path: guided import, deep links, report, re-import leaves totals unc
   expect(secondImportId).not.toBe(firstImportId)
   await expect(page.getByText('These bytes were already imported for this source. No observations were inserted.')).toBeVisible()
   await expect(page.getByRole('link', { name: firstImportId }).first()).toBeVisible() // the report points at the original
-  expect(comparable(await summary(page))).toEqual(TOTALS)
+  expect(dashboardTruth(await summary(page))).toEqual(TOTALS)
 })
 
 test('scope, rail, session and the modal source-record dialog', async ({ page }) => {
   await page.goto('/overview')
   const agent = page.getByRole('group', { name: 'Scope' }).getByLabel('Agent')
-  await agent.fill('codex')
-  await agent.press('Enter')
+  await expect(agent.getByRole('option', { name: 'codex' })).toBeAttached()
+  await agent.selectOption('codex')
   await expect(page).toHaveURL(/agent=codex/)
   await expect(page.getByRole('group', { name: 'Scope' })).toContainText(`${CODEX.sessions} sessions · ${CODEX.model_calls.toLocaleString('en-US')} model calls`)
   await expect(page.getByRole('region', { name: 'Sessions' }).first()).toContainText(String(CODEX.sessions))
@@ -222,13 +276,29 @@ test('scope, rail, session and the modal source-record dialog', async ({ page })
   await expect(dialog).toHaveCount(0)
   await expect(button).toBeFocused()
 
+  // A chart bar carries the server-returned drill envelope through list and detail links.
+  await page.goto('/overview')
+  const toolBar = page.getByRole('region', { name: 'Tool calls' }).getByRole('button').first()
+  await expect(toolBar).toBeVisible()
+  await toolBar.click()
+  await expect(page).toHaveURL(/\/sessions\?.*drill=/)
+  const drillValue = new URL(page.url()).searchParams.get('drill')
+  expect(drillValue).toBeTruthy()
+  const scopedRows = page.getByRole('table', { name: 'Sessions in scope' }).getByRole('row')
+  await expect(scopedRows.nth(1)).toBeVisible()
+  await scopedRows.nth(1).getByRole('link').first().click()
+  const sessionsCrumb = page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Sessions' })
+  await expect(sessionsCrumb).toHaveAttribute('href', /drill=/)
+  await sessionsCrumb.click()
+  expect(new URL(page.url()).searchParams.get('drill')).toBe(drillValue)
+
   // popover: Escape closes and returns focus; skip link is the first tab stop
   await page.goto('/overview')
-  const info = page.getByRole('button', { name: 'Definition of Input tokens' })
+  const info = page.getByRole('button', { name: 'Definition of Input usage by accounting group' })
   await info.click()
-  await expect(page.getByRole('dialog', { name: 'Input tokens' })).toContainText('Definition')
+  await expect(page.getByRole('dialog', { name: 'Input usage by accounting group' })).toContainText('Definition')
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog', { name: 'Input tokens' })).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'Input usage by accounting group' })).toHaveCount(0)
   await expect(info).toBeFocused()
   // from the top of the document, the first Tab stop is the skip link
   await page.goto('/overview')
@@ -241,6 +311,8 @@ test('deep links, redirects and the theme stamped before the app runs', async ({
   await expect(page.getByRole('group', { name: 'Scope' }).getByLabel('Agent')).toHaveValue('codex')
   await expect(page.getByRole('table', { name: 'Sessions in scope' }).getByRole('row').nth(1)).toContainText('codex')
   await page.goto('/sessions?source=nope')
+  await expect(page.getByRole('group', { name: 'Scope' }).getByLabel('Source')).toHaveValue('nope')
+  await expect(page.getByRole('group', { name: 'Scope' }).getByRole('option', { name: 'nope' })).toBeAttached()
   await expect(page.getByText('No sessions match this scope. Clear the scope or import traces.')).toBeVisible()
   await page.goto('/dashboard?agent=codex')
   await expect(page).toHaveURL(/\/overview\?agent=codex$/)

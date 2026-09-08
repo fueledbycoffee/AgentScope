@@ -100,6 +100,32 @@ def test_metric_use_cases_use_trace_query_and_reject_invalid_specs():
     assert result.buckets[0].result.semantics_partitions[1].value_text is None
 
 
+def test_scope_facets_clear_only_their_own_dimension():
+    from agentscope_app.application.metric_queries import AggregateRow, AggregateRows
+    from agentscope_app.application.use_cases.queries import ListScopeFacets
+    from agentscope_app.domain.metrics import AggregatePart
+    from tests.application.fakes import FakeUnitOfWork
+
+    uow = FakeUnitOfWork()
+    uow.trace_query.results["sessions"] = AggregateRows(
+        (AggregateRow(("alpha",), (AggregatePart(1, 1, 1),)),)
+    )
+    uow.trace_query.results["model_calls"] = AggregateRows(
+        (AggregateRow(("model-a",), (AggregatePart(1, 1, 1),)),)
+    )
+
+    facets = ListScopeFacets(uow.factory).execute(
+        TraceScope(source="selected", agent="agent-a", model="model-b")
+    )
+
+    assert facets.sources == facets.agents == ("alpha",)
+    assert facets.models == ("model-a",)
+    source, agent, model = uow.trace_query.specs
+    assert source.scope.source is None and source.scope.agent == "agent-a"
+    assert agent.scope.source == "selected" and agent.scope.agent is None
+    assert model.scope.model is None and model.scope.agent == "agent-a"
+
+
 def test_query_overall_combines_repeated_semantics_across_buckets():
     from agentscope_app.application.metric_queries import (
         AggregateRow,

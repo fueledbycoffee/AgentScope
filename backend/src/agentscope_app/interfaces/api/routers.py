@@ -24,6 +24,7 @@ from agentscope_app.application.dto import (
     RecordRow,
     RejectRow,
     RejectSummary,
+    ScopeFacets,
     SessionSummary,
     UploadInfo,
 )
@@ -53,6 +54,72 @@ Offset = Annotated[int, Query(ge=0)]
 def _c(request: Request) -> Container:
     container: Container = request.app.state.container
     return container
+
+
+_SCOPE_TEXT = ("source", "agent", "model", "tool", "import_id", "token_semantics")
+_SCOPE_DATES = (
+    "started_from",
+    "started_before",
+    "started_through",
+    "witness_started_from",
+    "witness_started_before",
+    "witness_started_through",
+)
+_SCOPE_FLAGS = (
+    "model_is_unknown",
+    "agent_is_unknown",
+    "timestamp_missing",
+    "tool_is_unlinked",
+    "usage_missing",
+    "tool_is_linked",
+    "witness_time_override",
+    "witness_required",
+    "witness_timestamp_missing",
+)
+_SCOPE_FIELDS = frozenset((*_SCOPE_TEXT, *_SCOPE_DATES, *_SCOPE_FLAGS, "activity_grain"))
+
+
+def _public_scope(request: Request, *extra: str) -> TraceScope:
+    """Parse the one public TraceScope allowlist and reject silent query narrowing."""
+    allowed = _SCOPE_FIELDS | frozenset(extra)
+    for name in request.query_params:
+        if name not in allowed:
+            raise invalid(f"query.{name}", "Unknown scope parameter")
+        if name != "group_by" and len(request.query_params.getlist(name)) > 1:
+            raise invalid(f"query.{name}", "Only group_by can be repeated")
+
+    values: dict[str, Any] = {}
+    for name in _SCOPE_TEXT:
+        text_value = request.query_params.get(name)
+        if text_value is not None:
+            values[name] = text_value
+    for name in _SCOPE_DATES:
+        date_text = request.query_params.get(name)
+        if date_text is not None:
+            try:
+                values[name] = datetime.fromisoformat(date_text.replace("Z", "+00:00"))
+            except ValueError:
+                raise invalid(name, "Date bound must be ISO-8601") from None
+    for name in _SCOPE_FLAGS:
+        flag_text = request.query_params.get(name)
+        if flag_text is None:
+            continue
+        normalized = flag_text.lower()
+        if normalized in {"1", "true", "on", "yes"}:
+            values[name] = True
+        elif normalized in {"0", "false", "off", "no"}:
+            values[name] = False
+        else:
+            raise invalid(name, "Boolean scope flags must be true or false")
+    activity = request.query_params.get("activity_grain")
+    if activity is not None:
+        try:
+            values["activity_grain"] = EntityGrain(activity)
+        except ValueError:
+            raise invalid(
+                "activity_grain", "Activity grain must be model_call or tool_call"
+            ) from None
+    return TraceScope(**values)
 
 
 @router.post("/uploads", status_code=201)
@@ -202,14 +269,11 @@ def list_records(
 @router.get("/sessions")
 def list_sessions(
     request: Request,
-    source: str | None = None,
-    agent: str | None = None,
     limit: Limit = 50,
     offset: Offset = 0,
 ) -> list[SessionSummary]:
-    return list(
-        _c(request).list_sessions.execute(source=source, agent=agent, limit=limit, offset=offset)
-    )
+    scope = _public_scope(request, "limit", "offset")
+    return list(_c(request).list_sessions.execute(scope=scope, limit=limit, offset=offset))
 
 
 @router.get("/sessions/{session_id}")
@@ -234,10 +298,13 @@ def get_raw_record(request: Request, file_sha256: str, locator: str) -> dict[str
 
 
 @router.get("/metrics/summary")
-def metrics_summary(
-    request: Request, source: str | None = None, agent: str | None = None
-) -> MetricsSummary:
-    return _c(request).metrics_summary.execute(source=source, agent=agent)
+def metrics_summary(request: Request) -> MetricsSummary:
+    return _c(request).metrics_summary.execute(scope=_public_scope(request))
+
+
+@router.get("/metrics/facets")
+def metric_facets(request: Request) -> ScopeFacets:
+    return _c(request).list_scope_facets.execute(_public_scope(request))
 
 
 @router.get("/imports/{import_id}/diagnostics")
@@ -265,82 +332,6 @@ def query_metric(
     request: Request,
     metric_id: str,
     group_by: Annotated[list[Dimension] | None, Query()] = None,
-    source: str | None = None,
-    agent: str | None = None,
-    model: str | None = None,
-    tool: str | None = None,
-    started_from: datetime | None = None,
-    started_before: datetime | None = None,
-    started_through: datetime | None = None,
-    import_id: str | None = None,
-    activity_grain: EntityGrain | None = None,
-    token_semantics: str | None = None,
-    model_is_unknown: bool = False,
-    agent_is_unknown: bool = False,
-    timestamp_missing: bool = False,
-    tool_is_unlinked: bool = False,
-    usage_missing: bool = False,
-    tool_is_linked: bool = False,
-    witness_time_override: bool = False,
-    witness_required: bool = False,
-    witness_started_from: datetime | None = None,
-    witness_started_before: datetime | None = None,
-    witness_started_through: datetime | None = None,
-    witness_timestamp_missing: bool = False,
 ) -> MetricQueryResult:
-    allowed = {
-        "metric_id",
-        "group_by",
-        "source",
-        "agent",
-        "model",
-        "tool",
-        "started_from",
-        "started_before",
-        "started_through",
-        "import_id",
-        "activity_grain",
-        "token_semantics",
-        "model_is_unknown",
-        "agent_is_unknown",
-        "timestamp_missing",
-        "tool_is_unlinked",
-        "usage_missing",
-        "tool_is_linked",
-        "witness_time_override",
-        "witness_required",
-        "witness_started_from",
-        "witness_started_before",
-        "witness_started_through",
-        "witness_timestamp_missing",
-    }
-    for name in request.query_params:
-        if name not in allowed:
-            raise invalid(f"query.{name}", "Unknown metric query parameter")
-        if name != "group_by" and len(request.query_params.getlist(name)) > 1:
-            raise invalid(f"query.{name}", "Only group_by can be repeated")
-    scope = TraceScope(
-        source=source,
-        agent=agent,
-        model=model,
-        tool=tool,
-        started_from=started_from,
-        started_before=started_before,
-        started_through=started_through,
-        import_id=import_id,
-        activity_grain=activity_grain,
-        token_semantics=token_semantics,
-        model_is_unknown=model_is_unknown,
-        agent_is_unknown=agent_is_unknown,
-        timestamp_missing=timestamp_missing,
-        tool_is_unlinked=tool_is_unlinked,
-        usage_missing=usage_missing,
-        tool_is_linked=tool_is_linked,
-        witness_time_override=witness_time_override,
-        witness_required=witness_required,
-        witness_started_from=witness_started_from,
-        witness_started_before=witness_started_before,
-        witness_started_through=witness_started_through,
-        witness_timestamp_missing=witness_timestamp_missing,
-    )
+    scope = _public_scope(request, "metric_id", "group_by")
     return _c(request).query_metric.execute(metric_id, scope, tuple(group_by or ()))

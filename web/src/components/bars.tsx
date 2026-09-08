@@ -1,54 +1,56 @@
-import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useScope } from '../scope'
+import { SCOPE_LABELS, formatScopeValue, useScope } from '../scope'
 import type { ScopeKey } from '../scope'
+import { groupExactText } from './exactText'
 import { Icon, IconButton } from './icons'
 
-export interface Dimension { key: ScopeKey; label: string; options: string[] }
+export interface Dimension { key: ScopeKey; label: string; options: readonly string[] }
 
-/**
- * One scope dimension. Until a facets endpoint exists (#11) the control is a
- * text input with the values seen so far as suggestions, so any value the
- * API accepts can be typed and an unknown URL value is shown as is. It is
- * controlled by the URL: Back and Clear update what it displays.
- */
-function ScopeInput({ dimension, value, onChange }: { dimension: Dimension; value: string; onChange: (value: string) => void }) {
-  const [draft, setDraft] = useState(value)
-  const [seen, setSeen] = useState(value)
-  if (seen !== value) { // the URL changed under us (Back, Clear): adopt it without remounting
-    setSeen(value)
-    setDraft(value)
-  }
-  const listId = useId()
-  const commit = () => { if (draft.trim() !== value) onChange(draft) }
+function ScopeSelect({ dimension, value, onChange }: { dimension: Dimension; value: string; onChange: (value: string) => void }) {
+  const options = value && !dimension.options.includes(value)
+    ? [value, ...dimension.options]
+    : dimension.options
   return <label className="dim">
     <span>{dimension.label}</span>
-    <input list={listId} value={draft} placeholder="All" size={14} onChange={event => setDraft(event.target.value)} onBlur={commit}
-      onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commit() } }} />
-    <datalist id={listId}>{dimension.options.map(option => <option key={option} value={option} />)}</datalist>
+    <select value={value} onChange={event => onChange(event.target.value)}>
+      <option value="">All</option>
+      {options.map(option => <option key={option} value={option}>{formatScopeValue(dimension.key, option)}</option>)}
+    </select>
   </label>
 }
 
-/** The scope bar: dimensions, Clear, and the receipt. State is the URL. */
+/** The sticky URL scope: four base dimensions, one derived drill, one receipt. */
 export function ScopeBar({ dimensions, receipt, loading }: { dimensions: Dimension[]; receipt?: ReactNode; loading?: boolean }) {
-  const { scope, set, clear } = useScope()
-  const active = dimensions.some(dimension => scope[dimension.key])
+  const { scope, drill, set, clear, removeDrill } = useScope()
+  const active = dimensions.some(dimension => scope[dimension.key]) || Boolean(drill)
   return <div className="bar" role="group" aria-label="Scope">
     <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>Scope</span>
-    {dimensions.map(dimension => <ScopeInput key={dimension.key} dimension={dimension} value={scope[dimension.key] ?? ''} onChange={value => set({ [dimension.key]: value })} />)}
-    {active && <IconButton name="x" label="Clear scope" className="btn quiet small icon-only" onClick={clear} />}
+    {dimensions.map(dimension => <ScopeSelect key={dimension.key} dimension={dimension} value={scope[dimension.key] ?? ''} onChange={value => set({ [dimension.key]: value })} />)}
+    {drill && <ScopeChip label={drill.label} value={drill.value} onRemove={removeDrill} />}
+    {active && <IconButton name="x" label="Clear all" className="btn quiet small icon-only" onClick={clear} />}
     <div className="receipt" aria-live="polite">{loading ? <span className="skeleton" style={{ display: 'inline-block', width: 180, height: 12 }} /> : receipt}</div>
   </div>
 }
 
-/** A removable drill chip; #11 wires chart clicks to it. Gallery-only until then. */
+/** Public leaf props stay stable for #46's ScopeChips composition. */
 export function ScopeChip({ label, value, onRemove }: { label: string; value: string; onRemove: () => void }) {
-  return <span className="chip">{label} {value}<button type="button" aria-label={`Remove ${label} ${value}`} title={`Remove ${label} ${value}`} onClick={onRemove}><Icon name="x" size={12} /></button></span>
+  const removal = `Remove ${label} ${value}`
+  return <span className="chip">{label} {value}<button type="button" className="has-tip" aria-label={removal} title={removal} data-tip={removal} onClick={onRemove}><Icon name="x" size={12} /></button></span>
 }
 
-export function ScopeReceipt({ sessions, modelCalls, imports }: { sessions?: number | null; modelCalls?: number | null; imports?: number | null }) {
-  const part = (value: number | null | undefined, noun: string) => value == null ? null : <><b>{value.toLocaleString('en-US')}</b> {noun}</>
-  const parts = [part(sessions, 'sessions'), part(modelCalls, 'model calls'), imports == null ? null : <>from <b>{imports}</b> {imports === 1 ? 'import' : 'imports'}</>].filter(Boolean)
+export interface ScopeReceiptProps {
+  sessionsText?: string | null
+  modelCallsText?: string | null
+  importsText?: string | null
+  resolvedPeriodText?: string | null
+}
+
+export function ScopeReceipt({ sessionsText, modelCallsText, importsText, resolvedPeriodText }: ScopeReceiptProps) {
+  const parts: ReactNode[] = []
+  if (sessionsText != null) parts.push(<><b>{groupExactText(sessionsText)}</b> sessions</>)
+  if (modelCallsText != null) parts.push(<><b>{groupExactText(modelCallsText)}</b> model calls</>)
+  if (importsText != null) parts.push(<>from <b>{groupExactText(importsText)}</b> imports</>)
+  if (resolvedPeriodText) parts.push(<>{resolvedPeriodText}</>)
   if (parts.length === 0) return <span>Scope receipt unavailable</span>
   return <>{parts.map((node, index) => <span key={index}>{index > 0 && ' · '}{node}</span>)}</>
 }
@@ -63,3 +65,5 @@ export function FileBar({ items, title }: { items: FileItem[]; title?: string })
     {items.map(item => <span key={item.label} className="file-item"><span>{item.label}</span><b className={item.mono ? 'mono' : undefined}>{item.value}</b></span>)}
   </div>
 }
+
+export { SCOPE_LABELS }

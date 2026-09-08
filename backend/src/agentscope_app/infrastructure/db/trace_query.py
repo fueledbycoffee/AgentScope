@@ -405,7 +405,7 @@ class SqlAlchemyTraceQuery:
             self._s.scalars(
                 select(SESSION_VIEW.c.id)
                 .where(*_scope_clauses(EntityGrain.SESSION, scope))
-                .order_by(SESSION_VIEW.c.id)
+                .order_by(SESSION_VIEW.c.observed_start_at.desc().nulls_last(), SESSION_VIEW.c.id)
                 .limit(limit)
                 .offset(offset)
             )

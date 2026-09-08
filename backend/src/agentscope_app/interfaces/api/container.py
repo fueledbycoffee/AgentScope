@@ -25,6 +25,7 @@ from agentscope_app.application.use_cases.queries import (
     ListMetricDefinitions,
     ListRecordOutcomes,
     ListRejects,
+    ListScopeFacets,
     ListSessions,
     MetricsSummary,
     QueryMetric,
@@ -64,6 +65,7 @@ class Container:
     get_raw_record: GetRawRecord
     metrics_summary: MetricsSummary
     list_metric_definitions: ListMetricDefinitions
+    list_scope_facets: ListScopeFacets
     query_metric: QueryMetric
     profile_file: ProfileFile
     prepare_context: PrepareContext
@@ -167,6 +169,7 @@ def build_container(settings: Settings) -> Container:
         get_raw_record=GetRawRecord(uow_factory),
         metrics_summary=MetricsSummary(uow_factory),
         list_metric_definitions=ListMetricDefinitions(price_schedule_loader=load_price_schedule),
+        list_scope_facets=ListScopeFacets(uow_factory),
         query_metric=QueryMetric(uow_factory),
         profile_file=profile_file,
         prepare_context=prepare_context,

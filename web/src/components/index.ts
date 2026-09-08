@@ -1,11 +1,11 @@
-// Charts are deliberately not re-exported here: Recharts must not enter the
-// production bundle until a screen uses it (#11). Import './components/charts' directly.
+export { DayBars, HBars, TokenBars } from './charts'
 export { ScopeBar, ScopeChip, ScopeReceipt, FileBar } from './bars'
-export type { Dimension, FileItem } from './bars'
+export type { Dimension, FileItem, ScopeReceiptProps } from './bars'
+export { groupExactText } from './exactText'
 export {
-  DataTable, Drawer, JsonText, KpiTile, Notice, Pagination, Popover, QualityStrip, Skeleton, StateBlock, StatusPill,
+  abbreviateDecimalText, DataTable, Drawer, HeadlineTile, JsonText, KpiTile, Notice, Pagination, Popover, QualityStrip, Skeleton, StateBlock, StatusPill,
 } from './primitives'
-export type { Column, KpiProps, QualityItem } from './primitives'
+export type { Column, KpiProps, MetricDisplay, QualityItem } from './primitives'
 export { SourceRecordDialog } from './source'
 export { Icon, IconButton } from './icons'
 export type { IconName } from './icons'

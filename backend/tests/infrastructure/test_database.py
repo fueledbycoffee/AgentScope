@@ -13,6 +13,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from agentscope_app.application.dto import FileBinding, ImportReport, MappingRecord, MappingRef
+from agentscope_app.application.metric_queries import TraceScope
 from agentscope_app.application.use_cases.imports import CommitImport, PreviewImport
 from agentscope_app.application.use_cases.queries import GetSession, ListSessions, MetricsSummary
 from agentscope_app.application.use_cases.uploads import StoreUpload
@@ -208,7 +209,9 @@ def test_end_to_end_commit_over_the_fixture_then_reimport(engine: Any, tmp_path:
         assert uow.imports.rejects(report.import_id, None, None, None, 10, 0) == []
         assert uow.traces.raw_record(info.sha256, "line:1")["provider"] in ("claude", "codex")
 
-    sessions = ListSessions(uow_factory).execute(source="tracelab", agent=None, limit=100, offset=0)
+    sessions = ListSessions(uow_factory).execute(
+        scope=TraceScope(source="tracelab"), limit=100, offset=0
+    )
     assert len(sessions) == 80 and {s.agent for s in sessions} == {"claude-code", "codex"}
     assert sum(s.model_call_count for s in sessions) == 4770
     biggest = max(sessions, key=lambda s: s.tool_call_count)
@@ -392,7 +395,9 @@ def test_cross_file_session_merge_keeps_reducer_rules(engine: Any) -> None:
             sessions=reduce_sessions(e, seeds),
         )
         uow.commit()
-    sessions = ListSessions(uow_factory).execute(source="tracelab", agent=None, limit=10, offset=0)
+    sessions = ListSessions(uow_factory).execute(
+        scope=TraceScope(source="tracelab"), limit=10, offset=0
+    )
     detail = GetSession(uow_factory).execute(sessions[0].id)
     assert detail.repo == "repo-a" and detail.declared_started_at == noon
     assert detail.declared_ended_at is None
@@ -438,7 +443,9 @@ def test_cross_file_reduction_keeps_valid_timestamps_via_seeds(engine: Any) -> N
             sessions=reduce_sessions(e, seeds),
         )
         uow.commit()
-    sessions = ListSessions(uow_factory).execute(source="tracelab", agent=None, limit=10, offset=0)
+    sessions = ListSessions(uow_factory).execute(
+        scope=TraceScope(source="tracelab"), limit=10, offset=0
+    )
     detail = GetSession(uow_factory).execute(sessions[0].id)
     assert (detail.declared_started_at, detail.declared_ended_at) == (t(12), t(13))
     assert [d.code for d in detail.diagnostics] == ["conflicting_value"]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 from typing import cast as typing_cast
@@ -822,22 +823,17 @@ class SqlAlchemyTraces:
         )
 
     def list_sessions(
-        self, *, source: str | None, agent: str | None, limit: int, offset: int
+        self, *, scope: TraceScope, limit: int, offset: int
     ) -> Sequence[SessionSummary]:
-        stmt = select(m.Session)
-        if source is not None:
-            stmt = stmt.where(m.Session.source == source)
-        if agent is not None:
-            stmt = stmt.where(m.Session.agent == agent)
-        stmt = (
-            stmt.order_by(m.Session.observed_start_at.desc().nulls_last(), m.Session.id)
-            .limit(limit)
-            .offset(offset)
-        )
-        rows = list(self._s.scalars(stmt))
-        metrics = SqlAlchemyTraceQuery(self._s).session_metrics(
-            TraceScope(source=source, agent=agent, session_ids=tuple(r.id for r in rows))
-        )
+        query = SqlAlchemyTraceQuery(self._s)
+        ids = tuple(query.session_ids(scope, limit=limit, offset=offset))
+        if not ids:
+            return []
+        indexed = {
+            row.id: row for row in self._s.scalars(select(m.Session).where(m.Session.id.in_(ids)))
+        }
+        rows = [indexed[session_id] for session_id in ids]
+        metrics = SqlAlchemyTraceQuery(self._s).session_metrics(replace(scope, session_ids=ids))
         return [self._summary(r, metrics.get(r.id, {})) for r in rows]
 
     def get_session(self, session_id: str) -> SessionDetail | None:

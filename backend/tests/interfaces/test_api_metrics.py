@@ -106,10 +106,91 @@ def test_metrics_http_metadata_coverage_and_exact_text(client):
     assert counts["overall"]["value_text"] == "0"
     assert counts["overall"]["coverage"] == {"known": 0, "total": 0}
     # Raw provenance stays raw while the metric normalizes the tag to unknown.
-    sessions = container.list_sessions.execute(source=None, agent=None)
+    sessions = container.list_sessions.execute(scope=TraceScope())
     assert any(
         container.get_session.execute(s.id).model_calls[0].token_semantics is None for s in sessions
     )
+
+
+def test_summary_facets_and_sessions_share_the_public_scope(client):
+    ingest(client)
+    facets = client.get("/api/metrics/facets")
+    assert facets.status_code == 200, facets.text
+    assert facets.json()["sources"] == ["tracelab"]
+    assert facets.json()["agents"]
+    assert all(value is not None for value in facets.json()["models"])
+
+    grouped = client.get(
+        "/api/metrics/query", params={"metric_id": "model_calls", "group_by": "model"}
+    ).json()
+    scope = {
+        key: value
+        for key, value in grouped["buckets"][0]["drill_scope"].items()
+        if key != "session_ids" and value is not None
+    }
+    for path in ("/api/metrics/summary", "/api/metrics/facets", "/api/sessions"):
+        response = client.get(path, params=scope)
+        assert response.status_code == 200, response.text
+
+    for path in ("/api/metrics/summary", "/api/metrics/facets", "/api/sessions"):
+        for params in ({"session_ids": "private"}, [("source", "one"), ("source", "two")]):
+            invalid_response = client.get(path, params=params)
+            assert invalid_response.status_code == 400
+            assert invalid_response.json()["error"]["code"] == "invalid_input"
+
+
+def test_returned_tool_scope_preserves_exact_label_whitespace(client):
+    container = client.app.state.container
+    mapping_id = container.list_mappings.execute()[0].id
+    record = json.loads(_tracelab_line("padded-tool"))
+    record["tools"] = [{"tool_name": " Read "}]
+    info = container.store_upload.execute("padded-tool.jsonl", (json.dumps(record) + "\n").encode())
+    report = container.commit_import.execute("tracelab", [FileBinding(info.upload_id, mapping_id)])
+    assert report.status == "committed"
+
+    grouped = client.get(
+        "/api/metrics/query",
+        params={"metric_id": "tool_calls", "group_by": "tool_name"},
+    )
+    assert grouped.status_code == 200, grouped.text
+    bucket = grouped.json()["buckets"][0]
+    assert bucket["keys"] == [" Read "]
+    scope = {key: value for key, value in bucket["drill_scope"].items() if value is not None}
+    assert scope["tool"] == " Read "
+
+    sessions = client.get("/api/sessions", params=scope)
+    assert sessions.status_code == 200, sessions.text
+    assert [session["external_id"] for session in sessions.json()] == ["claude:padded-tool"]
+
+
+def test_returned_empty_tool_scope_replays_only_its_own_population(client):
+    container = client.app.state.container
+    mapping_id = container.list_mappings.execute()[0].id
+    records = []
+    for session_id, tool_name in [("empty-tool", ""), ("named-tool", "Read")]:
+        record = json.loads(_tracelab_line(session_id))
+        record["tools"] = [{"tool_name": tool_name}]
+        records.append(json.dumps(record) + "\n")
+    info = container.store_upload.execute("empty-tool.jsonl", "".join(records).encode())
+    report = container.commit_import.execute("tracelab", [FileBinding(info.upload_id, mapping_id)])
+    assert report.status == "committed"
+
+    grouped = client.get(
+        "/api/metrics/query",
+        params={"metric_id": "tool_calls", "group_by": "tool_name"},
+    )
+    assert grouped.status_code == 200, grouped.text
+    bucket = next(item for item in grouped.json()["buckets"] if item["keys"] == [""])
+    assert bucket["result"]["value_text"] == "1"
+    scope = {key: value for key, value in bucket["drill_scope"].items() if value is not None}
+    assert scope["tool"] == ""
+
+    replay = client.get("/api/metrics/query", params={**scope, "metric_id": "tool_calls"})
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["overall"]["value_text"] == "1"
+    sessions = client.get("/api/sessions", params=scope)
+    assert sessions.status_code == 200, sessions.text
+    assert [session["external_id"] for session in sessions.json()] == ["claude:empty-tool"]
 
 
 @pytest.mark.parametrize(
@@ -363,8 +444,12 @@ def test_scheduled_cost_exact_rates_semantics_splits_and_token_coverage(client, 
     assert response.status_code == 200, response.text
     result = response.json()["overall"]
     assert result["schedule_version"] == "offline-test-v1"
-    assert result["value_text"] is None
+    assert result["value_text"] == "0.66"
     assert result["recorded_sum_text"] == "0.66"
+    assert result["comparability"] == "not_applicable"
+    assert result["reason"] == (
+        "Sum of priced groups; unpriced groups excluded, see priced coverage."
+    )
     assert result["priced_coverage"] == {
         "known": 100,
         "total": 275,
@@ -565,8 +650,9 @@ def test_tracelab_fixture_scheduled_cost_by_accounting_group(client):
         },
     ).json()
     overall = body["overall"]
-    assert overall["value_text"] is None  # mixed accounting groups still require a split
+    assert overall["value_text"] == "132.8761978"  # USD adds across accounting groups
     assert overall["recorded_sum_text"] == "132.8761978"
+    assert overall["comparability"] == "not_applicable"
     assert overall["coverage"] == {"known": 4622, "total": 4770}
     parts = {p["semantics"]: p for p in overall["semantics_partitions"]}
     # Independent raw-fixture arithmetic; see backend/prices/README.md.

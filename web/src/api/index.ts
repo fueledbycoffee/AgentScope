@@ -1,8 +1,9 @@
 import type {
-  AssistantOutcome, AssistantRequest, ErrorDetail, ImportPreview, ImportReject, ImportReport, ImportRequest,
-  ImportSummary, Json, Mapping, MappingDetail, MetricsSummary, Page, PreparedContext, PreviewRequest,
-  ProfileReport, RawRecord, RecordRow, RejectSummary, RawReference, SavedMapping, Scope, Session,
-  SessionDetail, Upload, ValidationResult,
+  ApiTraceScope, AssistantOutcome, AssistantRequest, ErrorDetail, ImportPreview, ImportReject,
+  ImportReport, ImportRequest, ImportSummary, Json, Mapping, MappingDetail, MetricDefinition,
+  MetricDimension, MetricQuery, MetricsSummary, Page, PreparedContext, PreviewRequest, ProfileReport,
+  RawRecord, RecordRow, RejectSummary, RawReference, SavedMapping, Scope, ScopeFacets, Session, SessionDetail,
+  Upload, ValidationResult,
 } from './types'
 export type * from './types'
 import { envelopeWithRawJson, prettyJson } from '../assist/jsonText'
@@ -43,6 +44,30 @@ function query(params: Page & Scope & { code?: string; rule_id?: string; outcome
   }
   return search.size ? `?${search}` : ''
 }
+
+export const API_SCOPE_KEYS = [
+  'source', 'agent', 'model', 'tool', 'started_from', 'started_before', 'started_through',
+  'import_id', 'activity_grain', 'token_semantics', 'model_is_unknown', 'agent_is_unknown',
+  'timestamp_missing', 'tool_is_unlinked', 'usage_missing', 'tool_is_linked',
+  'witness_time_override', 'witness_required', 'witness_started_from',
+  'witness_started_before', 'witness_started_through', 'witness_timestamp_missing',
+] as const satisfies readonly (keyof ApiTraceScope)[]
+
+function appendScope(search: URLSearchParams, scope: ApiTraceScope = {}) {
+  for (const key of API_SCOPE_KEYS) {
+    const value = scope[key]
+    if (value === true) search.set(key, 'true')
+    else if (typeof value === 'string' && value !== '') search.set(key, value)
+  }
+}
+
+function scopedQuery(scope: ApiTraceScope = {}, page?: Page) {
+  const search = new URLSearchParams()
+  appendScope(search, scope)
+  if (page?.limit !== undefined) search.set('limit', String(page.limit))
+  if (page?.offset !== undefined) search.set('offset', String(page.offset))
+  return search.size ? `?${search}` : ''
+}
 const post = (body: unknown): RequestInit => ({
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
 })
@@ -62,10 +87,21 @@ export const listRejects = (id: string, params?: Page & { code?: string; rule_id
 export const getRejectSummary = (id: string) => request<RejectSummary>(`/imports/${encodeURIComponent(id)}/rejects/summary`)
 export const listRecords = (id: string, params?: Page & { outcome?: string; file_sha256?: string }) =>
   request<RecordRow[]>(`/imports/${encodeURIComponent(id)}/records${query(params)}`)
-export const listSessions = (params?: Page & Scope) => request<Session[]>(`/sessions${query(params)}`)
+export const listSessions = (params: Page & ApiTraceScope = {}) => {
+  const { limit, offset, ...scope } = params
+  return request<Session[]>(`/sessions${scopedQuery(scope, { limit, offset })}`)
+}
 export const getSession = (id: string) => request<SessionDetail>(`/sessions/${encodeURIComponent(id)}`)
 export const getRawRecord = (reference: RawReference) => request<RawRecord>(`/raw-records${query(reference)}`)
-export const getMetricsSummary = (scope?: Scope) => request<MetricsSummary>(`/metrics/summary${query(scope)}`)
+export const getMetricsSummary = (scope: ApiTraceScope = {}) => request<MetricsSummary>(`/metrics/summary${scopedQuery(scope)}`)
+export const getMetricDefinitions = () => request<MetricDefinition[]>('/metrics/definitions')
+export const getScopeFacets = (scope: ApiTraceScope = {}) => request<ScopeFacets>(`/metrics/facets${scopedQuery(scope)}`)
+export function queryMetric(metricId: string, groupBy: MetricDimension[] = [], scope: ApiTraceScope = {}) {
+  const search = new URLSearchParams({ metric_id: metricId })
+  for (const dimension of groupBy) search.append('group_by', dimension)
+  appendScope(search, scope)
+  return request<MetricQuery>(`/metrics/query?${search}`)
+}
 
 // --- mapping assistant -----------------------------------------------------------------------
 export const profileUpload = (uploadId: string) =>

@@ -421,9 +421,10 @@ def test_session_metrics_match_summary_definition_and_partitions(database):
         statements.append(statement)
 
     event.listen(engine, "before_cursor_execute", record)
-    rows = ListSessions(factory).execute(source=None, agent=None)
+    rows = ListSessions(factory).execute(scope=TraceScope())
     event.remove(engine, "before_cursor_execute", record)
-    assert len(statements) == 4  # session page plus three grouped metrics, independent of page size
+    # Scoped ID selection, hydration, then three grouped metrics; independent of page size.
+    assert len(statements) == 5
     # Fixture deliberately leaves cached counts at zero; repository uses actual scoped definitions.
     assert sum(r.model_call_count for r in rows) == 6
     assert sum(r.tool_call_count for r in rows) == 3
@@ -433,6 +434,30 @@ def test_session_metrics_match_summary_definition_and_partitions(database):
         assert row.model_call_count == summary.model_calls.value
         assert row.tool_call_count == summary.tool_calls.value
         assert GetSession(factory).execute(row.id).summary == row
+
+    missing = ListSessions(factory).execute(scope=TraceScope(usage_missing=True), limit=10)
+    assert [row.id for row in missing] == ["s1"]
+    assert missing[0].model_call_count == 1
+    assert missing[0].tool_call_count == 2
+    assert missing[0].input_tokens.value_text is None
+    assert missing[0].input_tokens.coverage.known == 0
+    assert missing[0].input_tokens.coverage.total == 1
+
+
+def test_session_ids_order_and_offset_are_stable(database):
+    from agentscope_app.application.use_cases.queries import ListSessions
+
+    engine, _ = database
+    with Session(engine) as session:
+        session.get(m.Session, "s1").observed_start_at = datetime(2026, 1, 1, tzinfo=UTC)
+        session.get(m.Session, "s2").observed_start_at = datetime(2026, 1, 2, tzinfo=UTC)
+        session.get(m.Session, "empty").observed_start_at = None
+        session.commit()
+
+    factory = make_uow_factory(engine)
+    first = ListSessions(factory).execute(scope=TraceScope(), limit=1, offset=0)
+    rest = ListSessions(factory).execute(scope=TraceScope(), limit=10, offset=1)
+    assert [row.id for row in [*first, *rest]] == ["s2", "s1", "empty"]
 
 
 def test_missing_time_applies_to_current_grain_and_all_required_witnesses(database):
@@ -741,6 +766,42 @@ def test_cost_preserves_scopes_entity_grain_and_unknown_timestamp_counts(databas
             TraceScope(started_from=datetime(2026, 1, 1, tzinfo=UTC)),
         )
         assert query.aggregate(spec).excluded_unknown_timestamps == 2
+
+
+def test_cost_overall_adds_priced_usd_across_accounting_groups(database):
+    from fractions import Fraction
+
+    from agentscope_app.application.metric_queries import assemble_query
+    from agentscope_app.domain.pricing import ModelRates, PriceSchedule
+
+    engine, _ = database
+    schedule = PriceSchedule(
+        "test-additive-v1",
+        {"m": ModelRates(Fraction("0.01"), Fraction("0.02"), Fraction("0.001"))},
+    )
+    with Session(engine) as session:
+        claude = session.get(m.ModelCall, "c0")
+        codex = session.get(m.ModelCall, "c1")
+        assert claude is not None and codex is not None
+        claude.token_semantics = "tracelab-claude"
+        codex.model = "m"
+        codex.token_semantics = "tracelab-codex"
+        codex.output_tokens = 11
+        session.commit()
+
+        spec = MetricQuerySpec(REGISTRY.get("scheduled_cost_usd"))
+        result = assemble_query(
+            spec, SqlAlchemyTraceQuery(session, schedule).aggregate(spec)
+        ).overall
+
+    assert result.value_text == "0.413"
+    assert result.comparability == "not_applicable"
+    assert [
+        (part.semantics, part.value_text) for part in result.semantics_partitions if part.value_text
+    ] == [
+        ("tracelab-claude", "0.193"),
+        ("tracelab-codex", "0.22"),
+    ]
 
 
 def test_unknown_timestamps_preserves_missing_time_tool_drill_from_import(tmp_path):

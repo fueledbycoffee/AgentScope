@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 from agentscope_app.application.dto import (
@@ -14,6 +14,7 @@ from agentscope_app.application.dto import (
     RecordRow,
     RejectRow,
     RejectSummary,
+    ScopeFacets,
     SessionDetail,
     SessionSummary,
 )
@@ -144,13 +145,11 @@ class ListSessions:
         self._uow_factory = uow_factory
 
     def execute(
-        self, *, source: str | None, agent: str | None, limit: int = 50, offset: int = 0
+        self, *, scope: TraceScope, limit: int = 50, offset: int = 0
     ) -> Sequence[SessionSummary]:
         limit, offset = _page(limit, offset)
         with self._uow_factory() as uow:
-            return list(
-                uow.traces.list_sessions(source=source, agent=agent, limit=limit, offset=offset)
-            )
+            return list(uow.traces.list_sessions(scope=scope, limit=limit, offset=offset))
 
 
 class GetSession:
@@ -237,6 +236,32 @@ class ListMetricDefinitions:
                 aliases = "; ".join(f"{a} → {t}" for a, t in sorted(schedule.aliases.items()))
                 definition["caveat"] += f" Aliases in force ({schedule.version}): {aliases}."
         return definitions
+
+
+class ListScopeFacets:
+    """Complete base-filter values under the other active predicates."""
+
+    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+        self._query = QueryMetric(uow_factory)
+
+    def execute(self, scope: TraceScope) -> ScopeFacets:
+        def values(metric_id: str, dimension: Dimension, effective: TraceScope) -> tuple[str, ...]:
+            result = self._query.execute(metric_id, effective, (dimension,))
+            return tuple(
+                key
+                for bucket in result.buckets
+                if bucket.keys and isinstance((key := bucket.keys[0]), str)
+            )
+
+        return ScopeFacets(
+            sources=values("sessions", Dimension.SOURCE, replace(scope, source=None)),
+            agents=values(
+                "sessions", Dimension.AGENT, replace(scope, agent=None, agent_is_unknown=False)
+            ),
+            models=values(
+                "model_calls", Dimension.MODEL, replace(scope, model=None, model_is_unknown=False)
+            ),
+        )
 
 
 class QueryMetric:

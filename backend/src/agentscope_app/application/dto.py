@@ -316,6 +316,13 @@ class MetricsSummary:
     output_tokens: Metric
 
 
+@dataclass(frozen=True)
+class ScopeFacets:
+    sources: tuple[str, ...]
+    agents: tuple[str, ...]
+    models: tuple[str, ...]
+
+
 # --- mapping assistant (ADR-005) ---------------------------------------------------------
 
 
