@@ -41,8 +41,9 @@ uv run uvicorn agentscope_app.interfaces.api.main:app --host 127.0.0.1 --port 80
 ```
 
 The first start creates `backend/data/agentscope.sqlite3`, applies migrations,
-loads `backend/mappings/`, creates `backend/data/raw-files/`, and serves the
-built SPA. In another terminal, this checks application liveness:
+loads `backend/mappings/`, and serves the built SPA. The first upload creates
+its content-addressed path under `backend/data/raw-files/`. In another terminal,
+this checks application liveness:
 
 ```sh
 curl -fsS http://127.0.0.1:8000/api/health
