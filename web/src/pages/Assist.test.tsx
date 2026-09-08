@@ -122,4 +122,34 @@ describe('Assist page', () => {
     await waitFor(() => expect(calls.filter(c => c.path === '/assistant/run')).toHaveLength(1))
     expect((calls.find(c => c.path === '/assistant/run')!.body as { context_sha256: string }).context_sha256).toBe('sample-digest')
   })
+
+  it('switches to the field table, edits one option through the planner and keeps the rest of the text', async () => {
+    renderPage()
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    // the JSON view is the default until the table covers the whole DSL
+    expect(screen.getByRole('button', { name: 'JSON document' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Field table' })).toHaveAttribute('aria-pressed', 'false')
+
+    const document = '{"name": "draft", "source": "assist", "big": 9007199254740993, "rules": [{"id": "r", "entity": "session", "fields": {"started_at": {"path": "$.ts", "timestamp_format": "epoch_ms"}}}]}'
+    fireEvent.change(screen.getByLabelText('Mapping document (JSON)'), { target: { value: document } })
+    fireEvent.click(screen.getByRole('button', { name: 'Field table' }))
+    expect(screen.getByRole('region', { name: 'Rule r' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Mapping document (JSON)')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('timestamp_format of started_at in r'), { target: { value: 'epoch_s' } })
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
+    const text = (screen.getByLabelText('Mapping document (JSON)') as HTMLTextAreaElement).value
+    expect(text).toBe(document.replace('epoch_ms', 'epoch_s'))
+    expect(text).toContain('9007199254740993')
+    expect(calls.filter(c => c.path === '/mappings')).toHaveLength(0)
+  })
+
+  it('keeps the JSON view when the document cannot be shown as rows, and says why', async () => {
+    renderPage()
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    fireEvent.change(screen.getByLabelText('Mapping document (JSON)'), { target: { value: '{"rules": [1,' } })
+    const table = screen.getByRole('button', { name: 'Field table' })
+    expect(table).toBeDisabled()
+    expect(table.getAttribute('data-tip')).toContain('The field table needs a JSON object')
+  })
 })

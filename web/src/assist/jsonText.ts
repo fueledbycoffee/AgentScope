@@ -1,10 +1,11 @@
-import { rawValueOf } from './document'
+import { rawValueOf, scanDocument, valueSpanAt } from './document'
 
 /**
  * Lossless helpers over JSON *text*. The mapping document is edited and sent as text so numbers
  * keep the exact lexemes the user or the server wrote (`1.0` stays `1.0`, 2^53+1 stays itself);
- * nothing here parses numbers. A small tokenizer drives pretty-printing, extraction of the
- * proposal's mapping from a raw response, and locating the line of a validation-issue path.
+ * nothing here parses numbers. The permissive tokenizer below now drives only pretty-printing,
+ * which never sees text the grammar in `jsonGrammar.ts` has not accepted first; addressing (the
+ * proposal's mapping, the line of a validation-issue path) goes through that grammar.
  */
 
 export type Token =
@@ -74,23 +75,6 @@ export function prettyJson(text: string, indent = 2): string {
   return out
 }
 
-/** The text of the balanced value starting at `tokens[start]`, sliced from the original text. */
-function valueSpan(text: string, tokens: Token[], start: number): { text: string; end: number } {
-  const first = tokens[start]
-  if (first.kind !== 'punct') return { text: first.text, end: start }
-  let depth = 0
-  for (let i = start; i < tokens.length; i += 1) {
-    const t = tokens[i]
-    if (t.kind !== 'punct') continue
-    if (t.text === '{' || t.text === '[') depth += 1
-    if (t.text === '}' || t.text === ']') {
-      depth -= 1
-      if (depth === 0) return { text: text.slice(first.offset, t.offset + 1), end: i }
-    }
-  }
-  throw new SyntaxError('Unbalanced JSON')
-}
-
 /**
  * The raw text of `proposal.mapping` inside a run response, exactly as the server wrote it, or
  * null when the response has no proposal, is not valid JSON, or resolves its keys ambiguously.
@@ -119,51 +103,14 @@ export function pathSegments(path: string): (string | number)[] {
   return segments
 }
 
-/** 1-based line of the value at `path` in the text, following objects and array indices; null if absent. */
+/**
+ * 1-based line of the value at `path`, or null when the path is absent — or when the document is
+ * not valid JSON, since the grammar refuses to guess a location inside text it cannot read. The
+ * caller says so rather than doing nothing: a missing member has no line either way.
+ */
 export function lineFor(text: string, path: string): number | null {
-  const wanted = pathSegments(path)
-  let tokens: Token[]
-  try { tokens = tokenize(text) } catch { return null }
-  if (tokens.length === 0) return null
-  const lineAt = (offset: number) => text.slice(0, offset).split('\n').length
-
-  // descend token by token: at each level, find the segment then continue inside its value
-  let start = 0
-  for (const segment of wanted) {
-    const container = tokens[start]
-    if (container.kind !== 'punct') return null
-    const end = valueSpan(text, tokens, start).end
-    let found: number | null = null
-    if (container.text === '{' && typeof segment === 'string') {
-      let depth = 0
-      for (let i = start; i <= end; i += 1) {
-        const t = tokens[i]
-        if (t.kind === 'punct') {
-          if (t.text === '{' || t.text === '[') depth += 1
-          else if (t.text === '}' || t.text === ']') depth -= 1
-          continue
-        }
-        if (depth === 1 && t.kind === 'string' && t.text === JSON.stringify(segment) && tokens[i + 1]?.kind === 'punct' && tokens[i + 1].text === ':') { found = i + 2; break }
-      }
-    } else if (container.text === '[' && typeof segment === 'number') {
-      let depth = 0
-      let index = 0
-      for (let i = start + 1; i <= end; i += 1) {
-        const t = tokens[i]
-        if (depth === 0 && (t.kind !== 'punct' || t.text === '{' || t.text === '[')) {
-          if (index === segment) { found = i; break }
-          if (t.kind === 'punct') { i = valueSpan(text, tokens, i).end }
-          index += 1
-          continue
-        }
-        if (t.kind === 'punct') {
-          if (t.text === '{' || t.text === '[') depth += 1
-          else if (t.text === '}' || t.text === ']') depth -= 1
-        }
-      }
-    }
-    if (found === null) return null
-    start = found
-  }
-  return lineAt(tokens[start].offset)
+  const tree = scanDocument(text)
+  if ('problem' in tree) return null
+  const span = valueSpanAt(tree, pathSegments(path))
+  return span === null ? null : text.slice(0, span.start).split('\n').length
 }

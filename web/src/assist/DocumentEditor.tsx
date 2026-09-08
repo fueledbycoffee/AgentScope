@@ -1,76 +1,52 @@
-import { useId, useRef } from 'react'
-import type { MappingIssue } from '../api/types'
-import { IconButton } from '../components'
+import { useEffect, useRef } from 'react'
 import { lineFor } from './jsonText'
 
 export interface DocumentEditorProps {
   text: string
   onChange: (text: string) => void
-  issues: MappingIssue[] | null
-  /** True when the issues describe the current text. */
-  current: boolean
   disabled: boolean
-  canUndo: boolean
-  onUndo: () => void
+  /** An issue to go to: the line of that path is selected and scrolled into view. */
+  focusRequest: { path: string; nonce: number } | null
+  /** Told when a path has no line here, so the page can say so instead of doing nothing. */
+  onNotFound: (path: string) => void
 }
 
 /**
  * The mapping document as text: the source of truth for validation, saving and revision.
  * Nothing re-serialises it; what is shown is what is sent.
  */
-export function DocumentEditor({ text, onChange, issues, current, disabled, canUndo, onUndo }: DocumentEditorProps) {
-  const id = useId()
+export function DocumentEditor({ text, onChange, disabled, focusRequest, onNotFound }: DocumentEditorProps) {
   const area = useRef<HTMLTextAreaElement>(null)
-  const errors = issues?.filter(i => i.severity === 'error') ?? []
-  const warnings = issues?.filter(i => i.severity !== 'error') ?? []
-  const lines = text ? text.split('\n').length : 0
+  const handled = useRef(0)
 
-  function jump(path: string) {
-    const line = lineFor(text, path)
+  useEffect(() => {
+    if (focusRequest === null || focusRequest.nonce === handled.current) return
+    handled.current = focusRequest.nonce
+    const line = lineFor(text, focusRequest.path)
     const element = area.current
-    if (line === null || !element) return
+    if (element === null) return
+    if (line === null) {
+      onNotFound(focusRequest.path)
+      element.focus()
+      return
+    }
     const offset = text.split('\n').slice(0, line - 1).join('\n').length + (line > 1 ? 1 : 0)
     element.focus()
     element.setSelectionRange(offset, offset)
     const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight) || 18
     element.scrollTop = Math.max(0, (line - 3) * lineHeight)
-  }
+  }, [focusRequest, text, onNotFound])
 
   return (
-    <section className="assist-editor" aria-labelledby={`${id}-title`}>
-      <div className="panel-head">
-        <h2 id={`${id}-title`}>Mapping document</h2>
-        <span className="muted">{lines.toLocaleString('en-US')} lines</span>
-        <IconButton name="refresh" label="Undo the last proposal" className="btn small icon-only" disabled={!canUndo || disabled} onClick={onUndo} />
-      </div>
-      <textarea
-        ref={area}
-        id={`${id}-text`}
-        className="editor mono"
-        aria-label="Mapping document (JSON)"
-        aria-invalid={current && errors.length > 0 ? true : undefined}
-        aria-describedby={`${id}-issues`}
-        spellCheck={false}
-        value={text}
-        disabled={disabled}
-        placeholder='{"dsl_version": 1, "target_schema_version": 1, "name": "…", "source": "…", "input_format": "jsonl", "rules": []}'
-        onChange={e => onChange(e.target.value)}
-      />
-      <div id={`${id}-issues`} className="issues">
-        {issues === null && <p className="muted">Not validated yet.</p>}
-        {issues !== null && !current && <p className="muted">Edited since the last validation.</p>}
-        {issues !== null && current && issues.length === 0 && <p className="ok">No issues: the document is executable.</p>}
-        {issues !== null && current && issues.length > 0 && (
-          <ul aria-label="Validation issues">
-            {[...errors, ...warnings].map((issue, index) => (
-              <li key={index} className={issue.severity === 'error' ? 'issue error' : 'issue warn'}>
-                <button type="button" className="link" onClick={() => jump(issue.path)} title="Jump to the line"><code>{issue.path || '$'}</code></button>
-                <span className="mono code">{issue.code}</span> {issue.message}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
+    <textarea
+      ref={area}
+      className="editor mono"
+      aria-label="Mapping document (JSON)"
+      spellCheck={false}
+      value={text}
+      disabled={disabled}
+      placeholder='{"dsl_version": 1, "target_schema_version": 1, "name": "…", "source": "…", "input_format": "jsonl", "rules": []}'
+      onChange={event => onChange(event.target.value)}
+    />
   )
 }

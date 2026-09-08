@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ApiError,
@@ -11,10 +11,11 @@ import {
   validateMappingText,
 } from '../api'
 import type { FieldProfile, Upload } from '../api'
-import { Notice } from '../components'
+import { IconButton, Notice } from '../components'
 import { useFileBar } from '../shellHooks'
 import {
   acknowledge,
+  applyDocumentEdits,
   canImport,
   canPreview,
   canSave,
@@ -37,6 +38,12 @@ import {
   type AssistState,
 } from '../assist/assistRuntime'
 import { ActionBar } from '../assist/ActionBar'
+import { showPath, type DocPath } from '../assist/document'
+import { indexDocument } from '../assist/documentIndex'
+import { controlIdFor } from '../assist/issuePaths'
+import { FieldTable } from '../assist/FieldTable'
+import { IssueList } from '../assist/IssueList'
+import { ViewSwitch, type DocumentView } from '../assist/ViewSwitch'
 import { Conversation } from '../assist/Conversation'
 import { DocumentEditor } from '../assist/DocumentEditor'
 import { EvidenceRail } from '../assist/EvidenceRail'
@@ -68,6 +75,8 @@ export default function AssistPage() {
   const [profile, setProfile] = useState<FieldProfile | null>(null)
   const [profileError, setProfileError] = useState<unknown>()
   const [drawerRequested, setDrawerOpen] = useState(false)
+  const [view, setView] = useState<DocumentView>('json')
+  const [focusRequest, setFocusRequest] = useState<{ path: string; nonce: number } | null>(null)
   // the drawer opens by itself when a sample needs acknowledging
   const drawerOpen = drawerRequested || state.busy === 'awaiting_ack'
   const inFlight = useRef<{ kind: string; generation: number } | null>(null)
@@ -166,6 +175,28 @@ export default function AssistPage() {
       .catch(error => update(s => ({ ...setBusy(s, 'none'), notices: [...s.notices, { kind: 'error', text: messageOf(error).message }] })))
   }
 
+  // the table is an indexed view over the same text; the JSON view stays the default until the
+  // table covers the whole DSL, so nothing that exists today loses its editor
+  const index = useMemo(() => indexDocument(state.documentText), [state.documentText])
+  const documentLines = state.documentText ? state.documentText.split('\n').length : 0
+  const tableProblem = index.problem === null ? null : `The field table needs a JSON object: ${index.problem}`
+  // a document that stops being addressable falls back to the repair view during render, so the
+  // table is never asked to show rows it cannot build
+  const shownView: DocumentView = tableProblem === null ? view : 'json'
+
+  /** Go to an issue: the control that owns it when the table shows one, else its line in the JSON. */
+  const jumpTo = useCallback((path: string) => {
+    const id = controlIdFor(path)
+    const element = id === null ? null : document.getElementById(id)
+    if (element !== null) {
+      element.focus()
+      element.scrollIntoView({ block: 'center' })
+      return
+    }
+    setView('json')
+    setFocusRequest(previous => ({ path, nonce: (previous?.nonce ?? 0) + 1 }))
+  }, [])
+
   const identityIssue = identityProblem(state.identity)
   const busyLabel = { none: '', preparing: 'Preparing the context…', awaiting_ack: 'Waiting for you to review the payload', running: 'Asking the assistant…', validating: 'Validating…', saving: 'Saving…', previewing: 'Previewing…', importing: 'Importing…' }[state.busy]
   const chatDisabled = identityIssue ? `Enter a mapping name and source first (${identityIssue})` : undefined
@@ -201,15 +232,37 @@ export default function AssistPage() {
           disabled={state.busy !== 'none'}
         />
         <div className="stack">
-          <DocumentEditor
-            text={state.documentText}
-            onChange={text => update(s => setDocumentText(s, text))}
-            issues={state.validation?.issues ?? null}
-            current={state.validation?.documentVersion === state.documentVersion}
-            disabled={state.busy !== 'none'}
-            canUndo={state.undo !== null}
-            onUndo={() => update(undoDocument)}
-          />
+          <section className="assist-editor" aria-labelledby="document-title">
+            <div className="panel-head">
+              <h2 id="document-title">Mapping document</h2>
+              <span className="muted">{documentLines.toLocaleString('en-US')} lines</span>
+              <ViewSwitch view={shownView} onChange={setView} tableDisabled={tableProblem ?? undefined} />
+              <IconButton name="refresh" label="Undo the last change" className="btn small icon-only" disabled={state.undo === null || state.busy !== 'none'} onClick={() => update(undoDocument)} />
+            </div>
+            {shownView === 'json' ? (
+              <DocumentEditor
+                text={state.documentText}
+                onChange={text => update(s => setDocumentText(s, text))}
+                disabled={state.busy !== 'none'}
+                focusRequest={focusRequest}
+                onNotFound={path => update(s => ({ ...s, notices: [...s.notices, { kind: 'info', text: `${path || '$'} has no line in this document; it is missing rather than wrong.` }] }))}
+              />
+            ) : (
+              <FieldTable
+                index={index}
+                issues={state.validation?.issues ?? null}
+                current={state.validation?.documentVersion === state.documentVersion}
+                disabled={state.busy !== 'none'}
+                onEdit={edits => update(s => applyDocumentEdits(s, edits))}
+                onOpenJson={(path: DocPath) => jumpTo(showPath(path))}
+              />
+            )}
+            <IssueList
+              issues={state.validation?.issues ?? null}
+              current={state.validation?.documentVersion === state.documentVersion}
+              onJump={jumpTo}
+            />
+          </section>
           <ActionBar
             busy={busyLabel}
             validateReason={validateReason}

@@ -79,4 +79,18 @@
   color: var(--ink);
 }
 .chat-input:focus-visible, .assist-editor .editor:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.chat-msg-assistant > :nth-child(2) { margin-top: 6px; font-size: 0.75rem; color: var(--ink-2); }
+/* the receipt is its own element, rendered from the message's metadata, not by position */
+.chat-receipt { margin: 6px 0 0; font-size: 0.75rem; color: var(--ink-2); }
+
+/* field table: an indexed view over the document text */
+.view-switch { display: flex; gap: 2px; }
+.view-switch .btn.selected { background: var(--surface-2); border-color: var(--accent); }
+.field-table { display: flex; flex-direction: column; gap: var(--sp-3); min-height: 420px; }
+.field-table .rule { border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--sp-2); }
+.field-table .rule h3 { margin: 0; flex: 1; font-size: 0.95rem; }
+.field-table .table-wrap { overflow-x: auto; }
+.field-table .options { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.field-table .options select { font-size: 0.8rem; }
+.field-table .chip.warn { color: var(--warn); }
+.field-table th[scope="row"] { text-align: left; font-weight: 500; }
+.field-table .issues { margin: 0; }
