@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 from agentscope_app.application.dto import (
     DIAGNOSTIC_MESSAGES,
     CachedProfile,
-    Coverage,
     DiagnosticCode,
     DiagnosticPeer,
     DiagnosticRow,
@@ -44,16 +43,14 @@ from agentscope_app.application.dto import (
     RawRecord as RawRecordDTO,
 )
 from agentscope_app.application.errors import ConflictError, NotFoundError
+from agentscope_app.application.metric_queries import AggregateRows, TraceScope, assemble_metric
 from agentscope_app.domain.claims import ClaimCandidate, ClaimCondition, ConditionCode
 from agentscope_app.domain.mapping.interpreter import Emission
+from agentscope_app.domain.metrics import REGISTRY
 from agentscope_app.domain.reducer import SessionAggregate
 from agentscope_app.infrastructure.db import models as m
 from agentscope_app.infrastructure.db.claims import ClaimIndex
-
-_SESSION_TOKENS_DEFINITION = (
-    "Sum of input_tokens over this session's model calls with a known value; "
-    "coverage is known calls over all calls."
-)
+from agentscope_app.infrastructure.db.trace_query import SqlAlchemyTraceQuery
 
 
 def _new_id(prefix: str) -> str:
@@ -808,22 +805,10 @@ class SqlAlchemyTraces:
         self._s.flush()
         return ids
 
-    def _token_metric(self, session_id: str) -> Metric:
-        known, total, total_tokens = self._s.execute(
-            select(
-                func.count(m.ModelCall.input_tokens),
-                func.count(m.ModelCall.id),
-                func.sum(m.ModelCall.input_tokens),
-            ).where(m.ModelCall.session_id == session_id)
-        ).one()
-        return Metric(
-            value=int(total_tokens) if known else None,
-            definition=_SESSION_TOKENS_DEFINITION,
-            unit="tokens",
-            coverage=Coverage(int(known), int(total)),
-        )
+    def _summary(self, row: m.Session, metrics: dict[str, AggregateRows]) -> SessionSummary:
+        def metric(metric_id: str) -> Metric:
+            return assemble_metric(REGISTRY.get(metric_id), metrics.get(metric_id, AggregateRows()))
 
-    def _summary(self, row: m.Session) -> SessionSummary:
         return SessionSummary(
             id=row.id,
             source=row.source,
@@ -831,25 +816,29 @@ class SqlAlchemyTraces:
             agent=row.agent,
             observed_start_at=row.observed_start_at,
             observed_end_at=row.observed_end_at,
-            model_call_count=row.model_call_count,
-            tool_call_count=row.tool_call_count,
-            input_tokens=self._token_metric(row.id),
+            model_call_count=int(metric("model_calls").value or 0),
+            tool_call_count=int(metric("tool_calls").value or 0),
+            input_tokens=metric("input_tokens"),
         )
 
     def list_sessions(
         self, *, source: str | None, agent: str | None, limit: int, offset: int
     ) -> Sequence[SessionSummary]:
         stmt = select(m.Session)
-        if source:
+        if source is not None:
             stmt = stmt.where(m.Session.source == source)
-        if agent:
+        if agent is not None:
             stmt = stmt.where(m.Session.agent == agent)
         stmt = (
             stmt.order_by(m.Session.observed_start_at.desc().nulls_last(), m.Session.id)
             .limit(limit)
             .offset(offset)
         )
-        return [self._summary(r) for r in self._s.scalars(stmt)]
+        rows = list(self._s.scalars(stmt))
+        metrics = SqlAlchemyTraceQuery(self._s).session_metrics(
+            TraceScope(source=source, agent=agent, session_ids=tuple(r.id for r in rows))
+        )
+        return [self._summary(r, metrics.get(r.id, {})) for r in rows]
 
     def get_session(self, session_id: str) -> SessionDetail | None:
         row = self._s.get(m.Session, session_id)
@@ -869,7 +858,12 @@ class SqlAlchemyTraces:
             select(m.SessionDiagnostic).where(m.SessionDiagnostic.session_id == session_id)
         ).all()
         return SessionDetail(
-            summary=self._summary(row),
+            summary=self._summary(
+                row,
+                SqlAlchemyTraceQuery(self._s)
+                .session_metrics(TraceScope(session_ids=(row.id,)))
+                .get(row.id, {}),
+            ),
             declared_started_at=row.declared_started_at,
             declared_ended_at=row.declared_ended_at,
             repo=row.repo,
@@ -920,49 +914,6 @@ class SqlAlchemyTraces:
             )
         )
         return None if row is None else row.payload
-
-    def metrics_summary(self, *, source: str | None, agent: str | None) -> dict[str, Any]:
-        session_filter = []
-        if source:
-            session_filter.append(m.Session.source == source)
-        if agent:
-            session_filter.append(m.Session.agent == agent)
-        sessions = int(self._s.scalar(select(func.count(m.Session.id)).where(*session_filter)) or 0)
-        calls_stmt = (
-            select(
-                func.count(m.ModelCall.id),
-                func.count(m.ModelCall.input_tokens),
-                func.sum(m.ModelCall.input_tokens),
-            )
-            .join(m.Session, m.Session.id == m.ModelCall.session_id)
-            .where(*session_filter)
-        )
-        total_calls, known, tokens = self._s.execute(calls_stmt).one()
-        tool_calls = int(
-            self._s.scalar(
-                select(func.count(m.ToolCall.id))
-                .join(m.Session, m.Session.id == m.ToolCall.session_id)
-                .where(*session_filter)
-            )
-            or 0
-        )
-        by_semantics = {
-            (tag or "unknown"): int(total)
-            for tag, total in self._s.execute(
-                select(m.ModelCall.token_semantics, func.sum(m.ModelCall.input_tokens))
-                .join(m.Session, m.Session.id == m.ModelCall.session_id)
-                .where(*session_filter, m.ModelCall.input_tokens.is_not(None))
-                .group_by(m.ModelCall.token_semantics)
-            )
-        }
-        return {
-            "sessions": sessions,
-            "model_calls": int(total_calls or 0),
-            "tool_calls": tool_calls,
-            "input_tokens_known": int(known or 0),
-            "input_tokens_sum": int(tokens) if tokens is not None else None,
-            "by_semantics": by_semantics,
-        }
 
 
 INSERT_CHUNK = 500  # rows per executemany batch, well under SQLite's bound-parameter limit

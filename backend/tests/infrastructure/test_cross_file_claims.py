@@ -262,7 +262,7 @@ def test_0005_missing_provenance_upgrade_succeeds_unchecked(env: Env, damage):
     before = snapshots(env)
     run_migrations(env.engine)
     assert snapshots(env) == before
-    assert env.sql("SELECT version_num FROM alembic_version") == [("0005",)]
+    assert env.sql("SELECT version_num FROM alembic_version") == [("0010",)]
     assert env.sql("SELECT duplicate_detection_version FROM imports") == [(None,)]
     assert env.sql("SELECT COUNT(*) FROM entity_claims") == [(0,)]
     conditions = env.sql(
