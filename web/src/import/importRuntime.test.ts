@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ImportPreview, Mapping, Upload } from '../api'
 import {
-  aggregatePreview, clampStep, duplicateHashes, highestReachableStep, importReducer, mappingCandidates,
+  aggregatePreview, clampStep, duplicateHashes, highestReachableStep, importReducer, mappingCandidates, mixedSources,
   parseStoredImportState, requestFor, requestedStep, serializeImportState,
 } from './importRuntime'
 
@@ -57,6 +57,16 @@ describe('guided import runtime', () => {
     expect(changed.entries[1].preview).toBeNull()
   })
 
+  it('adding or removing a file invalidates the aggregate preview gate', () => {
+    const first = { upload: upload(), mappingId: 'map_1', preview: { value: preview, detailsAvailable: true } }
+    const second = { upload: upload('upl_2', 'b'.repeat(64)), mappingId: 'map_1', preview: { value: preview, detailsAvailable: true } }
+    const added = importReducer({ entries: [first] }, { type: 'add', entries: [second] })
+    expect(added.entries.every(entry => entry.preview === null)).toBe(true)
+    const removed = importReducer({ entries: [first, second] }, { type: 'remove', uploadId: 'upl_2' })
+    expect(removed.entries).toHaveLength(1)
+    expect(removed.entries[0].preview).toBeNull()
+  })
+
   it('orders current bundled mappings first and badges superseded revisions', () => {
     const candidates = mappingCandidates(upload(), [mapping('old', 1), mapping('current', 2), { ...mapping('user', 3, 'user'), name: 'other' }])
     expect(candidates.map(candidate => [candidate.mapping.id, candidate.recommended, candidate.superseded])).toEqual([
@@ -73,6 +83,9 @@ describe('guided import runtime', () => {
     expect(requestFor([first, { ...second, upload: upload('upl_2', 'b'.repeat(64)) }], mappings)).toEqual({
       source: 'trace', files: [{ upload_id: 'upl_1', mapping_id: 'map_1' }, { upload_id: 'upl_2', mapping_id: 'map_2' }],
     })
+    const otherSource = { ...mapping('map_other'), name: 'other', source: 'other' }
+    expect(mixedSources([first, { ...second, upload: upload('upl_2', 'b'.repeat(64)), mappingId: 'map_other' }], [...mappings, otherSource])).toBe(true)
+    expect(() => requestFor([first, { ...second, upload: upload('upl_2', 'b'.repeat(64)), mappingId: 'map_other' }], [...mappings, otherSource])).toThrow('same source')
   })
 
   it('persists only receipt and count data, not decoded records or sample rows', () => {

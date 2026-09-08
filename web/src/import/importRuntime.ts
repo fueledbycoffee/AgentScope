@@ -37,9 +37,18 @@ export const EMPTY_IMPORT_STATE: ImportState = { entries: [] }
 export function importReducer(state: ImportState, action: ImportAction): ImportState {
   switch (action.type) {
     case 'add':
-      return { entries: [...state.entries, ...action.entries] }
+      return {
+        entries: [
+          ...state.entries.map(entry => ({ ...entry, preview: null })),
+          ...action.entries.map(entry => ({ ...entry, preview: null })),
+        ],
+      }
     case 'remove':
-      return { entries: state.entries.filter(entry => entry.upload.upload_id !== action.uploadId) }
+      return {
+        entries: state.entries
+          .filter(entry => entry.upload.upload_id !== action.uploadId)
+          .map(entry => ({ ...entry, preview: null })),
+      }
     case 'mapping':
       return {
         entries: state.entries.map(entry => entry.upload.upload_id === action.uploadId
@@ -123,8 +132,12 @@ export function duplicateHashes(entries: ImportEntry[]): boolean {
 }
 
 export function selectedMappings(entries: ImportEntry[], mappings: Mapping[]): Mapping[] | null {
+  if (entries.length === 0) return null
   const byId = new Map(mappings.map(mapping => [mapping.id, mapping]))
-  const selected = entries.map(entry => entry.mappingId ? byId.get(entry.mappingId) : undefined)
+  const selected = entries.map(entry => {
+    const mapping = entry.mappingId ? byId.get(entry.mappingId) : undefined
+    return mapping?.input_format === entry.upload.format ? mapping : undefined
+  })
   return selected.every((mapping): mapping is Mapping => mapping !== undefined) ? selected : null
 }
 

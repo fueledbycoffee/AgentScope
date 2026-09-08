@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { serializeImportState } from './import/importRuntime'
 import { mapping, metrics, preview, rawRecord, reject, report, session, upload } from './test/fixtures'
 
 const fetchMock = vi.fn<typeof fetch>()
@@ -29,43 +30,61 @@ function defaultResponse(input: RequestInfo | URL, options?: RequestInit): Promi
 function start(route = '/import') {
   render(<MemoryRouter initialEntries={[route]}><App /></MemoryRouter>)
 }
-async function selectFile() {
+async function uploadOne() {
   await screen.findByLabelText('Trace file')
   fireEvent.change(screen.getByLabelText('Trace file'), { target: { files: [new File(['{}'], 'sample.jsonl.gz')] } })
   await screen.findByRole('heading', { name: 'Uploaded file' })
-  await screen.findByRole('option', { name: /revision 1/ })
-  fireEvent.change(screen.getByLabelText('Mapping'), { target: { value: 'map_1' } })
+}
+async function chooseMapping() {
+  fireEvent.click(screen.getByRole('button', { name: 'Continue to mapping' }))
+  await screen.findByRole('heading', { name: 'Choose how to read it' })
+  fireEvent.click(await screen.findByRole('radio', { name: /tracelab-v1.*revision 1/ }))
 }
 async function makePreview() {
-  await selectFile()
-  fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
-  await screen.findByRole('heading', { name: 'Import preview' })
+  await uploadOne()
+  await chooseMapping()
+  fireEvent.click(screen.getByRole('button', { name: 'Run a dry run' }))
+  await screen.findByRole('heading', { name: 'Dry run on up to 200 records per file' })
+  await screen.findByText('Expected an integer')
+}
+async function makeConfirmation() {
+  await makePreview()
+  fireEvent.click(screen.getByRole('button', { name: 'Looks right, continue' }))
+  await screen.findByRole('heading', { name: 'Confirm and run' })
 }
 
 beforeEach(() => {
+  sessionStorage.clear()
   fetchMock.mockImplementation(defaultResponse)
   vi.stubGlobal('fetch', fetchMock)
   // jsdom does not implement the native dialog methods.
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', '') } })
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open') } })
 })
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); fetchMock.mockReset() })
+afterEach(() => { sessionStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); fetchMock.mockReset() })
 
 describe('Import flow', () => {
   it('uploads multipart bytes, previews, confirms, and fetches the persisted report and rejects', async () => {
     start()
-    await makePreview()
+    await uploadOne()
     expect(screen.getByRole('heading', { name: 'Already imported' })).toBeInTheDocument()
-    expect(screen.getByText('1024 bytes')).toBeInTheDocument()
+    expect(screen.getByText('1,024 bytes')).toBeInTheDocument()
     expect(screen.getByRole('table', { name: 'First decoded records (up to 20)' })).toHaveTextContent('native_1')
-    expect(screen.getByRole('table', { name: 'Rejects sample' })).toHaveTextContent('Expected an integer')
-    expect(screen.getByRole('table', { name: 'Emissions sample' })).toHaveTextContent('input_tokens')
     const uploadOptions = fetchMock.mock.calls.find(([url]) => url === '/api/uploads')![1]!
     expect(uploadOptions.method).toBe('POST')
     expect((uploadOptions.body as FormData).get('file')).toBeInstanceOf(File)
     expect(uploadOptions.headers).toBeUndefined()
+    await chooseMapping()
+    fireEvent.click(screen.getByRole('button', { name: 'Run a dry run' }))
+    await screen.findByRole('heading', { name: 'Dry run on up to 200 records per file' })
+    expect(await screen.findByRole('table', { name: 'Rejects sample' })).toHaveTextContent('Expected an integer')
+    expect(screen.getByRole('table', { name: 'Emissions sample' })).toHaveTextContent('input_tokens')
     expect(fetchMock).toHaveBeenCalledWith('/api/imports/preview', expect.objectContaining({ body: JSON.stringify({ upload_id: 'upl_1', mapping_id: 'map_1', sample: 200 }) }))
-    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Looks right, continue' }))
+    expect(await screen.findByRole('heading', { name: 'Confirm and run' })).toBeInTheDocument()
+    expect(screen.getByText(/tracelab-v1 revision 1/)).toBeInTheDocument()
+    expect(screen.getAllByText('d044a766')).not.toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Import 3 records' }))
     await screen.findAllByText('committed')
     expect(fetchMock).toHaveBeenCalledWith('/api/imports', expect.objectContaining({ body: JSON.stringify({ upload_id: 'upl_1', mapping_id: 'map_1', source: 'tracelab' }) }))
     expect(fetchMock).toHaveBeenCalledWith('/api/imports/imp_1', undefined)
@@ -84,7 +103,7 @@ describe('Import flow', () => {
       : defaultResponse(url, options))
     start()
     await makePreview()
-    const counts = screen.getByRole('heading', { name: 'Entity observations' }).parentElement!
+    const counts = screen.getByRole('heading', { name: 'Entity observations' }).closest('section')!
     for (const [kind, value] of [['session', 'session' in entities ? 1 : 0], ['model call', 'model_call' in entities ? 2 : 0], ['tool call', 0]] as const) {
       expect(within(within(counts).getByText(kind).parentElement!).getByText(String(value))).toBeInTheDocument()
     }
@@ -97,45 +116,52 @@ describe('Import flow', () => {
       ? Promise.resolve(json({ ...upload, preview: [{ locator: 'line:1', payload: null, error: 'Invalid JSON at line 1' }] }))
       : defaultResponse(url, options))
     start()
-    await selectFile()
+    await uploadOne()
     expect(screen.getByRole('table', { name: 'First decoded records (up to 20)' })).toHaveTextContent('Invalid JSON at line 1')
   })
 
   it('invalidates confirmation when the mapping or file changes', async () => {
     start()
-    await makePreview()
-    fireEvent.change(screen.getByLabelText('Mapping'), { target: { value: 'map_2' } })
-    expect(screen.queryByRole('button', { name: 'Import' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
-    await screen.findByRole('heading', { name: 'Import preview' })
-    fireEvent.change(screen.getByLabelText('Trace file'), { target: { files: [new File(['{}'], 'other.jsonl')] } })
-    expect(screen.queryByRole('button', { name: 'Import' })).not.toBeInTheDocument()
-    await screen.findByRole('heading', { name: 'Uploaded file' })
-    expect(screen.getByLabelText('Mapping')).toHaveValue('')
+    await makeConfirmation()
+    fireEvent.click(screen.getByRole('button', { name: 'Mapping' }))
+    fireEvent.click(screen.getByRole('radio', { name: /tracelab-v1.*revision 2/ }))
+    expect(screen.queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run a dry run' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+    fetchMock.mockResolvedValueOnce(json({ ...upload, upload_id: 'upl_2', sha256: 'b'.repeat(64), filename: 'other.jsonl' }))
+    fireEvent.change(screen.getByLabelText('Add another trace file'), { target: { files: [new File(['{}'], 'other.jsonl')] } })
+    expect(await screen.findByRole('table', { name: 'Files ready for this import' })).toHaveTextContent('other.jsonl')
+    expect(screen.queryByRole('button', { name: /Import 6 records/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to mapping' }))
+    expect(await screen.findAllByRole('radio', { name: /tracelab-v1.*revision 2/ })).toHaveLength(2)
   })
 
   it('shows contract error details and allows a failed preview to be retried', async () => {
     start()
-    await selectFile()
+    await uploadOne()
+    await chooseMapping()
     fetchMock.mockResolvedValueOnce(json({ error: { code: 'invalid_mapping', message: 'Mapping is invalid', details: [{ path: 'rules[0]', message: 'Missing identity' }] } }, 400))
-    fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Run a dry run' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Mapping is invalid')
     fireEvent.click(screen.getByText('Error details'))
     expect(screen.getByRole('alert')).toHaveTextContent('Missing identity')
-    expect(screen.queryByRole('button', { name: 'Import' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
-    await screen.findByRole('button', { name: 'Import' })
+    expect(screen.queryByRole('button', { name: /Import \d+ records/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry the dry run' }))
+    await screen.findByRole('button', { name: 'Looks right, continue' })
   })
 
   it('blocks repeated commits while importing and surfaces conflicts without claiming success', async () => {
     start()
-    await makePreview()
+    await makeConfirmation()
     let finish!: (response: Response) => void
     fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
-    const button = screen.getByRole('button', { name: 'Import' })
+    const button = screen.getByRole('button', { name: 'Import 3 records' })
     fireEvent.click(button)
     fireEvent.click(button)
     expect(button).toBeDisabled()
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    expect(screen.getByText('Importing 3 records in one transaction')).toBeInTheDocument()
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/imports')).toHaveLength(1)
     await act(async () => finish(json({ error: { code: 'import_conflict', message: 'Another import committed these bytes', details: [] } }, 409)))
     expect(await screen.findByRole('alert')).toHaveTextContent('import_conflict')
@@ -144,28 +170,27 @@ describe('Import flow', () => {
 
   it('imports several files as one batch, each with its own mapping, and refuses the same bytes twice', async () => {
     start()
-    await makePreview()
-    fireEvent.click(screen.getByRole('button', { name: 'Add to batch and choose another file' }))
-    expect(screen.getByRole('table', { name: 'Batch' })).toHaveTextContent('sample.jsonl.gz')
-    expect(screen.queryByRole('heading', { name: 'Import preview' })).not.toBeInTheDocument()
-    // the same bytes again: allowed in the batch table only once
-    await screen.findByLabelText('Add another trace file')
+    await uploadOne()
+    fetchMock.mockResolvedValueOnce(json({ ...upload, upload_id: 'upl_copy', filename: 'copy.jsonl.gz' }))
     fireEvent.change(screen.getByLabelText('Add another trace file'), { target: { files: [new File(['{}'], 'copy.jsonl.gz')] } })
-    await screen.findByRole('heading', { name: 'Uploaded file' })
-    fireEvent.change(screen.getByLabelText('Mapping'), { target: { value: 'map_2' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
-    await screen.findByRole('heading', { name: 'Import preview' })
+    expect(await screen.findByRole('table', { name: 'Files ready for this import' })).toHaveTextContent('copy.jsonl.gz')
     expect(screen.getByRole('alert')).toHaveTextContent('same bytes')
-    expect(screen.getByRole('button', { name: 'Import 2 files' })).toBeDisabled()
-    // a different file: the batch of two posts the files form with per-file mappings
+    expect(screen.getByRole('button', { name: 'Continue to mapping' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove copy.jsonl.gz' }))
+
     fetchMock.mockImplementationOnce(() => Promise.resolve(json({ ...upload, upload_id: 'upl_2', sha256: 'b'.repeat(64), filename: 'second.jsonl' })))
     fireEvent.change(screen.getByLabelText('Add another trace file'), { target: { files: [new File(['{}'], 'second.jsonl')] } })
     await screen.findByText('second.jsonl')
-    fireEvent.change(screen.getByLabelText('Mapping'), { target: { value: 'map_2' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
-    await screen.findByRole('heading', { name: 'Import preview' })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to mapping' }))
+    await screen.findByRole('heading', { name: 'Choose how to read it' })
+    fireEvent.click(screen.getAllByRole('radio', { name: /tracelab-v1.*revision 1/ })[0])
+    expect(screen.getAllByRole('radio', { name: /tracelab-v1.*revision 2/ })[1]).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Run a dry run' }))
+    await screen.findByRole('heading', { name: 'Dry run on up to 200 records per file' })
+    await waitFor(() => expect(screen.getByText('6', { selector: 'dd' })).toBeInTheDocument())
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Import 2 files' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Looks right, continue' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Import 6 records' }))
     await screen.findAllByText('committed')
     expect(fetchMock).toHaveBeenCalledWith('/api/imports', expect.objectContaining({
       body: JSON.stringify({ source: 'tracelab', files: [{ upload_id: 'upl_1', mapping_id: 'map_1' }, { upload_id: 'upl_2', mapping_id: 'map_2' }] }),
@@ -173,20 +198,16 @@ describe('Import flow', () => {
     expect(screen.getByRole('table', { name: 'Imported files' })).toHaveTextContent('tracelab-v1 · rev 1')
   })
 
-  it('submits a fully queued batch without a current preview', async () => {
-    start()
-    await makePreview()
-    fireEvent.click(screen.getByRole('button', { name: 'Add to batch and choose another file' }))
-    fetchMock.mockImplementationOnce(() => Promise.resolve(json({ ...upload, upload_id: 'upl_2', sha256: 'b'.repeat(64), filename: 'second.jsonl' })))
-    fireEvent.change(screen.getByLabelText('Add another trace file'), { target: { files: [new File(['{}'], 'second.jsonl')] } })
-    await screen.findByText('second.jsonl')
-    fireEvent.change(screen.getByLabelText('Mapping'), { target: { value: 'map_2' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
-    await screen.findByRole('heading', { name: 'Import preview' })
-    fireEvent.click(screen.getByRole('button', { name: 'Add to batch and choose another file' }))
-    expect(screen.queryByRole('heading', { name: 'Import preview' })).not.toBeInTheDocument()
-    const submit = screen.getByRole('button', { name: 'Import 2 files' })
-    expect(submit).toBeEnabled()
+  it('restores and submits a fully previewed batch', async () => {
+    const secondUpload = { ...upload, upload_id: 'upl_2', sha256: 'b'.repeat(64), filename: 'second.jsonl' }
+    sessionStorage.setItem('agentscope-import-page', serializeImportState({ entries: [
+      { upload, mappingId: 'map_1', preview: { value: preview, detailsAvailable: true } },
+      { upload: secondUpload, mappingId: 'map_2', preview: { value: preview, detailsAvailable: true } },
+    ] }))
+    start('/import?step=4')
+    const submit = await screen.findByRole('button', { name: 'Import 6 records' })
+    expect(screen.getByText(/sample.jsonl.gz · 3 records/)).toBeInTheDocument()
+    expect(screen.getByText(/second.jsonl · 3 records/)).toBeInTheDocument()
     fireEvent.click(submit)
     await screen.findAllByText('committed')
     expect(fetchMock).toHaveBeenCalledWith('/api/imports', expect.objectContaining({
@@ -196,10 +217,10 @@ describe('Import flow', () => {
 
   it('does not redirect away from a new page when an earlier import finishes', async () => {
     start()
-    await makePreview()
+    await makeConfirmation()
     let finish!: (response: Response) => void
     fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
-    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Import 3 records' }))
     fireEvent.click(screen.getByRole('link', { name: 'Overview' }))
     await screen.findAllByRole('region', { name: 'Sessions' })
     await act(async () => finish(json(report)))
