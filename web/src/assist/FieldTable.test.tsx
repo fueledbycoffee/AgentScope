@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { MappingIssue } from '../api/types'
 import { planEdits, type DocEdit } from './document'
 import { indexDocument } from './documentIndex'
+import { controlIdFor } from './issuePaths'
 import { FieldTable } from './FieldTable'
 
 const DOC = `{
@@ -103,6 +104,35 @@ describe('the field table', () => {
     expect(apply(4)).toContain('"on_invalid": "reject"')
   })
 
+  it('tells a policy from a string that merely looks like one', () => {
+    // on_missing: null is the JSON null, which the parser refuses; "null" is the policy
+    const wrong = DOC.replace('"bounds": "min"', '"on_missing": null, "empty_as_missing": "false"')
+    const { onEdit, onOpenJson } = show(wrong)
+    const policy = screen.getByLabelText('on_missing of started_at in model_call') as HTMLSelectElement
+    expect(policy.value).toBe('') // not the "null" policy: this document says something else
+    expect(policy).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getAllByText(/not a valid value/).length).toBeGreaterThan(0)
+    const flag = screen.getByLabelText('empty_as_missing of started_at in model_call') as HTMLSelectElement
+    expect(flag.value).toBe('') // the string "false" is not the boolean false
+    // choosing the policy repairs the type
+    fireEvent.change(policy, { target: { value: 'null' } })
+    expect(onEdit.mock.calls[0][0]).toEqual([
+      { op: 'set', path: ['rules', 0, 'fields', 'started_at', 'on_missing'], raw: '"null"' },
+    ])
+    fireEvent.change(flag, { target: { value: 'false' } })
+    expect(onEdit.mock.calls[1][0]).toEqual([
+      { op: 'set', path: ['rules', 0, 'fields', 'started_at', 'empty_as_missing'], raw: 'false' },
+    ])
+    expect(onOpenJson).not.toHaveBeenCalled()
+  })
+
+  it('keeps a well-typed policy selected', () => {
+    const right = DOC.replace('"bounds": "min"', '"on_missing": "null", "empty_as_missing": false')
+    show(right)
+    expect((screen.getByLabelText('on_missing of started_at in model_call') as HTMLSelectElement).value).toBe('null')
+    expect((screen.getByLabelText('empty_as_missing of started_at in model_call') as HTMLSelectElement).value).toBe('false')
+  })
+
   it('creates a unit pair from two empty selects, writing once both halves are known', () => {
     const { onEdit, apply } = show()
     // the field has no unit at all: picking one half must be remembered, not thrown away
@@ -127,6 +157,29 @@ describe('the field table', () => {
     expect(next).toContain('"from": "us"')
     expect(next).toContain('"extension": 9007199254740993') // a member no control owns survives
     expect(next).toContain('"to": "ms"')
+  })
+
+  it('completes a partial unit without touching what else it holds', () => {
+    const partial = DOC.replace('"bounds": "min"', '"unit": {"from": "s", "extension": 9007199254740993}')
+    const { onEdit, apply } = show(partial)
+    fireEvent.change(screen.getByLabelText('unit to of started_at in model_call'), { target: { value: 'ms' } })
+    expect(onEdit.mock.calls[0][0]).toEqual([
+      { op: 'set', path: ['rules', 0, 'fields', 'started_at', 'unit', 'to'], raw: '"ms"' },
+    ])
+    const next = apply()
+    expect(next).toContain('"extension": 9007199254740993')
+    expect(next).toContain('"to": "ms"')
+    expect(next).toContain('"from": "s"')
+  })
+
+  it('clears one half of a unit that holds more, and only the whole one when it holds nothing else', () => {
+    const rich = DOC.replace('"bounds": "min"', '"unit": {"from": "s", "to": "ms", "extension": 1}')
+    const { onEdit, apply } = show(rich)
+    fireEvent.change(screen.getByLabelText('unit from of started_at in model_call'), { target: { value: '' } })
+    expect(onEdit.mock.calls[0][0]).toEqual([
+      { op: 'remove', path: ['rules', 0, 'fields', 'started_at', 'unit', 'from'] },
+    ])
+    expect(apply()).toContain('"extension": 1')
   })
 
   it('removes the whole unit when a half goes back to "not set"', () => {
@@ -191,6 +244,62 @@ describe('the field table', () => {
     expect([...parent.options].map(option => option.textContent)).toContain('model_call')
     const wrong = indexDocument(DOC.replace('"parent": "model_call"', '"parent": "nope"'))
     expect(wrong.rules[1].parent.raw).toBe('"nope"')
+  })
+
+  it('renames a target in place, keeping its mapping', () => {
+    const typo = DOC.replace('"started_at"', '"start_at"')
+    const { onEdit, onRefuse, apply } = show(typo)
+    const target = screen.getByLabelText('target of start_at in model_call')
+    fireEvent.change(target, { target: { value: 'started_at' } })
+    fireEvent.blur(target)
+    expect(onEdit.mock.calls[0][0]).toEqual([
+      { op: 'rename', path: ['rules', 0, 'fields', 'start_at'], key: 'started_at' },
+    ])
+    const next = apply()
+    expect(next).toContain('"started_at": { "path": "$.ts"') // the mapping came with the name
+    expect(onRefuse).not.toHaveBeenCalled()
+  })
+
+  it('refuses a rename onto a name the rule already has', () => {
+    const { onEdit, onRefuse } = show()
+    const target = screen.getByLabelText('target of started_at in model_call')
+    fireEvent.change(target, { target: { value: 'session_external_id' } })
+    fireEvent.blur(target)
+    expect(onRefuse).toHaveBeenCalledWith(expect.stringContaining('session_external_id'))
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
+  it('mounts a control for every id an issue can resolve to', () => {
+    const withUnit = DOC.replace('"bounds": "min"', '"unit": {"from": "s", "to": "ms"}')
+    show(withUnit, [
+      issue('rules[0].fields', 'required_field_unmapped'),
+      issue('rules[0].fields.started_at.unit', 'unit_target_mismatch'),
+      issue('rules[0].where', 'invalid_type'),
+      issue('rules[0].native_key', 'invalid_type'),
+    ])
+    for (const path of ['rules[0].fields', 'rules[0].fields.started_at.unit', 'rules[0].where', 'rules[0].native_key']) {
+      const id = controlIdFor(path, indexDocument(withUnit))
+      expect(id, path).not.toBeNull()
+      expect(document.getElementById(id!), `${path} -> ${id}`).not.toBeNull()
+    }
+  })
+
+  it('never offers a parent the parser would refuse', () => {
+    // only a tool_call may declare a parent (parser.py:304-333): a session must be offered none,
+    // however many root model_call rules precede it
+    const wrong = `{
+      "rules": [
+        { "id": "calls", "entity": "model_call", "select": "$", "fields": { "session_external_id": { "path": "$.s" } } },
+        { "id": "sessions", "entity": "session", "fields": { "external_id": { "path": "$.s" } } },
+        { "id": "tools", "entity": "tool_call", "fields": { "session_external_id": { "path": "$.s" } } }
+      ]
+    }`
+    show(wrong)
+    const session = screen.getByLabelText('parent of sessions') as HTMLSelectElement
+    expect([...session.options].map(option => option.value)).toEqual([''])
+    expect(session).toBeDisabled()
+    const tool = screen.getByLabelText('parent of tools') as HTMLSelectElement
+    expect([...tool.options].map(option => option.value)).toEqual(['', 'calls'])
   })
 
   it('refuses a rename or a delete that would break a parent reference', () => {

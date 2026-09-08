@@ -27,10 +27,10 @@ export interface RuleHeaderProps {
  * exactly what to change.
  */
 export function RuleHeader({ rule, index, disabled, onEdit, onOpenJson, onRefuse, onAddField, issueId }: RuleHeaderProps) {
-  const repair = (problem: string, what: string, path: DocPath) => (
+  const repair = (problem: string, what: 'where' | 'native_key', path: DocPath) => (
     <span className="repair">
       <span className="issue error">{problem}</span>{' '}
-      <button type="button" className="link" aria-label={`Repair ${what} of ${name} in the JSON view`} onClick={() => onOpenJson(path)}>
+      <button type="button" id={ctl(what) ?? undefined} className="link" aria-label={`Repair ${what} of ${name} in the JSON view`} onClick={() => onOpenJson(path)}>
         Repair it in the JSON view
       </button>
     </span>
@@ -119,7 +119,8 @@ export function RuleHeader({ rule, index, disabled, onEdit, onOpenJson, onRefuse
             aria-invalid={rule.parent.raw !== null && !parentKnown ? true : undefined}
             aria-describedby={issueId(ctl('parent'))}
             value={parentKnown ? parentValue : ''}
-            disabled={disabled}
+            disabled={disabled || (parents.length === 0 && rule.parent.raw === null)}
+            title={parents.length === 0 ? 'only a tool_call rule may declare a parent, and it must be an earlier root model_call' : undefined}
             onChange={event =>
               onEdit([
                 event.target.value === ''
@@ -148,6 +149,7 @@ export function RuleHeader({ rule, index, disabled, onEdit, onOpenJson, onRefuse
             <>
               <span className="muted">not declared</span>
               <IconButton
+                id={ctl('native_key') ?? undefined}
                 name="plus"
                 label={`Declare a native key for ${name}`}
                 className="btn small icon-only"
@@ -176,6 +178,7 @@ export function RuleHeader({ rule, index, disabled, onEdit, onOpenJson, onRefuse
                 </span>
               ))}
               <IconButton
+                id={ctl('native_key') ?? undefined}
                 name="plus"
                 label={`Add a native key part to ${name}`}
                 className="btn small icon-only"
@@ -195,6 +198,7 @@ export function RuleHeader({ rule, index, disabled, onEdit, onOpenJson, onRefuse
           )}
         </span>
         <IconButton
+          id={controlId({ kind: 'rule', ruleIndex: rule.index, part: 'fields' }) ?? undefined}
           name="plus"
           label={`Add a field to ${name}`}
           className="btn small icon-only"
@@ -265,6 +269,7 @@ export function RuleHeader({ rule, index, disabled, onEdit, onOpenJson, onRefuse
           )
         })}
         {rule.whereProblem === null && <IconButton
+          id={ctl('where') ?? undefined}
           name="plus"
           label={`Add a condition to ${name}`}
           className="btn small icon-only"

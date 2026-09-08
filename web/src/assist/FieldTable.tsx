@@ -6,6 +6,7 @@ import { asString, type DocIndex, type FieldView, type RuleView } from './docume
 import { DocumentHead } from './DocumentHead'
 import { OptionsCell, SourceCell, TransformsCell, type CellContext } from './FieldCells'
 import { controlId, controlIdFor, resolveIssue } from './issuePaths'
+import { TextValueInput } from './RawJsonInput'
 import { referrers } from './dsl'
 import { RuleHeader } from './RuleHeader'
 
@@ -92,6 +93,16 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
       return
     }
     onEdit([{ op: 'remove', path: rule.path }])
+  }
+
+  function renameField(rule: RuleView, field: FieldView, name: string) {
+    const trimmed = name.trim()
+    if (trimmed === '' || trimmed === field.name) return
+    if (rule.fields.some(other => other.name === trimmed)) {
+      onRefuse(`${asString(rule.id) ?? 'this rule'} already has a field named ${trimmed}, so ${field.name} was left as it is.`)
+      return
+    }
+    onEdit([{ op: 'rename', path: field.path, key: trimmed }])
   }
 
   function addField(rule: RuleView, name: string) {
@@ -231,9 +242,16 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
                       // second line reads better than a table that scrolls sideways inside the page
                       return (
                         <Fragment key={field.name}>
-                          <tr className="field-line">
+                          <tr className="field-line" aria-label={field.name}>
                             <th scope="row" className="mono" rowSpan={field.malformed === null ? 2 : 1}>
-                              {field.name}
+                              {/* the name is the key: renaming it is a key rename through the
+                                  planner, so the mapping travels with it untouched */}
+                              <TextValueInput
+                                label={`target of ${field.name} in ${ruleName}`}
+                                value={JSON.stringify(field.name)}
+                                disabled={disabled}
+                                onCommit={raw => renameField(rule, field, JSON.parse(raw) as string)}
+                              />
                               <IconButton
                                 name="trash"
                                 label={`Remove ${field.name} from ${ruleName}`}

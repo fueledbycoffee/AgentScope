@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AssistantOutcome, FieldProfile, PreparedContext } from '../api/types'
@@ -46,7 +46,13 @@ beforeEach(() => {
     if (path.endsWith('/profile')) return respond({ upload_id: 'upl_1', profile, cached: false })
     if (path === '/assistant/prepare') return respond(prepared(body.include_sample ? 'sample-digest' : 'plain-digest', !!body.include_sample))
     if (path === '/assistant/run') return respond(outcome)
-    if (path === '/mappings/validate') return respond({ issues: [], executable: true })
+    if (path === '/mappings/validate') return respond({
+      issues: [
+        { stage: 'semantic', path: 'rules[0].fields.external_id.timestamp_format', code: 'ignored_option', message: 'not a timestamp field', severity: 'warning' },
+        { stage: 'semantic', path: 'rules[0].fields', code: 'required_field_unmapped', message: 'a required field is missing', severity: 'error' },
+      ],
+      executable: false,
+    })
     if (path === '/mappings/map_1') {
       // the raw text matters: the saved document carries an integer the browser would round
       return { ok: true, status: 200, json: async () => ({}), text: async () => '{"id": "map_1", "name": "tracelab-v1", "source": "tracelab", "revision": 1, "created_by": "user", "input_format": "jsonl", "issues": [], "document": {"name": "tracelab-v1", "source": "tracelab", "big": 9007199254740993, "rules": []}}' } as unknown as Response
@@ -248,11 +254,19 @@ describe('Assist page', () => {
     expect(screen.getByLabelText('Mapping document (JSON)')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'JSON document' })).toHaveAttribute('aria-pressed', 'true')
 
-    // an issue still goes to its control, and switches back to the table to do it
+    // an issue goes to the control that owns it, and focuses it
     fireEvent.click(screen.getByRole('button', { name: 'Field table' }))
     await waitFor(() => expect(screen.getByLabelText('id of r')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Validate the document' }))
     await waitFor(() => expect(calls.some(c => c.path === '/mappings/validate')).toBe(true))
+    const issues = await screen.findByRole('list', { name: 'Validation issues' })
+    for (const path of ['rules[0].fields.external_id.timestamp_format', 'rules[0].fields']) {
+      fireEvent.click(within(issues).getByRole('button', { name: path }))
+      const expected = path.endsWith('fields')
+        ? screen.getByRole('button', { name: 'Add a field to r' })
+        : screen.getByLabelText('timestamp_format of external_id in r')
+      expect(document.activeElement, path).toBe(expected)
+    }
   })
 
   it('keeps the JSON view when the document cannot be shown as rows, and says why', async () => {
