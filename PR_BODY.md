@@ -138,12 +138,24 @@ every icon-only control keeps an accessible name and a visible tooltip.
 - **`e2e/assist.spec.ts` now clicks "JSON document"** before asserting on the textarea, because the
   table leads. It is otherwise unchanged.
 
+## Review round (adversarial review of this PR)
+
+One P1, five P2 and one P3, each closed as a class with the failing test written first:
+the P1 crash on an ambiguity target naming `unit` or `default` (now every option in the DSL
+resolves without throwing, narrowed by type rather than cast); a `unit` pair that could not be
+created and, when edited, dropped members no control owns (a draft until both halves are known;
+existing pairs edited at their member paths); malformed sections mistaken for missing ones (every
+indexed container now distinguishes the two, and the cells offer repair instead of a control that
+would overwrite); a re-upload dialog whose close and unmount did not cancel a pending completion;
+issue paths for dotted field names resolved against the document rather than by guess; and control
+ids made injective so `getElementById` cannot return another field's control.
+
 ## How to verify
 
 ```
 pnpm --dir web lint          # 3 warnings, all pre-existing
 pnpm --dir web typecheck
-pnpm --dir web test          # 246 tests, 15 files
+pnpm --dir web test          # 259 tests, 15 files
 pnpm --dir web build
 E2E_PORT=8795 pnpm --dir web exec playwright test --list   # 9 tests in 3 projects
 E2E_PORT=8795 pnpm --dir web exec playwright test          # 9 passed
