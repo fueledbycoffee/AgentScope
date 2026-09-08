@@ -97,12 +97,14 @@ export function requestedStep(search: URLSearchParams): ImportStep {
 
 export function highestReachableStep(state: ImportState, mappings: Mapping[]): ImportStep {
   if (state.entries.length === 0) return 1
+  if (duplicateHashes(state.entries)) return 1
   const byId = new Map(mappings.map(mapping => [mapping.id, mapping]))
   const resolved = state.entries.every(entry => {
     const mapping = entry.mappingId ? byId.get(entry.mappingId) : undefined
     return mapping?.input_format === entry.upload.format
   })
   if (!resolved) return 2
+  if (mixedSources(state.entries, mappings)) return 2
   if (!state.entries.every(entry => entry.preview !== null)) return 3
   return 4
 }
