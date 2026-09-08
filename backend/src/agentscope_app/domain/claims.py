@@ -104,19 +104,30 @@ def canonical_projection(emission: Emission) -> str:
 
 def _key_contract(spec: MappingSpec, rule: Rule) -> str:
     selectors = [asdict(rule.select)]
+    inherited = []
     ancestor = rule
     while ancestor.parent is not None:
         ancestor = spec.rule(ancestor.parent)
         selectors.append(asdict(ancestor.select))
+        # DSL v1 inherits session_external_id from the parent model call when
+        # the child's extraction yields null. Fingerprint that fallback even
+        # when a particular record supplies its own value: this is a mapping
+        # contract, independent of the record or any rule's cosmetic ID.
+        if "session_external_id" in rule.native_key:
+            inherited.append(
+                {
+                    "field": asdict(ancestor.fields["session_external_id"]),
+                    "where": [asdict(condition) for condition in ancestor.where],
+                }
+            )
     # Target names, paths, transforms and conversion policies are semantic; IDs are not.
-    return hashlib.sha256(
-        _json(
-            {
-                "selectors": selectors,
-                "fields": {key: asdict(rule.fields[key]) for key in sorted(rule.native_key)},
-            }
-        ).encode()
-    ).hexdigest()
+    contract = {
+        "selectors": selectors,
+        "fields": {key: asdict(rule.fields[key]) for key in sorted(rule.native_key)},
+    }
+    if inherited:
+        contract["inherited"] = inherited
+    return hashlib.sha256(_json(contract).encode()).hexdigest()
 
 
 @dataclass
