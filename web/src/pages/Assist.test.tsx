@@ -148,6 +148,21 @@ describe('Assist page', () => {
     expect(calls.filter(c => c.path === '/mappings')).toHaveLength(0)
   })
 
+  it('applies an ambiguity as an edit, once, and only while it describes this document', async () => {
+    renderPage()
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    fireEvent.change(screen.getByLabelText('Mapping name'), { target: { value: 'draft' } })
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'assist' } })
+    const input = screen.getByLabelText('Message to the assistant')
+    fireEvent.change(input, { target: { value: 'Propose a mapping' } })
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
+    // the fake's ambiguity is model_call.started_at with epoch_s or epoch_ms; the proposal has no
+    // model_call rule, so it stays prose rather than being applied to the wrong field
+    await screen.findByRole('region', { name: 'Ambiguities' })
+    expect(screen.getByRole('region', { name: 'Ambiguities' })).toHaveTextContent('model_call.started_at')
+    expect(screen.getByRole('button', { name: 'ask the assistant about it' })).toBeInTheDocument()
+  })
+
   it('keeps the JSON view when the document cannot be shown as rows, and says why', async () => {
     renderPage()
     await screen.findByRole('complementary', { name: 'Evidence' })

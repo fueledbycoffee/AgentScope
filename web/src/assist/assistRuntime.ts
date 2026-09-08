@@ -50,6 +50,13 @@ export interface AssistState {
   /** How many times the current message was re-prepared after a 409; one automatic retry. */
   staleRetries: number
   lastOutcome: { generation: number; outcome: AssistantOutcome } | null
+  /**
+   * The document version a proposal created. Its ambiguities and explanations describe *that*
+   * text, so they stop being applicable the moment the document moves on; anchoring to the
+   * version the application produced (not the generation before it) is what makes a stale click
+   * impossible rather than unlikely.
+   */
+  proposalAnchor: { documentVersion: number } | null
   validation: { documentVersion: number; issues: MappingIssue[]; executable: boolean } | null
   saved: { documentText: string; record: SavedMapping } | null
   preview: { savedId: string; report: ImportPreview } | null
@@ -74,6 +81,7 @@ export function initialState(uploadId: string): AssistState {
     acknowledged: null,
     staleRetries: 0,
     lastOutcome: null,
+    proposalAnchor: null,
     validation: null,
     saved: null,
     preview: null,
@@ -314,7 +322,11 @@ export function outcomeArrived(state: AssistState, generation: number, outcome: 
     const applied = prettyJson(mappingText)
     const undo = state.documentText ? { documentText: state.documentText, identity: state.identity } : null
     next = editDocument(next, applied, undo, identityOf(applied, state.identity))
-    next = { ...next, validation: { documentVersion: next.documentVersion, issues: outcome.issues, executable: outcome.proposal.executable } }
+    next = {
+      ...next,
+      validation: { documentVersion: next.documentVersion, issues: outcome.issues, executable: outcome.proposal.executable },
+      proposalAnchor: { documentVersion: next.documentVersion },
+    }
   }
   return next
 }

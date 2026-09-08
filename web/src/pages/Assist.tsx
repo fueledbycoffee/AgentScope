@@ -43,6 +43,7 @@ import { indexDocument } from '../assist/documentIndex'
 import { controlIdFor } from '../assist/issuePaths'
 import { FieldTable } from '../assist/FieldTable'
 import { IssueList } from '../assist/IssueList'
+import { SuggestionList } from '../assist/SuggestionList'
 import { ViewSwitch, type DocumentView } from '../assist/ViewSwitch'
 import { Conversation } from '../assist/Conversation'
 import { DocumentEditor } from '../assist/DocumentEditor'
@@ -78,6 +79,7 @@ export default function AssistPage() {
   // the table covers the DSL, so it leads; the JSON view stays one icon away for repairs
   const [view, setView] = useState<DocumentView>('table')
   const [focusRequest, setFocusRequest] = useState<{ path: string; nonce: number } | null>(null)
+  const [composerHint, setComposerHint] = useState<string | null>(null)
   // the drawer opens by itself when a sample needs acknowledging
   const drawerOpen = drawerRequested || state.busy === 'awaiting_ack'
   const inFlight = useRef<{ kind: string; generation: number } | null>(null)
@@ -283,6 +285,14 @@ export default function AssistPage() {
                 onOpenJson={(path: DocPath) => jumpTo(showPath(path))}
               />
             )}
+            <SuggestionList
+              ambiguities={state.lastOutcome?.outcome.proposal?.ambiguities ?? []}
+              index={index}
+              current={state.proposalAnchor?.documentVersion === state.documentVersion}
+              disabled={state.busy !== 'none'}
+              onApply={edits => update(s => applyDocumentEdits(s, edits))}
+              onAskAbout={text => setComposerHint(text)}
+            />
             <IssueList
               issues={state.validation?.issues ?? null}
               current={state.validation?.documentVersion === state.documentVersion}
@@ -309,6 +319,18 @@ export default function AssistPage() {
         </div>
         <div className="stack">
           <Conversation turns={state.turns} busy={state.busy !== 'none'} onSend={send} disabledReason={chatDisabled} status={busyLabel || undefined} />
+          {composerHint !== null && (
+            <div className="notice info" role="status">
+              <div>
+                <p className="title">Ask about this</p>
+                <p className="mono">{composerHint}</p>
+                <div className="actions">
+                  <button type="button" className="btn small" onClick={() => { send(`About ${composerHint}: which should it be, and why?`); setComposerHint(null) }}>Send it</button>
+                  <button type="button" className="btn small" onClick={() => setComposerHint(null)}>Discard</button>
+                </div>
+              </div>
+            </div>
+          )}
           {state.omittedHistory > 0 && <p className="muted" role="note">{state.omittedHistory} earlier turn{state.omittedHistory === 1 ? '' : 's'} stay visible here but are no longer sent to the assistant (history limit: 20 turns of 4,000 characters).</p>}
           {state.pendingMessage !== null && state.busy === 'none' && (
             <div className="notice warn" role="status">

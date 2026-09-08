@@ -113,3 +113,15 @@
 .document-head .notes { align-items: flex-start; }
 .document-head textarea { flex: 1; min-width: 20ch; font: inherit; font-size: 0.8rem; padding: 4px; border: 1px solid var(--line); border-radius: var(--r-1); background: var(--bg); color: var(--ink); }
 .add-field, .add-rule { align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+
+/* ambiguities: an option becomes an edit only when the user names the operation */
+.suggestions { border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--sp-2); margin-top: var(--sp-2); }
+.suggestions h3 { margin: 0; flex: 1; font-size: 0.9rem; }
+.suggestions ul { list-style: none; margin: 0; padding: 0; }
+.suggestions .ambiguity { padding: 4px 0; border-top: 1px solid var(--line); }
+.suggestions .ambiguity:first-child { border-top: 0; }
+.suggestions p { margin: 2px 0; font-size: 0.85rem; }
+.suggestions .option-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.85rem; }
+.suggestions .suggestion { display: inline-flex; align-items: center; gap: 6px; }
+.suggestions .suggestion.blocked { font-size: 0.8rem; }
+.suggestions .issue.warn { font-size: 0.75rem; }
