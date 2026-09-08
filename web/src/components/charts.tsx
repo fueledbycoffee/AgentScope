@@ -97,7 +97,8 @@ export function AccessibleBarShape({ shape, onSelect, onFocus }: {
   onFocus: (point?: ChartPoint) => void
 }) {
   const point = shape.payload
-  const activate = () => { if (point) onSelect?.(point) }
+  const selectable = Boolean(point?.drill && onSelect)
+  const activate = () => { if (point?.drill) onSelect?.(point) }
   const activation = useBarActivation(activate, JSON.stringify(shape.payload ?? null))
   if (!point || !shape.width || !shape.height) return null
   const key = (event: KeyboardEvent<SVGRectElement>) => {
@@ -107,7 +108,7 @@ export function AccessibleBarShape({ shape, onSelect, onFocus }: {
     }
   }
   return <rect key={point.key} x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={3} fill={shape.fill}
-    className="chart-bar" role={onSelect ? 'button' : undefined} tabIndex={onSelect ? 0 : undefined}
+    className="chart-bar" role={selectable ? 'button' : undefined} tabIndex={selectable ? 0 : undefined}
     aria-label={`${point.label}: ${groupExactText(point.valueText)}${point.coverage ? `; coverage ${groupExactText(String(point.coverage.known))} / ${groupExactText(String(point.coverage.total))}` : ''}`}
     {...activation} onFocus={() => onFocus(point)} onBlur={() => onFocus()} onKeyDown={key} />
 }

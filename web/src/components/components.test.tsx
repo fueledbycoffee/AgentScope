@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
-import { DataTable, DayBars, Drawer, HeadlineTile, JsonText, KpiTile, Popover, QualityStrip, ScopeBar, ScopeChip, ScopeReceipt, StateBlock, TokenBars, abbreviate, abbreviateDecimalText } from './index'
+import { DataTable, DayBars, Drawer, HBars, HeadlineTile, JsonText, KpiTile, Popover, QualityStrip, ScopeBar, ScopeChip, ScopeReceipt, StateBlock, TokenBars, abbreviate, abbreviateDecimalText } from './index'
 import { AccessibleBarShape } from './charts'
 import { ApiError } from '../api'
 import type { MetricDisplay } from './index'
@@ -219,6 +219,19 @@ describe('exact charts', () => {
     render(<><DayBars title="Activity" data={[point]} /><TokenBars title="Tokens" rows={[row]} /></>)
     expect(screen.getByRole('table', { name: 'Activity, exact values' })).toHaveTextContent('9,007,199,254,740,993')
     expect(screen.getByRole('table', { name: 'Tokens, exact values' })).toHaveTextContent('9,007,199,254,740,9931 / 2UnavailableUnavailable')
+  })
+
+  it('renders an overlong-label bucket in the chart and table without offering a drill', () => {
+    const label = 'x'.repeat(241)
+    const select = vi.fn()
+    const unlinked = { ...point, key: label, label, drill: undefined }
+    render(<><svg><AccessibleBarShape shape={{ x: 0, y: 0, width: 10, height: 20, payload: unlinked }} onSelect={select} onFocus={() => undefined} /></svg>
+      <HBars title="Tools" data={[unlinked]} onSelect={select} /></>)
+
+    screen.getByRole('region', { name: 'Tools' })
+    expect(document.querySelector('.chart-bar')).toHaveAttribute('aria-label', expect.stringContaining(label))
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'Tools, exact values' })).toHaveTextContent(label)
   })
 })
 

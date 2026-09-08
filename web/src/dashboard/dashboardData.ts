@@ -40,7 +40,7 @@ export interface ChartPoint {
   valueText: string
   plotValue: number
   coverage: Coverage
-  drill: DrillEnvelopeV1
+  drill?: DrillEnvelopeV1
 }
 
 export interface TokenMeasure {
@@ -76,7 +76,6 @@ function exactPoint(bucket: MetricBucket, label: 'day' | 'tool'): ChartPoint[] {
   const valueText = bucket.result.value_text
   if (typeof key !== 'string' || valueText === null) return []
   const drill = createDrillEnvelope(label, key, bucket.drill_scope)
-  if (!drill) return []
   return [{ key, label: key, valueText, plotValue: Number(valueText), coverage: bucket.result.coverage, drill }]
 }
 

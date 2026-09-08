@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactElement } from 'react'
-import { MemoryRouter, useNavigate } from 'react-router-dom'
+import { BrowserRouter, MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { serializeImportState } from './import/importRuntime'
@@ -531,6 +531,21 @@ describe('Dashboard', () => {
     })).toBe(true))
   })
 
+  it('adds one history entry for a chart drill and Back restores the pre-drill dashboard', async () => {
+    window.history.replaceState(null, '', '/overview')
+    const before = window.history.length
+    render(<BrowserRouter><App /></BrowserRouter>)
+    const chart = await screen.findByRole('region', { name: 'Tool calls' })
+
+    fireEvent.click(within(chart).getByRole('button', { name: /^Agent:/ }))
+
+    expect(await screen.findByRole('heading', { name: 'Sessions' })).toBeInTheDocument()
+    expect(window.history.length).toBe(before + 1)
+    await act(async () => window.history.back())
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument()
+    expect(screen.queryByText('tool Agent')).not.toBeInTheDocument()
+  })
+
   it('opens only attributable quality populations with the full returned drill scope', async () => {
     start('/dashboard')
     await screen.findByRole('region', { name: 'Input usage by accounting group' })
@@ -576,7 +591,7 @@ describe('Dashboard', () => {
     await waitFor(() => expect(finishOld).toBeTypeOf('function'))
     fireEvent.change(screen.getByLabelText('Source'), { target: { value: '' } })
     await screen.findByRole('region', { name: 'Input usage by accounting group' })
-    await act(async () => finishOld(json({ ...metrics, sessions: { ...metrics.sessions, value: 999 } })))
+    await act(async () => finishOld(json({ ...metrics, sessions: { ...metrics.sessions, value: 999, value_text: '999' } })))
     for (const region of screen.getAllByRole('region', { name: 'Sessions' })) expect(region).not.toHaveTextContent('999')
   })
 
@@ -595,14 +610,36 @@ describe('Dashboard', () => {
 })
 
 describe('Scope in the shell', () => {
-  it('rail links keep the scope on data routes and the session receipt follows the current scope', async () => {
-    start('/overview?source=tracelab&agent=claude-code')
+  it('rail links keep scope and a session receipt counts the drilled tool population', async () => {
+    fetchMock.mockImplementation((input, options) => {
+      const url = new URL(String(input), 'http://localhost')
+      if (url.pathname === '/api/metrics/summary') {
+        const count = url.searchParams.get('tool') === 'Agent' ? '1' : '7'
+        return Promise.resolve(json({
+          ...metrics,
+          sessions: { ...metrics.sessions, value: Number(count), value_text: count },
+        }))
+      }
+      return defaultResponse(input, options)
+    })
+    start('/overview?source=tracelab&agent=claude-code&period=7d')
     await screen.findAllByRole('region', { name: 'Sessions' })
-    expect(screen.getByRole('link', { name: 'Sessions' })).toHaveAttribute('href', '/sessions?source=tracelab&agent=claude-code')
+    expect(screen.getByRole('link', { name: 'Sessions' })).toHaveAttribute('href', '/sessions?source=tracelab&agent=claude-code&period=7d')
     expect(screen.getByRole('link', { name: 'Imports' })).toHaveAttribute('href', '/imports')
+    const chart = await screen.findByRole('region', { name: 'Tool calls' })
+    fireEvent.click(within(chart).getByRole('button', { name: /^Agent:/ }))
+    await screen.findByRole('heading', { name: 'Sessions' })
     fireEvent.click(await screen.findByRole('link', { name: 'claude:native_1' })) // the table renders after the regions
     await screen.findByRole('heading', { name: 'Session detail' })
-    expect(fetchMock).toHaveBeenCalledWith('/api/metrics/summary?source=tracelab&agent=claude-code', undefined)
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/metrics/summary'
+        && url.searchParams.get('source') === 'tracelab'
+        && url.searchParams.get('agent') === 'claude-code'
+        && url.searchParams.get('tool') === 'Agent'
+        && url.searchParams.get('activity_grain') === 'tool_call'
+    })).toBe(true))
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Scope' })).toHaveTextContent('1 sessions'))
   })
 })
 

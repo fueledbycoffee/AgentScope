@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { metricDefinitions, metricQueries, metrics } from '../test/fixtures'
 import {
   activityPoints, displayFromResult, displayFromSummary, loadDashboard, tokenRows,
+  toolPoints,
 } from './dashboardData'
 
 const api = vi.hoisted(() => ({
@@ -103,10 +104,24 @@ describe('lossless dashboard adapters', () => {
   it('uses ordered bucket keys and partition scopes to drive labels and drills', () => {
     const [activity] = activityPoints(metricQueries.model_calls)
     expect(activity.key).toBe(metricQueries.model_calls.buckets[0].keys[0])
-    expect(activity.drill.scope.started_from).toBe('2026-09-07T00:00:00Z')
+    expect(activity.drill?.scope.started_from).toBe('2026-09-07T00:00:00Z')
     const [tokens] = tokenRows(metricQueries.input_tokens, metricQueries.output_tokens)
     expect(tokens.label).toBe('claude · tracelab-claude')
     expect(tokens.input?.drill?.scope.token_semantics).toBe('tracelab-claude')
     expect(tokens.output?.valueText).toBe('5')
+  })
+
+  it('keeps a bucket visible when its 241-character label cannot form a drill envelope', () => {
+    const label = 'x'.repeat(241)
+    const query = {
+      ...metricQueries.tool_calls,
+      buckets: [{
+        ...metricQueries.tool_calls.buckets[0],
+        keys: [label],
+        drill_scope: { ...metricQueries.tool_calls.buckets[0].drill_scope, tool: label },
+      }],
+    }
+
+    expect(toolPoints(query)).toEqual([expect.objectContaining({ key: label, label, drill: undefined })])
   })
 })

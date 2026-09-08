@@ -37,7 +37,7 @@ function qualityEnvelope(query: MetricQuery, value: string) {
 /** Trustworthy Console overview: exact cards, charts, quality and one URL drill path. */
 export default function OverviewPage() {
   const navigate = useNavigate()
-  const { scope, apiScope, setDrill, link } = useScope()
+  const { scope, apiScope, link } = useScope()
   const dashboard = useResource(useCallback(() => loadDashboard(apiScope), [apiScope]))
   const sessions = useResource(useCallback(() => listSessions({ ...apiScope, limit: PREVIEW_ROWS, offset: 0 }), [apiScope]))
   const data = dashboard.data
@@ -57,8 +57,8 @@ export default function OverviewPage() {
   )
 
   const activateDrill = (drill: DrillEnvelopeV1, extra: Partial<UrlScope> = {}) => {
-    setDrill(drill)
-    navigate({ pathname: '/sessions', search: scopeSearch({ ...scope, ...extra, drill }) })
+    const destination = { ...scope, ...extra, drill }
+    navigate({ pathname: '/sessions', search: scopeSearch(destination) })
   }
   const activateToken = (row: TokenRow, measure: TokenMeasure) => {
     if (measure.drill) activateDrill(measure.drill, row.model ? { model: row.model } : {})
@@ -107,9 +107,9 @@ export default function OverviewPage() {
           <span><b>Output</b> <span className="exact">{data.summary.output_tokens.value_text === null ? (data.summary.output_tokens.coverage.known ? 'Not comparable' : 'Unavailable') : groupExactText(data.summary.output_tokens.value_text)}</span> · coverage {groupExactText(String(data.summary.output_tokens.coverage.known))} / {groupExactText(String(data.summary.output_tokens.coverage.total))}</span>
         </div>
         <div className="grid charts dashboard-charts">
-          <DayBars title="Activity by day" unit="model calls" data={activityPoints(data.activity)} onSelect={point => activateDrill(point.drill)} hint="Select a UTC day to list matching sessions." />
+          <DayBars title="Activity by day" unit="model calls" data={activityPoints(data.activity)} onSelect={point => { if (point.drill) activateDrill(point.drill) }} hint="Select a UTC day to list matching sessions." />
           <TokenBars title="Tokens by model" rows={tokenRows(data.inputByModel, data.outputByModel)} onSelect={activateToken} />
-          <HBars title="Tool calls" unit="calls" data={toolPoints(data.tools)} onSelect={point => activateDrill(point.drill)} hint="Select a recorded tool name to list matching sessions." />
+          <HBars title="Tool calls" unit="calls" data={toolPoints(data.tools)} onSelect={point => { if (point.drill) activateDrill(point.drill) }} hint="Select a recorded tool name to list matching sessions." />
         </div>
         <QualityStrip items={[
           { key: 'rejects', label: 'rejects', countText: data.rejectQuality.countText, explanation: data.rejectQuality.explanation, actionHref: data.rejectQuality.available ? '/imports' : undefined, actionLabel: 'View import attempts' },
