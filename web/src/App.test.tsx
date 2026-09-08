@@ -1,9 +1,21 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { serializeImportState } from './import/importRuntime'
 import { mapping, metricDefinitions, metricQueries, metrics, preview, rawRecord, reject, report, session, upload } from './test/fixtures'
+
+vi.mock('recharts', async importOriginal => {
+  const actual = await importOriginal<typeof import('recharts')>()
+  const React = await import('react')
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children, height }: { children: ReactElement<{ width?: number; height?: number }>; height?: number | string }) => (
+      React.cloneElement(children, { width: 800, height: typeof height === 'number' ? height : 300 })
+    ),
+  }
+})
 
 const fetchMock = vi.fn<typeof fetch>()
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -498,6 +510,19 @@ describe('Dashboard', () => {
       expect(unknown.searchParams.has('started_before')).toBe(false)
     })
     expect(screen.getByRole('group', { name: 'Scope' })).toHaveTextContent('1 sessions · 4,770 model calls · from 1 imports')
+  })
+
+  it('opens matching sessions when a tool chart bar is clicked', async () => {
+    start('/overview')
+    const chart = await screen.findByRole('region', { name: 'Tool calls' })
+    fireEvent.click(within(chart).getByRole('button', { name: /^Agent:/ }))
+
+    expect(await screen.findByRole('heading', { name: 'Sessions' })).toBeInTheDocument()
+    expect(screen.getByText('tool Agent')).toBeInTheDocument()
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/sessions' && url.searchParams.get('tool') === 'Agent'
+    })).toBe(true))
   })
 
   it('opens only attributable quality populations with the full returned drill scope', async () => {

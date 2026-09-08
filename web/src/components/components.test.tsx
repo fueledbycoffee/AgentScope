@@ -184,17 +184,16 @@ describe('exact charts', () => {
     drill: { version: 1 as const, label: 'day' as const, value: '2026-09-07', scope: { started_from: '2026-09-07T00:00:00Z' } },
   }
 
-  it('activates a focusable bar with click, Enter, and Space using its point object', () => {
+  it('activates a focusable bar with Enter and Space using its point object', () => {
     const select = vi.fn()
     const focus = vi.fn()
     render(<svg><AccessibleBarShape shape={{ x: 0, y: 0, width: 10, height: 20, payload: point }} onSelect={select} onFocus={focus} /></svg>)
     const bar = screen.getByRole('button', { name: /2026-09-07: 9,007,199,254,740,993; coverage 2 \/ 2/ })
     fireEvent.focus(bar)
-    fireEvent.click(bar)
     fireEvent.keyDown(bar, { key: 'Enter' })
     fireEvent.keyDown(bar, { key: ' ' })
     expect(focus).toHaveBeenCalledWith(point)
-    expect(select).toHaveBeenCalledTimes(3)
+    expect(select).toHaveBeenCalledTimes(2)
     expect(select).toHaveBeenLastCalledWith(point)
   })
 
