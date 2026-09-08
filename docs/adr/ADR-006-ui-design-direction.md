@@ -39,6 +39,26 @@ design of record for the web application. Its rules bind UI work from #8 on:
    the Guided receipt rail for the stepped import. Each is confirmed with the
    owner when its issue starts.
 
+### Amendment: Passage structure for `/import` (2026-09-08, issue #45)
+
+The owner confirms the Guided candidate's **Passage** structure for `/import`
+and that route only: File → Mapping → Preview → Confirm, with a progress rail
+that turns verified file, mapping, and dry-run facts into the final receipt.
+Import is a gated provenance-building task, so the complement makes the point
+of commitment clearer than the otherwise preferred Console page structure.
+
+Console remains the design of record for the application shell, tokens, type,
+spacing, primitive behaviour, and every other route. This amendment adopts no
+Passage colour or typography tokens and no Guided dashboard, ledger, report,
+session, or assistant layout. It changes neither API calls nor server-side
+persistence and does not imply backend progress telemetry where the
+request/response API exposes none.
+
+Rule 4's original “no icons beyond” language rejects decorative icon
+proliferation. It does not prohibit the action-icon set established in the
+implemented Console shell: secondary icon-only actions use an accessible name
+and visible tooltip, while each stage's primary action keeps its written verb.
+
 ## Consequences
 
 - Integration is a dedicated issue (#30): tokens, shell and reusable

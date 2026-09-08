@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { Page } from '@playwright/test'
+import type { Browser, Page } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 
 /**
@@ -19,17 +19,37 @@ test.beforeEach(async ({ page }) => {
   page.on('pageerror', error => { throw error })
 })
 
-async function uploadFixtureAndPreview(page: Page) {
+const SHOTS = 'test-results/guided-import-route'
+
+async function uploadFixtureAndPreview(page: Page, screenshots = false) {
   await page.goto('/import')
+  const progress = page.getByRole('complementary', { name: 'Progress' })
+  await expect(progress.getByRole('list')).toBeVisible()
+  await expect(progress.locator('[aria-current="step"]')).toHaveText('File')
+  await expect(progress.getByRole('button')).toHaveCount(0)
   await page.getByLabel(/Trace file|Add another trace file/).setInputFiles(FIXTURE)
   await expect(page.getByRole('heading', { name: 'Uploaded file' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Remove tracelab-sample.jsonl.gz' })).toBeVisible()
   await expect(page.getByText('4,770').first()).toBeVisible()
-  const mapping = page.getByLabel('Mapping', { exact: true })
-  const label = await mapping.getByRole('option', { name: /tracelab-v1 · revision 1/ }).textContent()
-  await mapping.selectOption({ label: label!.trim() })
-  await page.getByRole('button', { name: 'Preview' }).click()
-  await expect(page.getByRole('heading', { name: 'Import preview' })).toBeVisible()
+  if (screenshots) {
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.screenshot({ path: `${SHOTS}/1-file.png`, fullPage: true })
+  }
+  await page.getByRole('button', { name: 'Continue to mapping' }).click()
+  await expect(page).toHaveURL(/\/import\?step=2$/)
+  await expect(page.getByRole('heading', { name: 'Choose how to read it' })).toBeFocused()
+  await expect(progress.locator('[aria-current="step"]')).toHaveText('Mapping')
+  await expect(page.getByRole('radio', { name: /tracelab-v1.*revision 1/ })).toBeChecked()
+  await expect(page.getByText(/Neither fits\?/)).toContainText('Set up a new mapping with the assistant')
+  if (screenshots) await page.screenshot({ path: `${SHOTS}/2-mapping.png`, fullPage: true })
+  await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem('agentscope-import-page') ?? '{}').entries?.[0]?.mappingId)).toBeTruthy()
+  await page.goto('/import?step=3') // an interrupted dry run restores here without preview results
+  await expect(page.getByRole('heading', { name: 'Dry run on up to 200 records per file' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Run the dry run' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Run the dry run' }).click()
+  await expect(page.getByText('Ignored').locator('..')).toContainText('0')
   await expect(page.getByText('No rejects in this sample.')).toBeVisible()
+  if (screenshots) await page.screenshot({ path: `${SHOTS}/3-preview.png`, fullPage: true })
 }
 
 async function summary(page: Page) {
@@ -42,14 +62,54 @@ function comparable(body: { sessions: { value: number }; model_calls: { value: n
   return { sessions: body.sessions.value, model_calls: body.model_calls.value, tool_calls: body.tool_calls.value, input_tokens: body.input_tokens.value, coverage: body.input_tokens.coverage, by_semantics: body.input_tokens.by_semantics }
 }
 
-test('day-1 path: upload, preview, import, overview, re-import leaves totals unchanged', async ({ page }) => {
-  await uploadFixtureAndPreview(page)
+test('day-1 path: guided import, deep links, report, re-import leaves totals unchanged', async ({ page, browser }) => {
+  await uploadFixtureAndPreview(page, true)
+  const progress = page.getByRole('complementary', { name: 'Progress' })
+  await expect(progress.getByRole('button', { name: 'File' })).toBeVisible()
+  await expect(progress.getByRole('button', { name: 'Mapping' })).toBeVisible()
+  await expect(progress).toContainText('tracelab-v1 · rev 1') // facts sit under completed stops only
+
+  // Responsive Passage rail becomes a strip above the stage without document overflow.
+  await page.setViewportSize({ width: 900, height: 1000 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(await page.evaluate(() => document.documentElement.clientWidth))
+  const railBox = await progress.boundingBox()
+  const stageBox = await page.locator('.import-route-stage').boundingBox()
+  expect(railBox!.y + railBox!.height).toBeLessThanOrEqual(stageBox!.y + 1)
+  await page.setViewportSize({ width: 1440, height: 1000 })
+
+  // A completed stop backtracks and transfers focus; rerunning restores Preview.
+  await progress.getByRole('button', { name: 'Mapping' }).click()
+  await expect(page.getByRole('heading', { name: 'Choose how to read it' })).toBeFocused()
+  await page.getByRole('button', { name: 'Run a dry run' }).click()
+  await expect(page.getByRole('heading', { name: 'Dry run on up to 200 records per file' })).toBeFocused()
+
+  // Stored summaries make step=3 reachable; a fresh context safely clamps it to File.
+  await page.goto('/import?step=3')
+  await expect(page.getByRole('heading', { name: 'Dry run on up to 200 records per file' })).toBeVisible()
+  const origin = new URL(page.url()).origin
+  const cleanContext = await (browser as Browser).newContext({ baseURL: origin, colorScheme: 'light', reducedMotion: 'reduce', viewport: { width: 1280, height: 900 } })
+  const cleanPage = await cleanContext.newPage()
+  await cleanPage.goto('/import?step=3')
+  await expect(cleanPage).toHaveURL(/\/import\?step=1$/)
+  await expect(cleanPage.getByRole('heading', { name: 'Import a trace file' })).toBeVisible()
+  await cleanContext.close()
+
+  await page.getByRole('button', { name: 'Looks right, continue' }).click()
+  await expect(page.getByRole('heading', { name: 'Confirm and run' })).toBeFocused()
+  await expect(progress).toContainText('200 sampled · 0 rejected · 0 ignored') // the Preview stop is complete now; the dry run samples 200 per file
+  await page.screenshot({ path: `${SHOTS}/4-confirm.png`, fullPage: true })
   const reportShown = page.waitForURL(/\/imports\/imp_/, { timeout: 120_000 })
-  await page.getByRole('button', { name: 'Import', exact: true }).click()
+  await page.getByRole('button', { name: 'Import 4,770 records' }).click()
   await reportShown
   firstImportId = new URL(page.url()).pathname.split('/').pop()!
   await expect(page.getByText(/^Committed in .* 4,770 of 4,770 records accepted, 0 rejected\.$/)).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('region', { name: 'Imported files' })).toContainText('tracelab-sample.jsonl.gz')
+
+  // Import state was cleared: Back canonicalizes the stale Confirm history entry.
+  await page.goBack()
+  await expect(page).toHaveURL(/\/import\?step=1$/)
+  await expect(page.getByRole('heading', { name: 'Import a trace file' })).toBeVisible()
+  await page.goForward()
 
   expect(comparable(await summary(page))).toEqual(TOTALS)
   await page.getByRole('link', { name: 'Open dashboard' }).click()
@@ -62,12 +122,18 @@ test('day-1 path: upload, preview, import, overview, re-import leaves totals unc
   await expect(tokens).toContainText('exact 553,447,877')
   await expect(tokens).toContainText('coverage 4,770 / 4,770 calls')
 
-  // the same bytes again: the upload names the earlier import, the report is a duplicate
-  await uploadFixtureAndPreview(page)
+  // the same bytes again: the File stop names the earlier import, the report is a duplicate
+  await page.goto('/import')
+  await page.getByLabel(/Trace file|Add another trace file/).setInputFiles(FIXTURE)
+  await expect(page.getByRole('heading', { name: 'Uploaded file' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Already imported' })).toBeVisible()
   await expect(page.getByRole('link', { name: firstImportId })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue to mapping' }).click()
+  await page.getByRole('button', { name: 'Run a dry run' }).click()
+  await expect(page.getByRole('heading', { name: 'Dry run on up to 200 records per file' })).toBeVisible()
+  await page.getByRole('button', { name: 'Looks right, continue' }).click()
   const duplicateShown = page.waitForURL(/\/imports\/imp_/, { timeout: 60_000 })
-  await page.getByRole('button', { name: 'Import', exact: true }).click()
+  await page.getByRole('button', { name: 'Import 4,770 records' }).click()
   await duplicateShown
   const secondImportId = new URL(page.url()).pathname.split('/').pop()!
   expect(secondImportId).not.toBe(firstImportId)

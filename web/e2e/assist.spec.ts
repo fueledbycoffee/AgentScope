@@ -22,7 +22,8 @@ test('analyse, review the payload, revise the epoch unit, validate, save, previe
   page.on('request', request => { if (request.url().includes('/api/')) requests.push(`${request.method()} ${new URL(request.url()).pathname}`) })
   page.on('pageerror', error => { throw error })
   await uploadEpoch(page)
-  await page.getByRole('button', { name: 'Draft a mapping with the assistant' }).click()
+  await page.getByRole('button', { name: 'Continue to mapping' }).click() // the guided route: the assistant is a link on the Mapping stop
+  await page.getByRole('link', { name: 'Set up a new mapping with the assistant' }).click()
   await expect(page).toHaveURL(/\/import\/assist\/upl_/)
   await expect(page.getByRole('heading', { name: 'Mapping assistant' })).toBeVisible()
 
