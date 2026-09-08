@@ -21,8 +21,9 @@
  */
 import type { Ambiguity } from '../api/types'
 import type { DocEdit } from './document'
-import { asString, type DocIndex, type FieldView, type RuleView } from './documentIndex'
+import { asString, type DocIndex, type FieldOption, type FieldView, type RuleView } from './documentIndex'
 import { OPTION_DOMAINS, UNITS, type EnumOption } from './dsl'
+import { FIELD_OPTIONS } from './documentIndex'
 import { resolveIssue } from './issuePaths'
 
 export interface Suggestion {
@@ -45,11 +46,13 @@ export interface TargetChoice {
 }
 
 export type Resolution =
-  | { kind: 'field'; ruleIndex: number; field: string; option: EnumOption | null }
-  | { kind: 'choose-rule'; choices: TargetChoice[]; option: EnumOption | null }
+  /** `option` is any option the DSL names, not only the ones with a closed domain. */
+  | { kind: 'field'; ruleIndex: number; field: string; option: FieldOption | null }
+  | { kind: 'choose-rule'; choices: TargetChoice[]; option: FieldOption | null }
   | { kind: 'none' }
 
-const OPTION_NAMES = new Set<string>(Object.keys(OPTION_DOMAINS))
+/** Every option the DSL names — including the two with no closed domain, `unit` and `default`. */
+const OPTION_NAMES = new Set<string>(FIELD_OPTIONS)
 
 function findFields(index: DocIndex, entity: string | null, field: string): TargetChoice[] {
   const found: TargetChoice[] = []
@@ -76,15 +79,15 @@ export function resolveTarget(index: DocIndex, target: string): Resolution {
       kind: 'field',
       ruleIndex: control.ruleIndex,
       field: control.field,
-      option: control.kind === 'field-option' ? (control.option as EnumOption) : null,
+      option: control.kind === 'field-option' ? control.option : null,
     }
   }
 
   const parts = trimmed.split('.')
   // `model_call.started_at.timestamp_format`, `model_call.started_at`, or a bare field name
-  let option: EnumOption | null = null
+  let option: FieldOption | null = null
   if (parts.length > 1 && OPTION_NAMES.has(parts[parts.length - 1])) {
-    option = parts.pop() as EnumOption
+    option = parts.pop() as FieldOption
   }
   const field = parts.pop()
   if (field === undefined || field === '') return { kind: 'none' }
@@ -121,7 +124,7 @@ function warningFor(option: EnumOption | 'unit', field: FieldView): string | nul
 export function suggestionsFor(
   rule: RuleView,
   field: FieldView,
-  option: EnumOption | null,
+  option: FieldOption | null,
   optionText: string,
 ): Suggestion[] {
   const text = optionText.trim()
@@ -140,7 +143,14 @@ export function suggestionsFor(
     })
   }
 
-  const domainsToTry = option === null ? (Object.keys(OPTION_DOMAINS) as EnumOption[]) : [option]
+  // `unit` and `default` have no closed domain: a value can only be matched against options that
+  // enumerate their legal values, and anything else falls through to the unit pair below or to prose
+  const domainsToTry: EnumOption[] =
+    option === null
+      ? (Object.keys(OPTION_DOMAINS) as EnumOption[])
+      : option in OPTION_DOMAINS
+        ? [option as EnumOption]
+        : [] // `unit` and `default` enumerate nothing: there is no value to match against
   for (const candidate of domainsToTry) {
     const domain = OPTION_DOMAINS[candidate] as readonly string[]
     if (!domain.includes(text)) continue
@@ -155,7 +165,7 @@ export function suggestionsFor(
 
   // a unit needs an ordered pair, so only an explicit one is executable: a bare `min` never is
   const pair = UNIT_PAIR.exec(text)
-  if (pair !== null && (option === null || option === ('unit' as EnumOption))) {
+  if (pair !== null && (option === null || option === 'unit')) {
     const [, from, to] = pair
     if ((UNITS as readonly string[]).includes(from) && (UNITS as readonly string[]).includes(to)) {
       add('unit', JSON.stringify({ from, to }), field.options.unit.path)
@@ -181,7 +191,7 @@ export function offerFor(index: DocIndex, ambiguity: Ambiguity, pickedRule?: num
   return offerAt(index, ambiguity, resolved.ruleIndex, resolved.field, resolved.option)
 }
 
-function offerAt(index: DocIndex, ambiguity: Ambiguity, ruleIndex: number, fieldName: string, option: EnumOption | null): Offer {
+function offerAt(index: DocIndex, ambiguity: Ambiguity, ruleIndex: number, fieldName: string, option: FieldOption | null): Offer {
   const rule = index.rules[ruleIndex]
   const field = rule?.fields.find(candidate => candidate.name === fieldName)
   if (rule === undefined || field === undefined) return { kind: 'prose' }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Ambiguity } from '../api/types'
-import { indexDocument } from './documentIndex'
+import { FIELD_OPTIONS, indexDocument } from './documentIndex'
 import { offerFor, resolveTarget, suggestionsFor } from './suggestions'
 
 const DOC = `{
@@ -112,6 +112,36 @@ describe('turning an option string into operations', () => {
 
   it('leaves prose alone', () => {
     expect(suggestionsFor(modelCall, startedAt, null, 'a validated swe-chat tag')).toEqual([])
+  })
+})
+
+describe('every option name the backend can target', () => {
+  it('resolves without throwing, whatever option the target names', () => {
+    // FIELD_OPTIONS is the DSL's own list; unit and default have no closed domain, and a target
+    // may name any of them. None may throw while a chip is being built.
+    for (const option of FIELD_OPTIONS) {
+      const resolved = resolveTarget(index, `rules[1].fields.started_at.${option}`)
+      expect(resolved, option).toEqual({ kind: 'field', ruleIndex: 1, field: 'started_at', option })
+      for (const text of ['s to ms', 'epoch_s', 'null', 'anything at all']) {
+        expect(() => suggestionsFor(modelCall, startedAt, option, text), `${option} / ${text}`).not.toThrow()
+      }
+    }
+  })
+
+  it('executes an explicit unit pair the target asked for, and leaves default as prose', () => {
+    const unit = suggestionsFor(modelCall, startedAt, 'unit', 's to ms')
+    expect(unit.map(entry => entry.operation)).toEqual(['unit'])
+    expect(unit[0].edits[0]).toEqual({ op: 'set', path: ['rules', 1, 'fields', 'started_at', 'unit'], raw: '{"from":"s","to":"ms"}' })
+    // a default has no closed domain: nothing can be inferred from an option string
+    expect(suggestionsFor(modelCall, startedAt, 'default', 'null')).toEqual([])
+    expect(offerFor(index, ambiguity('rules[1].fields.started_at.default', ['null'])).kind).toBe('prose')
+  })
+
+  it('offers the pair through the whole path a proposal takes', () => {
+    const offer = offerFor(index, ambiguity('rules[1].fields.started_at.unit', ['s to ms', 'ns to ms']))
+    expect(offer.kind).toBe('operations')
+    if (offer.kind !== 'operations') throw new Error('expected operations')
+    expect(offer.options.map(entry => entry.text)).toEqual(['s to ms', 'ns to ms'])
   })
 })
 
