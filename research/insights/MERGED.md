@@ -147,9 +147,14 @@ headline: the axis reads "tokens as counted by the source". Fixture totals:
 
 | Quantity | Claude | Codex | Whole sample | Source |
 | --- | ---: | ---: | ---: | --- |
-| Reported input tokens | 186,454,781 | 366,993,096 | 553,447,877 (the Console mockup's exact KPI value) | **[C, verified]** |
-| Output tokens | not stated in either draft | 1,542,659 | not stated | **[C, verified]** |
-| Prefix ÷ input (Codex) | — | 95.99% | — | **[verified]** |
+| Reported input tokens | 186,454,781 | 366,993,096 | 553,447,877 | **[O §2.1; C, verified]** |
+| Output tokens | 941,168 | 1,542,659 | 2,483,827 | **[O §2.1]** (Codex figure also **[C, verified]**) |
+| Output ÷ input | 0.0050 | 0.0042 | 0.0045 | **[O §2.1]** |
+| Prefix ÷ input | 95.61% | 95.99% | 95.86% | **[O §2.1]**; Codex also **[verified]** |
+
+The whole-sample column is a **reference expectation for checking an implementation**, not
+a pooled dashboard metric: the two providers do not share a validated accounting semantics,
+so the dashboard partitions and refuses rather than printing these totals as one number.
 
 *Display.* Chart 2 on `#/overview`, horizontal bars split by semantics tag; a bar click
 sets the Model select. Exact values print beside abbreviated ones; large integers travel
@@ -364,10 +369,10 @@ existing chart.
 | | |
 | --- | --- |
 | **Metric** | Distribution of recorded model-call observations per session: median, p90, max, plus five fixed bins |
-| **Formula** | count by occurrence, never `max(round_index) + 1`; quantiles nearest-rank; bins 1–5 / 6–20 / 21–50 / 51–100 / 101+ |
+| **Formula** | count by occurrence, never `max(round_index) + 1`; quantiles nearest-rank; bins **0** / 1–5 / 6–20 / 21–50 / 51–100 / 101+ |
 | **Unit** | model-call observations per session |
-| **Scope** | sessions in scope; the population is stated (the fixture has 8 single-round sessions, all with zero tool calls **[O]**) |
-| **Nulls** | none — every session has at least one observation by construction |
+| **Scope** | every session in scope, including sessions with no model call; the population is stated (the fixture has 8 single-round sessions, all with zero tool calls **[O]**) |
+| **Nulls** | none — a session's count is always a known integer, and `0` is a real value, not a missing one |
 | **Coverage** | 80 / 80 sessions **[C]** |
 
 | Measure | Claude | Codex | Whole sample | Source |
@@ -381,14 +386,28 @@ existing chart.
 
 | Recorded rounds | Claude sessions | Codex sessions | All sessions | Source |
 | --- | ---: | ---: | ---: | --- |
+| 0 | 0 | 0 | 0 | reconciliation: C's five bins account for all 80 sessions |
 | 1–5 | 17 | 6 | 23 | **[C, review]** |
 | 6–20 | 7 | 11 | 18 | **[C, review]** |
 | 21–50 | 4 | 9 | 13 | **[C, review]** |
 | 51–100 | 6 | 6 | 12 | **[C, review]** |
 | 101+ | 6 | 8 | 14 | **[C, review]** |
 
-*Data limits.* Mean 59.625 against median 19 is the whole point: a mean is never printed
-without the median and the bins beside it. p90 publishes as 139, not 139.6 (§4 Q6). The
+*Data limits.* A zero bin is required, not optional: the session reducer creates a session
+from a session-row emission alone, so a session with no model call is a normal outcome, not
+a defect (`backend/src/agentscope_app/domain/reducer.py` counts children onto an aggregate
+that starts at `model_call_count = 0`; a children-only session is the *other* case and is
+flagged `implicit_session`). A source mapped to sessions and tool calls without a model-call
+rule — the shape the fake assistant already drafts for an unknown file
+(`backend/tests/infrastructure/test_fake_assistant.py::test_unknown_shape_gets_a_session_only_draft_and_questions`)
+— puts its whole population in that bin. The bins must therefore sum to the sessions KPI of
+§1.1 exactly, and every session must be reachable by clicking a bin; if the histogram ever
+drops a population instead of binning it, it says which and how many, in the same element.
+This fixture puts nothing in the zero bin (TraceLab derives every session from its rounds),
+which is why neither draft measured one. Mean 59.625 against median 19 is the whole point:
+a mean is never printed without the median and the bins beside it. Quantiles are computed
+over the same population the bins cover, zero-count sessions included. p90 publishes as
+139, not 139.6 (§4 Q6). The
 Claude/Codex difference is a difference between imported cohorts, not a performance
 comparison — "different imported cohorts; tasks and accounting are not matched" **[C]**.
 
@@ -595,10 +614,24 @@ from 0% coverage **[C]** — and no SWE-chat value may share an axis with a Trac
 
 ### 3.3 Trace Commons
 
-Uninspected by design: the decoded Parquet is a reserved holdout for the day-4 unseen-file
-rehearsal **[O]**. Dataset notes describe session rows with nested trace structure, but no
-field, unit or coverage is verified **[C]**. It renders as **Unprofiled** and supports
-candidate views only.
+Uninspected by design, but the holdout and the fallback are two different artifacts and
+only one of them is reserved (`docs/datasets/README.md`):
+
+| Role | Path | Bytes | SHA-256 |
+| --- | --- | ---: | --- |
+| **Reserved native file** (the day-4 unseen-structure holdout) | `data/reserved/sessions/claude_code/07b57159-218e-4330-a64e-0ec4b4355056.jsonl` | 1,556,737 | `f0f3711c…fa70` |
+| Decoded Parquet fallback (second source) | `data/raw/trace-commons/train-00000-of-00001.parquet` | 70,202,603 | `7c2c6ee4…11e7` |
+
+The reserved file is a **native JSONL session**, downloaded and hashed only: its contents
+and structure must not be previewed, scanned, parsed or used in development or tests before
+the day-4 exercise. The decoded Parquet shard is downloaded fallback material, its payload
+also uninspected so the holdout is not exposed indirectly; the dataset card describes it as
+one row per session, but no field, unit or coverage is verified **[C]**. At 70.2 MB it
+exceeds the 25 MiB per-upload limit, so second-source integration makes a **bounded local
+Parquet excerpt that excludes the reserved session** before importing through the UI — that
+sampling path is permitted and is the fallback if SWE-chat stays blocked. Until such an
+excerpt is profiled, Trace Commons renders as **Unprofiled** and supports candidate views
+only.
 
 ### 3.4 How the UI says all of this
 
