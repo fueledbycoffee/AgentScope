@@ -1,17 +1,16 @@
-"""Read-side use cases: thin, but they own the metric definitions' wording."""
+"""Read-side use cases, including registry-backed metric queries."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import asdict
 from typing import Any
 
 from agentscope_app.application.dto import (
     DIAGNOSTIC_MESSAGES,
-    Coverage,
     ImportDiagnosticsPage,
     ImportReport,
     MappingRecord,
-    Metric,
     RecordRow,
     RejectRow,
     RejectSummary,
@@ -22,7 +21,16 @@ from agentscope_app.application.dto import (
     MetricsSummary as MetricsSummaryDTO,
 )
 from agentscope_app.application.errors import InvalidInputError, NotFoundError
+from agentscope_app.application.metric_queries import (
+    MetricQueryResult,
+    MetricQuerySpec,
+    TraceScope,
+    assemble_metric,
+    assemble_query,
+    invalid,
+)
 from agentscope_app.application.ports import UnitOfWork, UnitOfWorkFactory
+from agentscope_app.domain.metrics import REGISTRY, Dimension, MetricRegistry
 
 MAX_PAGE = 500
 
@@ -168,43 +176,61 @@ class GetRawRecord:
         return payload
 
 
-DEFINITIONS = {
-    "sessions": "Distinct sessions in scope (reconciled by source and external_id).",
-    "model_calls": (
-        "Recorded model-call observations in scope; one source row can be one observation."
-    ),
-    "tool_calls": "Recorded tool-call observations in scope.",
-    "input_tokens": (
-        "Sum of input_tokens over model calls that have a known value, in scope. Coverage is the"
-        " number of calls with a known value over all calls in scope. Values are only comparable"
-        " within one token_semantics tag; by_semantics splits the sum accordingly."
-    ),
-}
-
-
 class MetricsSummary:
-    """Day-1 subset of the metric layer; the full definitions module is issue #10."""
-
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
 
-    def execute(self, *, source: str | None, agent: str | None) -> MetricsSummaryDTO:
+    def execute(
+        self,
+        *,
+        source: str | None = None,
+        agent: str | None = None,
+        scope: TraceScope | None = None,
+    ) -> MetricsSummaryDTO:
+        effective = scope if scope is not None else TraceScope(source=source, agent=agent)
+        metrics = {}
         with self._uow_factory() as uow:
-            raw = uow.traces.metrics_summary(source=source, agent=agent)
-        total_calls = int(raw.get("model_calls", 0))
-        known = int(raw.get("input_tokens_known", 0))
-        return MetricsSummaryDTO(
-            sessions=Metric(int(raw.get("sessions", 0)), DEFINITIONS["sessions"]),
-            model_calls=Metric(total_calls, DEFINITIONS["model_calls"]),
-            tool_calls=Metric(int(raw.get("tool_calls", 0)), DEFINITIONS["tool_calls"]),
-            input_tokens=Metric(
-                value=raw.get("input_tokens_sum") if known else None,
-                definition=DEFINITIONS["input_tokens"],
-                unit="tokens",
-                coverage=Coverage(known=known, total=total_calls),
-                by_semantics=dict(raw.get("by_semantics", {})),
-            ),
-        )
+            for metric_id in (
+                "sessions",
+                "model_calls",
+                "tool_calls",
+                "input_tokens",
+                "output_tokens",
+            ):
+                definition = REGISTRY.get(metric_id)
+                rows = uow.trace_query.aggregate(MetricQuerySpec(definition, effective))
+                metrics[metric_id] = assemble_metric(definition, rows)
+        return MetricsSummaryDTO(**metrics)
+
+
+class ListMetricDefinitions:
+    def __init__(self, registry: MetricRegistry = REGISTRY) -> None:
+        self._registry = registry
+
+    def execute(self) -> list[dict[str, Any]]:
+        return [
+            dict(asdict(d), supported_dimensions=d.supported_dimensions)
+            for d in self._registry.definitions.values()
+        ]
+
+
+class QueryMetric:
+    def __init__(self, uow_factory: UnitOfWorkFactory, registry: MetricRegistry = REGISTRY) -> None:
+        self._uow_factory, self._registry = uow_factory, registry
+
+    def execute(
+        self, metric_id: str, scope: TraceScope | None = None, group_by: tuple[Dimension, ...] = ()
+    ) -> MetricQueryResult:
+        try:
+            definition = self._registry.get(metric_id)
+        except ValueError as exc:
+            raise invalid("metric_id", str(exc)) from None
+        if Dimension.SESSION_ID in group_by:
+            raise invalid("group_by", "session_id is an internal batching dimension")
+        spec = MetricQuerySpec(definition, scope or TraceScope(), group_by)
+        with self._uow_factory() as uow:
+            rows = uow.trace_query.aggregate(spec)
+        return assemble_query(spec, rows)
 
 
 class ListImportDiagnostics:

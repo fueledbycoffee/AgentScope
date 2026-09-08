@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -27,8 +28,10 @@ from agentscope_app.application.dto import (
     UploadInfo,
 )
 from agentscope_app.application.errors import LimitExceededError
+from agentscope_app.application.metric_queries import MetricQueryResult, TraceScope, invalid
 from agentscope_app.domain.jsonx import dumps_exact
 from agentscope_app.domain.mapping.parser import parse_mapping
+from agentscope_app.domain.metrics import Dimension, EntityGrain
 from agentscope_app.interfaces.api.container import Container
 from agentscope_app.interfaces.api.schemas import (
     AssistantRequestBody,
@@ -250,3 +253,94 @@ def list_import_diagnostics(
     return _c(request).list_import_diagnostics.execute(
         import_id, code, file_sha256, locator, limit, offset
     )
+
+
+@router.get("/metrics/definitions")
+def metric_definitions(request: Request) -> list[dict[str, Any]]:
+    return _c(request).list_metric_definitions.execute()
+
+
+@router.get("/metrics/query")
+def query_metric(
+    request: Request,
+    metric_id: str,
+    group_by: Annotated[list[Dimension] | None, Query()] = None,
+    source: str | None = None,
+    agent: str | None = None,
+    model: str | None = None,
+    tool: str | None = None,
+    started_from: datetime | None = None,
+    started_before: datetime | None = None,
+    started_through: datetime | None = None,
+    import_id: str | None = None,
+    activity_grain: EntityGrain | None = None,
+    token_semantics: str | None = None,
+    model_is_unknown: bool = False,
+    agent_is_unknown: bool = False,
+    timestamp_missing: bool = False,
+    tool_is_unlinked: bool = False,
+    usage_missing: bool = False,
+    tool_is_linked: bool = False,
+    witness_time_override: bool = False,
+    witness_required: bool = False,
+    witness_started_from: datetime | None = None,
+    witness_started_before: datetime | None = None,
+    witness_started_through: datetime | None = None,
+    witness_timestamp_missing: bool = False,
+) -> MetricQueryResult:
+    allowed = {
+        "metric_id",
+        "group_by",
+        "source",
+        "agent",
+        "model",
+        "tool",
+        "started_from",
+        "started_before",
+        "started_through",
+        "import_id",
+        "activity_grain",
+        "token_semantics",
+        "model_is_unknown",
+        "agent_is_unknown",
+        "timestamp_missing",
+        "tool_is_unlinked",
+        "usage_missing",
+        "tool_is_linked",
+        "witness_time_override",
+        "witness_required",
+        "witness_started_from",
+        "witness_started_before",
+        "witness_started_through",
+        "witness_timestamp_missing",
+    }
+    for name in request.query_params:
+        if name not in allowed:
+            raise invalid(f"query.{name}", "Unknown metric query parameter")
+        if name != "group_by" and len(request.query_params.getlist(name)) > 1:
+            raise invalid(f"query.{name}", "Only group_by can be repeated")
+    scope = TraceScope(
+        source=source,
+        agent=agent,
+        model=model,
+        tool=tool,
+        started_from=started_from,
+        started_before=started_before,
+        started_through=started_through,
+        import_id=import_id,
+        activity_grain=activity_grain,
+        token_semantics=token_semantics,
+        model_is_unknown=model_is_unknown,
+        agent_is_unknown=agent_is_unknown,
+        timestamp_missing=timestamp_missing,
+        tool_is_unlinked=tool_is_unlinked,
+        usage_missing=usage_missing,
+        tool_is_linked=tool_is_linked,
+        witness_time_override=witness_time_override,
+        witness_required=witness_required,
+        witness_started_from=witness_started_from,
+        witness_started_before=witness_started_before,
+        witness_started_through=witness_started_through,
+        witness_timestamp_missing=witness_timestamp_missing,
+    )
+    return _c(request).query_metric.execute(metric_id, scope, tuple(group_by or ()))

@@ -22,10 +22,12 @@ from agentscope_app.application.use_cases.queries import (
     ListImportDiagnostics,
     ListImports,
     ListMappings,
+    ListMetricDefinitions,
     ListRecordOutcomes,
     ListRejects,
     ListSessions,
     MetricsSummary,
+    QueryMetric,
     RejectSummaryQuery,
 )
 from agentscope_app.application.use_cases.uploads import StoreUpload
@@ -60,6 +62,8 @@ class Container:
     get_session: GetSession
     get_raw_record: GetRawRecord
     metrics_summary: MetricsSummary
+    list_metric_definitions: ListMetricDefinitions
+    query_metric: QueryMetric
     profile_file: ProfileFile
     prepare_context: PrepareContext
     run_assistant: RunAssistant
@@ -161,6 +165,8 @@ def build_container(settings: Settings) -> Container:
         get_session=GetSession(uow_factory),
         get_raw_record=GetRawRecord(uow_factory),
         metrics_summary=MetricsSummary(uow_factory),
+        list_metric_definitions=ListMetricDefinitions(),
+        query_metric=QueryMetric(uow_factory),
         profile_file=profile_file,
         prepare_context=prepare_context,
         run_assistant=RunAssistant(prepare_context, assistant),

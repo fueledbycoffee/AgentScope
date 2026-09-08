@@ -199,6 +199,26 @@ class Coverage:
     total: int
 
 
+@dataclass(frozen=True, init=False)
+class TokenCoverage(Coverage):
+    """Token-weighted counts with authoritative text for lossless JSON transport."""
+
+    known_text: str
+    total_text: str
+
+    def __init__(self, known: int, total: int) -> None:
+        super().__init__(known, total)
+        object.__setattr__(self, "known_text", str(known))
+        object.__setattr__(self, "total_text", str(total))
+
+
+@dataclass(frozen=True)
+class SemanticsPartition:
+    semantics: str
+    value_text: str | None
+    coverage: Coverage
+
+
 @dataclass(frozen=True)
 class Metric:
     value: int | float | None
@@ -206,6 +226,13 @@ class Metric:
     unit: str | None = None
     coverage: Coverage | None = None
     by_semantics: dict[str, int] = field(default_factory=dict)
+    metric_id: str | None = None
+    version: int | None = None
+    value_text: str | None = None
+    recorded_sum_text: str | None = None
+    comparability: str = "not_applicable"
+    reason: str = ""
+    semantics_partitions: tuple[SemanticsPartition, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -286,6 +313,7 @@ class MetricsSummary:
     model_calls: Metric
     tool_calls: Metric
     input_tokens: Metric
+    output_tokens: Metric
 
 
 # --- mapping assistant (ADR-005) ---------------------------------------------------------

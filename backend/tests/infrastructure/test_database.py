@@ -227,6 +227,13 @@ def test_end_to_end_commit_over_the_fixture_then_reimport(engine: Any, tmp_path:
     assert metrics.input_tokens.coverage.total == 4770
     assert set(metrics.input_tokens.by_semantics) == {"tracelab-claude", "tracelab-codex"}
     assert sum(metrics.input_tokens.by_semantics.values()) == metrics.input_tokens.value
+    assert metrics.input_tokens.comparability == "mixed"
+    assert metrics.input_tokens.value_text is None
+    assert metrics.input_tokens.recorded_sum_text == str(metrics.input_tokens.value)
+    assert {p.semantics for p in metrics.input_tokens.semantics_partitions} == {
+        "tracelab-claude",
+        "tracelab-codex",
+    }
     empty = MetricsSummary(uow_factory).execute(source="nothing", agent=None)
     assert empty.sessions.value == 0 and empty.input_tokens.value is None
 

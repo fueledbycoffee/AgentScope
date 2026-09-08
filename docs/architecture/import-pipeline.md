@@ -117,20 +117,31 @@ saved mappings, imports and dashboards.
    diagnostics are written in one transaction. A failure rolls that transaction
    back and retains a failed attempt report.
 4. Query use cases read import outcomes, rejects, sessions, exact raw payload
-   text and the four current summary metrics through the same unit-of-work
-   boundary.
+   text, claims diagnostics and registry-defined metrics through the same unit-of-work
+   boundary. The summary retains its four metrics and adds output tokens; the shared
+   query port also supplies exact grouped values, coverage and reproducible drill scopes.
+   See the [metric layer](metric-layer.md) for scope and accounting rules.
 
 The assistant path is separate from canonicalisation. It profiles and redacts a
 stored upload, shows the exact bounded context and digest, and passes that text
 through the `MappingAssistant` port. The application parses and validates the
 reply and can make one repair call. A proposal becomes executable data only
 after an explicit validate and save; preview and import still use the same
-deterministic mapping interpreter as any bundled revision.
+deterministic mapping interpreter as any bundled revision. The context budget
+(`AGENTSCOPE_LLM_CONTEXT_BYTES`, default 64 KiB) trims samples, reduces examples,
+drops oldest history, removes examples, then omits deepest/rarest nested fields.
+Root and top-level fields remain; omitted counts and truncation reasons are reported.
+If the retained context still exceeds the budget, preparation fails with
+`413 context_too_large` before any assistant request.
 
 ## Persisted entities
 
-The table set below matches `EXPECTED_TABLES` in
-`backend/tests/infrastructure/test_database.py` and Alembic revision `0003`.
+The core table set below matches `EXPECTED_TABLES` in
+`backend/tests/infrastructure/test_database.py` through Alembic revision `0003`.
+Revision `0004` adds upload profiles; `0005` adds `claim_scopes`, `claim_projections`,
+`entity_claims`, `claim_file_projections`, `import_diagnostics` and `import_claim_conditions` (described below).
+Revision `0010` follows `0005` and adds three non-materialized metric views,
+without changing canonical observations or claims tables.
 Attributes are intentionally bounded to primary keys, physical foreign keys and
 uniqueness that carries identity or idempotency.
 
