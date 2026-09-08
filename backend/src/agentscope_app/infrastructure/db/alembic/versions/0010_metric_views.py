@@ -1,5 +1,4 @@
-"""Entity-grain metric views, following cross-file claims.
-"""
+"""Entity-grain metric views, following cross-file claims."""
 
 from alembic import op
 

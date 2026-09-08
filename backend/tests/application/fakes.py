@@ -32,8 +32,8 @@ from agentscope_app.application.dto import (
     UploadInfo,
 )
 from agentscope_app.application.errors import ConflictError, InvalidInputError, NotFoundError
-from agentscope_app.domain.claims import ClaimCandidate, ClaimCondition
 from agentscope_app.application.metric_queries import AggregateRows, MetricQuerySpec, TraceScope
+from agentscope_app.domain.claims import ClaimCandidate, ClaimCondition
 from agentscope_app.domain.mapping.interpreter import Emission
 from agentscope_app.domain.reducer import SessionAggregate
 

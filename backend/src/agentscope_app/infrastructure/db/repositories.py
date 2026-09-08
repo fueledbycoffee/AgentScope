@@ -43,8 +43,8 @@ from agentscope_app.application.dto import (
     RawRecord as RawRecordDTO,
 )
 from agentscope_app.application.errors import ConflictError, NotFoundError
-from agentscope_app.domain.claims import ClaimCandidate, ClaimCondition, ConditionCode
 from agentscope_app.application.metric_queries import AggregateRows, TraceScope, assemble_metric
+from agentscope_app.domain.claims import ClaimCandidate, ClaimCondition, ConditionCode
 from agentscope_app.domain.mapping.interpreter import Emission
 from agentscope_app.domain.metrics import REGISTRY
 from agentscope_app.domain.reducer import SessionAggregate

@@ -141,7 +141,7 @@ rendering and drill requirements. Prefix reuse, timelines and repeat-after-error
 
 ## Migration convention
 
-Revision `0010`, parent `0004`, creates the three non-materialized views. Future Alembic
+Revision `0010`, parent `0005`, creates the three non-materialized views. Future Alembic
 batch alterations of **sessions, model_calls or tool_calls must drop all metric views
 first and recreate them last**, using `drop_metric_views(connection)` and
 `create_metric_views(connection)` in `infrastructure/db/metric_sql.py`. SQLite validates
@@ -150,7 +150,9 @@ version-one helper semantics; changed projections need a versioned helper/migrat
 Tests exercise upgrade from populated 0004, repeated upgrade, connection reopen,
 downgrade and a throwaway batch alteration using this sequence.
 
-`0010` is a deliberate branch placeholder. If concurrent branches add migration heads,
-the coordinator must author an explicit Alembic merge revision before merged startup
-and tests. `run_migrations` still upgrades to singular `head`; green branch tests cannot
-validate a future merged migration graph.
+The migration chain is linear: `0004` (upload profiles), `0005` (cross-file claims),
+then `0010` (metric views). Claims and import diagnostics remain provenance metadata;
+metric views count every canonical observation, including equal cross-file claims.
+The claims backfill never deduplicates or changes metric totals. `run_migrations`
+upgrades to the single `head`. See [import architecture](import-pipeline.md) for
+claims comparison, backfill and the separately budgeted assistant context.
