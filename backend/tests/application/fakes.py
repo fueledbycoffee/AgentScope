@@ -12,7 +12,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, BinaryIO
 
 from agentscope_app.application.dto import (
+    DIAGNOSTIC_MESSAGES,
     CachedProfile,
+    DiagnosticPeer,
+    ImportDiagnostic,
+    ImportDiagnosticsPage,
     ImportRef,
     ImportReport,
     MappingRecord,
@@ -24,9 +28,11 @@ from agentscope_app.application.dto import (
     SessionDetail,
     SessionSummary,
     StoredFile,
+    TraceStoreResult,
     UploadInfo,
 )
 from agentscope_app.application.errors import ConflictError, InvalidInputError, NotFoundError
+from agentscope_app.domain.claims import ClaimCandidate, ClaimCondition
 from agentscope_app.domain.mapping.interpreter import Emission
 from agentscope_app.domain.reducer import SessionAggregate
 
@@ -162,6 +168,20 @@ class FakeImports:
         self.results[import_id] = list(outcomes)
         self.reject_rows[import_id] = list(rejects)
 
+    def add_claim_conditions(self, import_id: str, conditions: Sequence[ClaimCondition]) -> None:
+        pass  # already included in the report DTO by the application
+
+    def diagnostics(
+        self,
+        import_id: str,
+        code: str | None,
+        file_sha256: str | None,
+        locator: str | None,
+        limit: int,
+        offset: int,
+    ) -> ImportDiagnosticsPage:
+        return ImportDiagnosticsPage((), 0)
+
     def get(self, import_id: str) -> ImportReport | None:
         return self.reports.get(import_id)
 
@@ -214,6 +234,7 @@ class FakeTraces:
     def __init__(self, fail: bool = False) -> None:
         self.fail = fail
         self.stored: list[dict[str, Any]] = []
+        self.claims: list[tuple[str, ClaimCandidate]] = []
 
     def existing_sessions(
         self, source: str, external_ids: Sequence[str]
@@ -228,7 +249,8 @@ class FakeTraces:
         bindings: Mapping[str, str],
         emissions: Sequence[Emission],
         sessions: dict[str, SessionAggregate],
-    ) -> dict[str, int]:
+        claims: Sequence[ClaimCandidate] = (),
+    ) -> TraceStoreResult:
         if self.fail:
             raise RuntimeError("database exploded")
         self.stored.append(
@@ -244,7 +266,38 @@ class FakeTraces:
         for emission in emissions:
             if emission.entity != "session":
                 counts[emission.entity] = counts.get(emission.entity, 0) + 1
-        return counts
+        self.claims.extend((import_id, c) for c in claims)
+        diagnostics = []
+        for c in claims:
+            peers = [
+                (i, p)
+                for i, p in self.claims
+                if p.scope_text == c.scope_text
+                and p.occurrence.file_sha256 != c.occurrence.file_sha256
+            ]
+            equal = [(i, p) for i, p in peers if p.projection_text == c.projection_text]
+            if peers:
+                i, peer = (equal or peers)[0]
+                code = "matching_claim_equal_projection" if equal else "suspected_duplicate"
+                diagnostics.append(
+                    ImportDiagnostic(
+                        c.occurrence.file_sha256,
+                        c.occurrence.locator,
+                        c.occurrence.emission_path,
+                        c.rule_id,
+                        c.entity,
+                        code,
+                        DIAGNOSTIC_MESSAGES[code],
+                        DiagnosticPeer(
+                            i,
+                            peer.occurrence.file_sha256,
+                            peer.occurrence.locator,
+                            peer.occurrence.emission_path,
+                            peer.entity,
+                        ),
+                    )
+                )
+        return TraceStoreResult(counts, tuple(diagnostics))
 
     def list_sessions(
         self, *, source: str | None, agent: str | None, limit: int, offset: int

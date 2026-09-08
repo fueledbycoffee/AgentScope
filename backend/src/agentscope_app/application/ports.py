@@ -13,6 +13,7 @@ from typing import Any, BinaryIO, Protocol
 from agentscope_app.application.dto import (
     AssistantReply,
     CachedProfile,
+    ImportDiagnosticsPage,
     ImportRef,
     ImportReport,
     MappingRecord,
@@ -26,8 +27,10 @@ from agentscope_app.application.dto import (
     SessionDetail,
     SessionSummary,
     StoredFile,
+    TraceStoreResult,
     UploadInfo,
 )
+from agentscope_app.domain.claims import ClaimCandidate, ClaimCondition
 from agentscope_app.domain.mapping.interpreter import Emission
 from agentscope_app.domain.reducer import SessionAggregate
 
@@ -102,6 +105,20 @@ class ImportRepository(Protocol):
         their file hash, so one call covers every file of the attempt."""
         ...
 
+    def add_claim_conditions(
+        self, import_id: str, conditions: Sequence[ClaimCondition]
+    ) -> None: ...
+
+    def diagnostics(
+        self,
+        import_id: str,
+        code: str | None,
+        file_sha256: str | None,
+        locator: str | None,
+        limit: int,
+        offset: int,
+    ) -> ImportDiagnosticsPage: ...
+
     def get(self, import_id: str) -> ImportReport | None: ...
 
     def list(self, limit: int, offset: int) -> Sequence[ImportReport]: ...
@@ -149,7 +166,8 @@ class TraceRepository(Protocol):
         bindings: Mapping[str, str],
         emissions: Sequence[Emission],
         sessions: dict[str, SessionAggregate],
-    ) -> dict[str, int]:
+        claims: Sequence[ClaimCandidate] = (),
+    ) -> TraceStoreResult:
         """Persist accepted emissions; ``bindings`` maps each file hash of the attempt
         to the mapping id it ran under (every contribution records its own);
         ``sessions`` is the full new state of each session (seeded from

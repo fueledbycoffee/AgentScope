@@ -19,6 +19,7 @@ from agentscope_app.application.use_cases.queries import (
     GetMapping,
     GetRawRecord,
     GetSession,
+    ListImportDiagnostics,
     ListImports,
     ListMappings,
     ListRecordOutcomes,
@@ -49,6 +50,7 @@ class Container:
     commit_import: CommitImport
     list_mappings: ListMappings
     get_mapping: GetMapping
+    list_import_diagnostics: ListImportDiagnostics
     list_imports: ListImports
     get_import: GetImport
     list_rejects: ListRejects
@@ -149,6 +151,7 @@ def build_container(settings: Settings) -> Container:
         commit_import=CommitImport(uow_factory, store, reader, clock, ids),
         list_mappings=ListMappings(uow_factory),
         get_mapping=GetMapping(uow_factory),
+        list_import_diagnostics=ListImportDiagnostics(uow_factory),
         list_imports=ListImports(uow_factory),
         get_import=GetImport(uow_factory),
         list_rejects=ListRejects(uow_factory),

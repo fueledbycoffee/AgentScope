@@ -6,7 +6,9 @@ from collections.abc import Sequence
 from typing import Any
 
 from agentscope_app.application.dto import (
+    DIAGNOSTIC_MESSAGES,
     Coverage,
+    ImportDiagnosticsPage,
     ImportReport,
     MappingRecord,
     Metric,
@@ -203,3 +205,26 @@ class MetricsSummary:
                 by_semantics=dict(raw.get("by_semantics", {})),
             ),
         )
+
+
+class ListImportDiagnostics:
+    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+        self._uow_factory = uow_factory
+
+    def execute(
+        self,
+        import_id: str,
+        code: str | None = None,
+        file_sha256: str | None = None,
+        locator: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> ImportDiagnosticsPage:
+        if code is not None and code not in DIAGNOSTIC_MESSAGES:
+            raise InvalidInputError(
+                f"Unknown diagnostic code {code!r}", [sorted(DIAGNOSTIC_MESSAGES)]
+            )
+        limit, offset = _page(limit, offset)
+        with self._uow_factory() as uow:
+            _require_import(uow, import_id)
+            return uow.imports.diagnostics(import_id, code, file_sha256, locator, limit, offset)

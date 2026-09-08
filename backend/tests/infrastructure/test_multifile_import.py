@@ -259,6 +259,15 @@ def test_failure_after_store_rolls_back_everything_and_records_failed(
     assert env.sql("SELECT COUNT(*) FROM sessions") == [(0,)]
     assert env.sql("SELECT COUNT(*) FROM model_calls") == [(0,)]
     assert env.sql("SELECT COUNT(*) FROM record_results") == [(0,)]
+    for table in (
+        "entity_claims",
+        "claim_projections",
+        "claim_file_projections",
+        "claim_scopes",
+        "import_diagnostics",
+        "import_claim_conditions",
+    ):
+        assert env.sql(f"SELECT COUNT(*) FROM {table}") == [(0,)]
     assert env.sql("SELECT status, committed FROM import_files") == [("failed", 0), ("failed", 0)]
     # nothing was claimed: the same batch commits cleanly afterwards
     retry = env.commit.execute("tracelab", bindings)
@@ -526,3 +535,28 @@ def test_record_outcomes_and_reject_summary_are_browsable(env: Env) -> None:
         assert [r.locator for r in rows] == [f"row:{i}" for i in range(12)]
         page = uow.imports.records(parquet_report.import_id, None, None, 3, 9)
         assert [r.locator for r in page] == ["row:9", "row:10", "row:11"]
+
+
+@pytest.mark.parametrize("stage", ["entities", "claims"])
+def test_non_occurrence_integrity_failure_is_not_a_byte_race(env: Env, monkeypatch, stage):
+    from agentscope_app.infrastructure.db.claims import ClaimIndex
+    from agentscope_app.infrastructure.db.repositories import SqlAlchemyTraces
+
+    def broken(self, *args, **kwargs):
+        connection = self.c if stage == "claims" else self._s.connection()
+        # A real FK failure, with SQLite's actual constraint message.
+        connection.execute(text("INSERT INTO claim_projections VALUES (99999,'digest','text')"))
+
+    if stage == "claims":
+        monkeypatch.setattr(ClaimIndex, "stage", broken)
+    else:
+        monkeypatch.setattr(SqlAlchemyTraces, "_store", broken)
+    a = env.upload.execute("a.jsonl", jsonl("integrity"))
+    report = env.commit.execute("src", [FileBinding(a.upload_id, "map_tracelab")])
+    assert report.status == "failed"
+    assert "IntegrityError" in report.error and "FOREIGN KEY" in report.error
+    assert "race" not in report.error and "ConflictError" not in report.error
+    assert report.duplicate_detection_version is None and report.warnings == {}
+    assert env.sql("SELECT COUNT(*) FROM entity_claims") == [(0,)]
+    assert env.sql("SELECT COUNT(*) FROM model_calls") == [(0,)]
+    assert env.sql("SELECT status,committed FROM import_files") == [("failed", 0)]

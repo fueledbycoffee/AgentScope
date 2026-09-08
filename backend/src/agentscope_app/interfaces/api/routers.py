@@ -14,6 +14,7 @@ from agentscope_app.application.dto import (
     MAX_UPLOAD_BYTES,
     AssistantOutcome,
     FileBinding,
+    ImportDiagnosticsPage,
     ImportReport,
     MappingRecord,
     MetricsSummary,
@@ -234,3 +235,18 @@ def metrics_summary(
     request: Request, source: str | None = None, agent: str | None = None
 ) -> MetricsSummary:
     return _c(request).metrics_summary.execute(source=source, agent=agent)
+
+
+@router.get("/imports/{import_id}/diagnostics")
+def list_import_diagnostics(
+    request: Request,
+    import_id: str,
+    code: str | None = None,
+    file_sha256: str | None = None,
+    locator: str | None = None,
+    limit: Limit = 50,
+    offset: Offset = 0,
+) -> ImportDiagnosticsPage:
+    return _c(request).list_import_diagnostics.execute(
+        import_id, code, file_sha256, locator, limit, offset
+    )

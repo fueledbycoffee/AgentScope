@@ -200,7 +200,7 @@ def test_lookup_uses_indexes_and_bounded_pages(env: Env, monkeypatch):
     report, rows = stage_synthetic(env, candidates)
     assert len(rows) == len(candidates)
     detection = [s for s, _, _ in captured if s.startswith("\nWITH candidates")]
-    assert len(detection) == 8
+    assert len(detection) == 9  # one live-import warmup page, then eight synthetic pages
     assert all(len(p) <= 999 for _, p, many in captured if not many)
     with env.engine.connect() as c:
         plans = [
@@ -213,3 +213,100 @@ def test_lookup_uses_indexes_and_bounded_pages(env: Env, monkeypatch):
     assert sum("ix_claim_file_scope" in p for p in plans) == 2
     assert any("sqlite_autoindex_claim_file_projections" in p for p in plans)
     assert not any("SCAN f" in p for p in plans)
+
+
+def commit_data(env, data, source="src", mapping="map_tracelab"):
+    upload = env.upload.execute("synthetic.jsonl", data)
+    report = env.commit.execute(source, [FileBinding(upload.upload_id, mapping)])
+    assert report.status in ("committed", "duplicate"), report.error
+    return upload, report
+
+
+def changed_rows(values, salt=""):
+    return b"".join(
+        _tracelab_line("same", f', "input_tokens_total": {v}, "salt": "{salt}"') for v in values
+    )
+
+
+def test_equal_and_different_projections_across_committed_files(env: Env):
+    a, first = commit_data(env, changed_rows([10, 20], "a"))
+    b, second = commit_data(env, changed_rows([10, 30], "b"))
+    assert first.warnings.get("suspected_duplicate", 0) == 0
+    assert second.warnings["suspected_duplicate"] == 1
+    assert second.warnings["matching_claim_equal_projection"] == 3  # two sessions + equal call
+    assert second.entities == {"model_call": 2}
+    assert second.records["accepted"] == 2
+    assert env.sql("SELECT SUM(input_tokens) FROM model_calls") == [(70,)]
+    with env.uow_factory() as uow:
+        assert uow.imports.get(second.import_id) == second
+        assert uow.imports.get(first.import_id) == first
+        records = uow.imports.records(second.import_id, None, None, 50, 0)
+        rollup = Counter()
+        for record in records:
+            rollup.update(record.warning_counts)
+        assert dict(rollup) == second.warnings == second.files[0].warnings
+        diagnostics = uow.imports.diagnostics(second.import_id, None, None, None, 50, 0)
+        assert diagnostics.total == 4
+        assert all(d.peer.file_sha256 == a.sha256 for d in diagnostics.items)
+        assert all(d.peer.import_id == first.import_id for d in diagnostics.items)
+    _, replay = commit_data(env, changed_rows([10, 30], "b"))
+    assert replay.status == "duplicate" and replay.warnings == {}
+    assert replay.duplicate_detection_version is None and replay.files[0].warnings == {}
+    assert replay.files[0].duplicate_of == second.import_id
+
+
+def test_matching_equal_projection_is_counted_for_repeated_reexport(env: Env):
+    commit_data(env, changed_rows([10, 20, 10], "a"))
+    _, second = commit_data(env, changed_rows([10, 20, 10], "b"))
+    assert second.warnings.get("suspected_duplicate", 0) == 0
+    assert second.warnings["matching_claim_equal_projection"] == 6
+    assert second.records["accepted"] == 3 and second.entities == {"model_call": 3}
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("chunk", [1, 2, 128])
+def test_same_attempt_is_order_independent(env: Env, monkeypatch, reverse, chunk):
+    monkeypatch.setattr(claims_module, "PAGE_SIZE", chunk)
+    uploads = [
+        env.upload.execute("a.jsonl", changed_rows([10], "a")),
+        env.upload.execute("b.jsonl", changed_rows([20], "b")),
+    ]
+    bindings = [FileBinding(u.upload_id, "map_tracelab") for u in uploads]
+    report = env.commit.execute("src", list(reversed(bindings)) if reverse else bindings)
+    assert report.status == "committed", report.error
+    assert report.warnings["suspected_duplicate"] == 2
+    assert report.warnings["matching_claim_equal_projection"] == 2
+    assert all(f.warnings["suspected_duplicate"] == 1 for f in report.files)
+
+
+@pytest.mark.parametrize("kind", ["session", "model_call"])
+def test_healthy_optional_unmapped_field_has_one_condition_per_file_rule(env: Env, kind):
+    from dataclasses import replace
+
+    original = mapping_record()
+    document = json.loads(json.dumps(original.document))
+    document["rules"] = [r for r in document["rules"] if r["entity"] == kind]
+    if kind == "session":
+        del document["rules"][0]["fields"]["agent"]
+    mapping = replace(
+        original, id="optional", name="optional", content_hash="optional", document=document
+    )
+    with env.uow_factory() as uow:
+        uow.mappings.add(mapping)
+        uow.commit()
+    _, report = commit_data(env, changed_rows([10] * 150), mapping="optional")
+    assert report.status == "committed" and report.records["accepted"] == 150
+    assert "claim_scope_unavailable" not in report.warnings
+    assert "claim_scope_unavailable" not in report.files[0].warnings
+    conditions = report.files[0].claim_conditions
+    assert len(conditions) == 1 and conditions[0].affected_emissions == 150
+    assert conditions[0].code == "claim_scope_unavailable"
+    assert env.sql("SELECT COUNT(*) FROM import_claim_conditions") == [(1,)]
+    assert env.sql("SELECT COUNT(*) FROM import_diagnostics") == [(0,)]
+    assert env.sql("SELECT COUNT(*) FROM sessions") == [(1,)]  # implicit session still works
+    with env.uow_factory() as uow:
+        assert uow.imports.get(report.import_id) == report
+        assert all(
+            "claim_scope_unavailable" not in r.warning_counts
+            for r in uow.imports.records(report.import_id, None, None, 500, 0)
+        )
