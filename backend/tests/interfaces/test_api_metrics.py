@@ -444,8 +444,12 @@ def test_scheduled_cost_exact_rates_semantics_splits_and_token_coverage(client, 
     assert response.status_code == 200, response.text
     result = response.json()["overall"]
     assert result["schedule_version"] == "offline-test-v1"
-    assert result["value_text"] is None
+    assert result["value_text"] == "0.66"
     assert result["recorded_sum_text"] == "0.66"
+    assert result["comparability"] == "not_applicable"
+    assert result["reason"] == (
+        "Sum of priced groups; unpriced groups excluded, see priced coverage."
+    )
     assert result["priced_coverage"] == {
         "known": 100,
         "total": 275,
@@ -646,8 +650,9 @@ def test_tracelab_fixture_scheduled_cost_by_accounting_group(client):
         },
     ).json()
     overall = body["overall"]
-    assert overall["value_text"] is None  # mixed accounting groups still require a split
+    assert overall["value_text"] == "132.8761978"  # USD adds across accounting groups
     assert overall["recorded_sum_text"] == "132.8761978"
+    assert overall["comparability"] == "not_applicable"
     assert overall["coverage"] == {"known": 4622, "total": 4770}
     parts = {p["semantics"]: p for p in overall["semantics_partitions"]}
     # Independent raw-fixture arithmetic; see backend/prices/README.md.

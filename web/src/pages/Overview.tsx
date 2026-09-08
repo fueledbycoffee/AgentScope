@@ -30,6 +30,33 @@ function durationHeadline(valueText: string | null) {
   return `${minutes.toFixed(minutes >= 10 ? 0 : 1)} min`
 }
 
+function usdHeadline(valueText: string | null) {
+  if (valueText === null) return undefined
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(valueText)
+  if (!match) return undefined
+  const [, whole, fraction = ''] = match
+  const centsText = fraction.padEnd(2, '0').slice(0, 2)
+  let cents = BigInt(whole) * 100n + BigInt(centsText)
+  const discarded = fraction.slice(2)
+  if (discarded) {
+    const first = discarded[0]
+    const after = discarded.slice(1)
+    if (first > '5' || (first === '5' && (/[1-9]/.test(after) || cents % 2n === 1n))) cents += 1n
+  }
+  const fixed = `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`
+  return `$${groupExactText(fixed)}`
+}
+
+function pricedCoverageLine(result: MetricQuery['overall']) {
+  const calls = `${groupExactText(String(result.coverage.known))} / ${groupExactText(String(result.coverage.total))} calls`
+  const coverage = result.priced_coverage
+  if (!coverage || coverage.total_text === '0') return `priced coverage unavailable · ${calls}`
+  const known = BigInt(coverage.known_text)
+  const total = BigInt(coverage.total_text)
+  const tenths = (known * 1000n + total / 2n) / total
+  return `priced ${tenths / 10n}.${tenths % 10n} % of recorded tokens · ${calls}`
+}
+
 function qualityEnvelope(query: MetricQuery, value: string) {
   return createDrillEnvelope('quality', value, query.scope)
 }
@@ -99,15 +126,11 @@ export default function OverviewPage() {
           <KpiTile label="Sessions" display={displayFromSummary(data.summary.sessions)} definition={definition(data.definitions, 'sessions', data.summary.sessions.definition)} />
           <KpiTile label="Model-call observations" display={displayFromSummary(data.summary.model_calls)} definition={definition(data.definitions, 'model_calls', data.summary.model_calls.definition)} />
           <KpiTile label="Tool-call observations" display={displayFromSummary(data.summary.tool_calls)} definition={definition(data.definitions, 'tool_calls', data.summary.tool_calls.definition)} />
-          <KpiTile label="Input usage by accounting group" display={displayFromSummary(data.summary.input_tokens)} definition={definition(data.definitions, 'input_tokens', data.summary.input_tokens.definition)} unit="tokens" coverageUnit="calls" related={[{ label: 'Cache-read tokens', display: displayFromResult(data.cacheReadTokens.overall) }]} />
+          <KpiTile label="Input usage by accounting group" display={displayFromSummary(data.summary.input_tokens)} definition={definition(data.definitions, 'input_tokens', data.summary.input_tokens.definition)} unit="tokens" coverageUnit="calls" accountingGroups related={[{ label: 'Cache-read tokens', display: displayFromResult(data.cacheReadTokens.overall) }]} />
         </div>
         <div className="headline-strip" aria-label="Supporting headline metrics">
-          <HeadlineTile label="Scheduled cost" display={displayFromResult(data.scheduledCost.overall)} definition={data.scheduledCost.definition} unit="USD" coverageUnit="calls" note={data.scheduledCost.definition.caveat ?? undefined} />
-          <HeadlineTile label="Observed span" display={displayFromResult(data.observedSpan.overall)} definition={data.observedSpan.definition} unit="ms" coverageUnit="sessions" headlineText={durationHeadline(data.observedSpan.overall.value_text)} note={data.observedSpan.definition.caveat ?? undefined} />
-        </div>
-        <div className="token-overall" aria-label="Token usage totals">
-          <span><b>Input</b> {data.summary.input_tokens.value_text === null ? (data.summary.input_tokens.coverage.known ? 'Not comparable' : 'Unavailable') : groupExactText(data.summary.input_tokens.value_text)} · coverage {groupExactText(String(data.summary.input_tokens.coverage.known))} / {groupExactText(String(data.summary.input_tokens.coverage.total))}</span>
-          <span><b>Output</b> <span className="exact">{data.summary.output_tokens.value_text === null ? (data.summary.output_tokens.coverage.known ? 'Not comparable' : 'Unavailable') : groupExactText(data.summary.output_tokens.value_text)}</span> · coverage {groupExactText(String(data.summary.output_tokens.coverage.known))} / {groupExactText(String(data.summary.output_tokens.coverage.total))}</span>
+          <HeadlineTile label="Scheduled cost" display={displayFromResult(data.scheduledCost.overall)} definition={data.scheduledCost.definition} unit="USD" coverageText={pricedCoverageLine(data.scheduledCost.overall)} headlineText={usdHeadline(data.scheduledCost.overall.value_text)} showHeadlineExact />
+          <HeadlineTile label="Observed span" display={displayFromResult(data.observedSpan.overall)} definition={data.observedSpan.definition} unit="ms" coverageUnit="sessions" headlineText={durationHeadline(data.observedSpan.overall.value_text)} />
         </div>
         <div className="grid charts dashboard-charts">
           <DayBars title="Activity by day" unit="model calls" data={activityPoints(data.activity)} onSelect={point => { if (point.drill) activateDrill(point.drill) }} hint="Select a UTC day to list matching sessions." />

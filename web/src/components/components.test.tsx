@@ -14,7 +14,7 @@ const comparable: MetricDisplay = {
 }
 
 describe('KpiTile', () => {
-  it('renders count zero, comparable exact text, all-null unavailable, and mixed partitions without a pooled total', () => {
+  it('renders count zero, comparable exact text, and null totals as unavailable without surface prose', () => {
     const mixed: MetricDisplay = {
       valueText: null, recordedSumText: '553447877', coverage: { known: 2, total: 2 },
       comparability: 'mixed', reason: 'not comparable: 2 token semantics in selection',
@@ -35,10 +35,36 @@ describe('KpiTile', () => {
     expect(exact).toHaveTextContent('exact 9,007,199,254,740,993')
     expect(screen.getByRole('region', { name: 'Unavailable metric' })).toHaveTextContent('Unavailable')
     const mixedTile = screen.getByRole('region', { name: 'Mixed' })
-    expect(mixedTile).toHaveTextContent('Not comparable')
-    expect(mixedTile).toHaveTextContent('tracelab-claude: 186,454,781')
-    expect(mixedTile).toHaveTextContent('tracelab-codex: 366,993,096')
+    expect(mixedTile).toHaveTextContent('Unavailable')
+    expect(mixedTile).not.toHaveTextContent('not comparable')
+    expect(mixedTile).not.toHaveTextContent('tracelab-claude')
     expect(mixedTile).not.toHaveTextContent('553447877')
+  })
+
+  it('uses product group names on the card and keeps raw accounting semantics in the popover', () => {
+    const definition = metricDefinitions.find(item => item.id === 'input_tokens')!
+    const mixed: MetricDisplay = {
+      valueText: null, recordedSumText: '553448838', coverage: { known: 3, total: 3 },
+      comparability: 'unknown', reason: 'not comparable: 3 token semantics in selection; unknown is unvalidated',
+      partitions: [
+        { semantics: 'tracelab-claude', valueText: '186454781', coverage: { known: 1, total: 1 } },
+        { semantics: 'tracelab-codex', valueText: '366993096', coverage: { known: 1, total: 1 } },
+        { semantics: 'unknown', valueText: '961', coverage: { known: 1, total: 1 } },
+      ],
+    }
+    render(<MemoryRouter><KpiTile label="Input usage by accounting group" display={mixed} definition={definition} accountingGroups coverageUnit="calls" /></MemoryRouter>)
+    const tile = screen.getByRole('region', { name: 'Input usage by accounting group' })
+    expect(tile).toHaveTextContent('Claude186.5Mexact 186,454,781')
+    expect(tile).toHaveTextContent('Codex367Mexact 366,993,096')
+    expect(tile).toHaveTextContent('UnknownUnavailable')
+    expect(tile).not.toHaveTextContent('Not comparable')
+    expect(tile).not.toHaveTextContent('tracelab-claude')
+
+    fireEvent.click(within(tile).getByRole('button', { name: 'Definition of Input usage by accounting group' }))
+    const dialog = screen.getByRole('dialog', { name: 'Input usage by accounting group' })
+    expect(dialog).toHaveTextContent('not comparable: 3 token semantics in selection')
+    expect(dialog).toHaveTextContent('tracelab-claude: 186,454,781')
+    expect(dialog).toHaveTextContent('tracelab-codex: 366,993,096')
   })
 
   it('returns focus from a complete registry popover and includes the cache-read result', () => {
@@ -56,23 +82,32 @@ describe('KpiTile', () => {
     expect(trigger).toHaveFocus()
   })
 
-  it('shows the server-owned cost reason and exact priced coverage', () => {
-    const reason = 'No recorded tokens have both a rate and validated billing semantics.'
-    render(<HeadlineTile label="Scheduled cost" display={{ valueText: null, recordedSumText: null, coverage: { known: 0, total: 2 }, comparability: 'unknown', reason, partitions: [], pricedCoverage: { known: 0, total: 15, known_text: '0', total_text: '15' }, scheduleVersion: 'openrouter-v1' }} />)
+  it('keeps cost detail off the surface and exposes it from the definition button', () => {
+    const reason = 'Sum of priced groups; unpriced groups excluded, see priced coverage. 294 calls unpriced: no rate for this model id.'
+    const definition = metricDefinitions.find(item => item.id === 'scheduled_cost_usd')!
+    render(<MemoryRouter><HeadlineTile label="Scheduled cost" display={{ valueText: '132.8761978', recordedSumText: '132.8761978', coverage: { known: 4622, total: 4919 }, comparability: 'not_applicable', reason, partitions: [{ semantics: 'tracelab-claude', valueText: '107.8042053', coverage: { known: 1583, total: 1583 } }], pricedCoverage: { known: 180777240, total: 555935152, known_text: '180777240', total_text: '555935152' }, scheduleVersion: 'openrouter-v1' }} definition={definition} headlineText="$132.88" coverageText="priced 32.5 % of recorded tokens · 4,622 / 4,919 calls" showHeadlineExact /></MemoryRouter>)
     const tile = screen.getByRole('region', { name: 'Scheduled cost' })
-    expect(tile).toHaveTextContent('Unavailable')
-    expect(tile).toHaveTextContent('coverage 0 / 2')
-    expect(tile).toHaveTextContent('priced token coverage 0 / 15')
-    expect(tile).toHaveTextContent('schedule openrouter-v1')
-    expect(tile).toHaveTextContent(reason)
+    expect(tile).toHaveTextContent('$132.88')
+    expect(tile).toHaveTextContent('exact 132.8761978')
+    expect(tile).toHaveTextContent('priced 32.5 % of recorded tokens · 4,622 / 4,919 calls')
+    expect(tile).not.toHaveTextContent('openrouter-v1')
+    expect(tile).not.toHaveTextContent(reason)
+    fireEvent.click(within(tile).getByRole('button', { name: 'Definition of Scheduled cost' }))
+    const dialog = screen.getByRole('dialog', { name: 'Scheduled cost' })
+    expect(dialog).toHaveTextContent('openrouter-v1')
+    expect(dialog).toHaveTextContent(reason)
+    expect(dialog).toHaveTextContent('tracelab-claude: 107.8042053')
   })
 
-  it('uses a human observed-span headline while preserving exact milliseconds and caveat', () => {
-    render(<HeadlineTile label="Observed span" display={{ ...comparable, valueText: '60000', recordedSumText: '60000' }} headlineText="1.0 min" note="Neither active time nor task duration." />)
+  it('uses a human observed-span headline while keeping its caveat in the popover', () => {
+    const definition = { ...metricDefinitions.find(item => item.id === 'observed_span_ms')!, caveat: 'Neither active time nor task duration.' }
+    render(<MemoryRouter><HeadlineTile label="Observed span" display={{ ...comparable, valueText: '60000', recordedSumText: '60000' }} headlineText="1.0 min" definition={definition} /></MemoryRouter>)
     const tile = screen.getByRole('region', { name: 'Observed span' })
     expect(tile).toHaveTextContent('1.0 min')
-    expect(tile).toHaveTextContent('exact 60,000')
-    expect(tile).toHaveTextContent('Neither active time nor task duration.')
+    expect(tile).not.toHaveTextContent('exact 60,000')
+    expect(tile).not.toHaveTextContent('Neither active time nor task duration.')
+    fireEvent.click(within(tile).getByRole('button', { name: 'Definition of Observed span' }))
+    expect(screen.getByRole('dialog', { name: 'Observed span' })).toHaveTextContent('Neither active time nor task duration.')
   })
   it('abbreviates only above 99,999', () => {
     expect(abbreviate(99_999)).toBe('99,999')

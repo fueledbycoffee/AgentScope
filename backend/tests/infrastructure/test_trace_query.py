@@ -768,6 +768,42 @@ def test_cost_preserves_scopes_entity_grain_and_unknown_timestamp_counts(databas
         assert query.aggregate(spec).excluded_unknown_timestamps == 2
 
 
+def test_cost_overall_adds_priced_usd_across_accounting_groups(database):
+    from fractions import Fraction
+
+    from agentscope_app.application.metric_queries import assemble_query
+    from agentscope_app.domain.pricing import ModelRates, PriceSchedule
+
+    engine, _ = database
+    schedule = PriceSchedule(
+        "test-additive-v1",
+        {"m": ModelRates(Fraction("0.01"), Fraction("0.02"), Fraction("0.001"))},
+    )
+    with Session(engine) as session:
+        claude = session.get(m.ModelCall, "c0")
+        codex = session.get(m.ModelCall, "c1")
+        assert claude is not None and codex is not None
+        claude.token_semantics = "tracelab-claude"
+        codex.model = "m"
+        codex.token_semantics = "tracelab-codex"
+        codex.output_tokens = 11
+        session.commit()
+
+        spec = MetricQuerySpec(REGISTRY.get("scheduled_cost_usd"))
+        result = assemble_query(
+            spec, SqlAlchemyTraceQuery(session, schedule).aggregate(spec)
+        ).overall
+
+    assert result.value_text == "0.413"
+    assert result.comparability == "not_applicable"
+    assert [
+        (part.semantics, part.value_text) for part in result.semantics_partitions if part.value_text
+    ] == [
+        ("tracelab-claude", "0.193"),
+        ("tracelab-codex", "0.22"),
+    ]
+
+
 def test_unknown_timestamps_preserves_missing_time_tool_drill_from_import(tmp_path):
     import json
 

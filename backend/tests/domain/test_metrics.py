@@ -1,4 +1,5 @@
 from dataclasses import replace
+from fractions import Fraction
 
 import pytest
 
@@ -89,6 +90,27 @@ def test_semantics_partitions_interpret_known_contributors_only():
     parts.append(AggregatePart(0, 1, 1, "unknown"))
     result = evaluate(definition, parts)
     assert result.comparability == "unknown" and "3 token semantics" in result.reason
+
+
+def test_cost_sums_priced_groups_without_treating_token_semantics_as_currency_units():
+    definition = REGISTRY.get("scheduled_cost_usd")
+    result = evaluate(
+        definition,
+        [
+            AggregatePart(Fraction("107.8042053"), 1583, 1583, "tracelab-claude"),
+            AggregatePart(Fraction("25.0719925"), 3039, 3187, "tracelab-codex"),
+            AggregatePart(None, 0, 149, "unknown"),
+        ],
+    )
+
+    assert result.value == Fraction("132.8761978")
+    assert result.recorded_sum == result.value
+    assert result.comparability == "not_applicable"
+    assert result.reason == "Sum of priced groups; unpriced groups excluded, see priced coverage."
+    assert definition.comparability_rule == "observations"
+    assert "sum of priced groups; unpriced groups excluded, see priced coverage" in (
+        definition.description.lower()
+    )
 
 
 def test_registry_itself_is_immutable_and_rejects_unknown_comparability():

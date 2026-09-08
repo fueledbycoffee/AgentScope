@@ -77,8 +77,8 @@ describe('lossless dashboard adapters', () => {
   it('keeps mixed partitions exact without exposing the pooled recorded sum', () => {
     const display = displayFromSummary(metrics.input_tokens)
     expect(display.valueText).toBeNull()
-    expect(display.recordedSumText).toBe('553447877')
-    expect(display.partitions.map(item => item.valueText)).toEqual(['186454781', '366993096'])
+    expect(display.recordedSumText).toBe('553448838')
+    expect(display.partitions.map(item => item.valueText)).toEqual(['186454781', '366993096', '961'])
   })
 
   it('keeps a null measure unavailable rather than turning it into zero', () => {
@@ -106,7 +106,7 @@ describe('lossless dashboard adapters', () => {
     expect(activity.key).toBe(metricQueries.model_calls.buckets[0].keys[0])
     expect(activity.drill?.scope.started_from).toBe('2026-09-07T00:00:00Z')
     const [tokens] = tokenRows(metricQueries.input_tokens, metricQueries.output_tokens)
-    expect(tokens.label).toBe('claude · tracelab-claude')
+    expect(tokens.label).toBe('claude · Claude')
     expect(tokens.input?.drill?.scope.token_semantics).toBe('tracelab-claude')
     expect(tokens.output?.valueText).toBe('5')
   })

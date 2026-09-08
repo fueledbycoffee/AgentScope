@@ -54,12 +54,13 @@ export const metrics: MetricsSummary = {
   model_calls: metric('model_calls', '4770', 4770, 4770),
   tool_calls: metric('tool_calls', '0', 0, 0),
   input_tokens: {
-    ...metric('input_tokens', null, 2, 2, 'tokens'), value: 553447877,
-    recorded_sum_text: '553447877', comparability: 'mixed',
-    reason: 'not comparable: 2 token semantics in selection',
+    ...metric('input_tokens', null, 3, 3, 'tokens'), value: 553448838,
+    recorded_sum_text: '553448838', comparability: 'unknown',
+    reason: 'not comparable: 3 token semantics in selection; unknown is unvalidated',
     semantics_partitions: [
       { semantics: 'tracelab-claude', value_text: '186454781', coverage: { known: 1, total: 1 } },
       { semantics: 'tracelab-codex', value_text: '366993096', coverage: { known: 1, total: 1 } },
+      { semantics: 'unknown', value_text: '961', coverage: { known: 1, total: 1 } },
     ],
   },
   output_tokens: metric('output_tokens', '5', 1, 2, 'tokens'),
@@ -84,17 +85,18 @@ const labels: Record<string, string> = {
   cache_read_tokens: 'Cache-read tokens',
 }
 export const metricDefinitions: MetricDefinition[] = Object.entries(labels).map(([id, label]) => ({
-  id, version: 1, label, description: `Definition of ${id}`,
+  id, version: id === 'scheduled_cost_usd' ? 3 : 1, label,
+  description: id === 'scheduled_cost_usd' ? 'Scheduled USD cost: sum of priced groups; unpriced groups excluded, see priced coverage.' : `Definition of ${id}`,
   grain: id === 'sessions' || id === 'observed_span_ms' ? 'session' : id === 'tool_calls' || id === 'unlinked_tools' ? 'tool_call' : id === 'imports_in_scope' ? 'import' : 'model_call',
   operation: id === 'sessions' || id.includes('calls') || id.includes('usage') || id.includes('timestamps') || id.includes('tools') || id === 'imports_in_scope' ? 'count' : id === 'observed_span_ms' ? 'observed_span' : id === 'scheduled_cost_usd' ? 'cost' : 'sum',
   field: id.endsWith('_tokens') ? id : null, unit: id.endsWith('_tokens') ? 'tokens' : id === 'observed_span_ms' ? 'ms' : id === 'scheduled_cost_usd' ? 'USD' : 'count',
   formula: `Formula for ${id}`, scope: `Population for ${id}`, null_handling: 'Nulls do not become zero.',
   coverage_field: id.endsWith('_tokens') ? id : null,
   semantics_field: id.endsWith('_tokens') || id === 'scheduled_cost_usd' ? 'token_semantics' : null,
-  comparability_rule: id.endsWith('_tokens') || id === 'scheduled_cost_usd' ? 'token_semantics' : 'observations',
+  comparability_rule: id.endsWith('_tokens') ? 'token_semantics' : 'observations',
   population: id === 'missing_usage' ? 'usage_missing' : id === 'unknown_timestamps' ? 'timestamp_missing' : id === 'unlinked_tools' ? 'tool_is_unlinked' : null,
   supported_dimensions: [], headline_kpi: ['sessions', 'model_calls', 'tool_calls', 'input_tokens'].includes(id),
-  caveat: id === 'scheduled_cost_usd' ? 'Estimate, not an invoice.' : null,
+  caveat: id === 'scheduled_cost_usd' ? 'Estimate, not an invoice.' : id === 'observed_span_ms' ? 'Neither active time nor task duration.' : null,
   quantile_rule: 'nearest-rank', median_rule: 'middle value', display_decimal_places: 0,
   display_rounding: 'half_even', diagnostic: false, model_group_required: false,
 })) as MetricDefinition[]
@@ -139,8 +141,15 @@ export const metricQueries: Record<string, MetricQuery> = {
   imports_in_scope: query('imports_in_scope', result('1', 1, 1)),
   observed_span_ms: query('observed_span_ms', result('60000', 1, 1)),
   scheduled_cost_usd: query('scheduled_cost_usd', {
-    ...result(null, 0, 2, 'No recorded tokens have both a rate and validated billing semantics.'),
-    priced_coverage: { known: 0, total: 15, known_text: '0', total_text: '15' }, schedule_version: 'openrouter-v1',
+    ...result('132.8761978', 4622, 4919, 'Sum of priced groups; unpriced groups excluded, see priced coverage. 294 calls unpriced: no rate for this model id.'),
+    comparability: 'not_applicable',
+    semantics_partitions: [
+      { ...inputPartition('tracelab-claude', '107.8042053', 'claude'), coverage: { known: 1583, total: 1583 } },
+      { ...inputPartition('tracelab-codex', '25.0719925', 'codex'), coverage: { known: 3039, total: 3187 } },
+      { ...inputPartition('unknown', '0', 'unknown'), value_text: null, coverage: { known: 0, total: 149 } },
+    ],
+    priced_coverage: { known: 180777240, total: 555935152, known_text: '180777240', total_text: '555935152' },
+    schedule_version: 'openrouter-2026-09-08-734d889de105+aliases-v1',
   }),
   cache_read_tokens: query('cache_read_tokens', result(null, 0, 2, 'No known cache-read tokens in scope.')),
 }

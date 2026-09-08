@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { ApiError } from '../api'
 import type { Coverage, MetricDefinition, TokenCoverage } from '../api'
 import { PAGE_SIZE } from '../format'
+import { accountingGroupLabel } from './accounting'
 import { groupExactText } from './exactText'
 import { Icon, IconButton } from './icons'
 import type { IconName } from './icons'
@@ -148,6 +149,9 @@ export interface KpiProps {
   headlineText?: string
   related?: readonly { label: string; display: MetricDisplay }[]
   coverageUnit?: string
+  accountingGroups?: boolean
+  coverageText?: string
+  showHeadlineExact?: boolean
 }
 
 export interface MetricDisplay {
@@ -198,15 +202,17 @@ function legacyDisplay(value: number | null | undefined, coverage?: KpiProps['co
   }
 }
 
-function MetricFacts({ label, metric, definition, unit, related = [], coverageUnit }: {
+function MetricFacts({ label, metric, definition, unit, related = [], coverageUnit, note }: {
   label: string
   metric: MetricDisplay
   definition?: KpiProps['definition']
   unit?: string
   related?: KpiProps['related']
   coverageUnit?: string
+  note?: string
 }) {
   const metadata = typeof definition === 'object' ? definition : undefined
+  const caveat = note ?? metadata?.caveat
   return <dl className="facts">
     <dt>Definition</dt><dd>{metadata?.description ?? (typeof definition === 'string' ? definition : 'Not applicable')}</dd>
     <dt>Formula</dt><dd>{metadata?.formula ?? 'Not applicable'}</dd>
@@ -216,9 +222,10 @@ function MetricFacts({ label, metric, definition, unit, related = [], coverageUn
     <dt>Comparability</dt><dd>{metric.comparability}: {metric.reason}</dd>
     <dt>Coverage</dt><dd>{groupExactText(String(metric.coverage.known))} / {groupExactText(String(metric.coverage.total))}{coverageUnit ? ` ${coverageUnit}` : ''}</dd>
     {metric.pricedCoverage && <><dt>Priced token coverage</dt><dd>{groupExactText(metric.pricedCoverage.known_text)} / {groupExactText(metric.pricedCoverage.total_text)}</dd></>}
-    {metric.scheduleVersion && <><dt>Schedule version</dt><dd>{metric.scheduleVersion}</dd></>}
-    {metric.valueText !== null && <><dt>Exact</dt><dd className="mono">{groupExactText(metric.valueText)}</dd></>}
-    {metric.partitions.length > 0 && <><dt>Accounting groups</dt><dd>{metric.partitions.map(partition => <div key={partition.semantics}>{partition.semantics}: {partition.valueText === null ? 'Unavailable' : groupExactText(partition.valueText)} · coverage {groupExactText(String(partition.coverage.known))} / {groupExactText(String(partition.coverage.total))}</div>)}</dd></>}
+    {metric.scheduleVersion && <><dt>Schedule version</dt><dd><code>{metric.scheduleVersion}</code></dd></>}
+    {metric.valueText !== null && <><dt>Exact</dt><dd className="metric-number">{groupExactText(metric.valueText)}</dd></>}
+    {metric.partitions.length > 0 && <><dt>Accounting groups</dt><dd className="metric-breakdown">{metric.partitions.map(partition => <div key={partition.semantics}><code>{partition.semantics}</code>: <span className="metric-number">{partition.valueText === null ? 'Unavailable' : groupExactText(partition.valueText)}</span> · coverage {groupExactText(String(partition.coverage.known))} / {groupExactText(String(partition.coverage.total))}</div>)}</dd></>}
+    {caveat && <><dt>Caveat</dt><dd>{caveat}</dd></>}
     {related.map(item => <div key={item.label} className="related-metric">
       <dt>{item.label}</dt>
       <dd>{item.display.valueText === null ? 'Unavailable' : groupExactText(item.display.valueText)} · coverage {groupExactText(String(item.display.coverage.known))} / {groupExactText(String(item.display.coverage.total))}{coverageUnit ? ` ${coverageUnit}` : ''}<br />{item.display.reason}</dd>
@@ -227,36 +234,50 @@ function MetricFacts({ label, metric, definition, unit, related = [], coverageUn
   </dl>
 }
 
+function AccountingGroupsValue({ metric }: { metric: MetricDisplay }) {
+  if (metric.partitions.length === 0) return <p className="value unavailable">Unavailable</p>
+  return <div className="value accounting-groups">
+    {metric.partitions.map(partition => {
+      const unavailable = partition.semantics.toLowerCase() === 'unknown' || partition.valueText === null
+      const grouped = unavailable ? undefined : groupExactText(partition.valueText!)
+      const value = unavailable ? 'Unavailable' : abbreviateDecimalText(partition.valueText!)
+      const exact = grouped !== value ? grouped : undefined
+      return <div className="accounting-group" key={partition.semantics}>
+        <span className="accounting-label">{accountingGroupLabel(partition.semantics)}</span>
+        <span className={`accounting-value${unavailable ? ' unavailable' : ''}`}>{value}</span>
+        {exact && <span className="accounting-exact">exact {exact}</span>}
+      </div>
+    })}
+  </div>
+}
+
 /** Exact transport text remains one element; abbreviations are never authoritative. */
-export function KpiTile({ label, value, display, unit, coverage, definition, semantics, note, headlineText, related, coverageUnit }: KpiProps) {
+export function KpiTile({ label, value, display, unit, coverage, definition, semantics, note, headlineText, related, coverageUnit, accountingGroups = false, coverageText, showHeadlineExact = false }: KpiProps) {
   const metric = display ?? legacyDisplay(value, coverage, semantics)
-  const mixed = metric.valueText === null && metric.partitions.some(partition => partition.valueText !== null)
-  const unavailable = metric.valueText === null && !mixed
-  const text = mixed ? 'Not comparable' : unavailable ? 'Unavailable' : headlineText ?? abbreviateDecimalText(metric.valueText!)
+  const unavailable = metric.valueText === null
+  const text = unavailable ? 'Unavailable' : headlineText ?? abbreviateDecimalText(metric.valueText!)
   const groupedValue = metric.valueText === null ? undefined : groupExactText(metric.valueText)
-  const exact = groupedValue !== undefined && text !== groupedValue ? groupedValue : undefined
+  const abbreviated = metric.valueText === null ? undefined : abbreviateDecimalText(metric.valueText)
+  const exact = groupedValue !== undefined && (
+    headlineText ? showHeadlineExact : abbreviated !== groupedValue
+  ) ? groupedValue : undefined
   const tone = metric.coverage.known === 0 ? 'bad' : metric.coverage.known < metric.coverage.total ? 'warn' : 'ok'
   return <section className="kpi" aria-label={label}>
     <div className="label"><span>{label}</span>
       {definition && <Popover label={`Definition of ${label}`} title={label}>
-        <MetricFacts label={label} metric={metric} definition={definition} unit={unit} related={related} coverageUnit={coverageUnit ?? coverage?.unit} />
+        <MetricFacts label={label} metric={metric} definition={definition} unit={unit} related={related} coverageUnit={coverageUnit ?? coverage?.unit} note={note} />
       </Popover>}
     </div>
-    <p className={`value${unavailable ? ' unavailable' : ''}`}>{text}</p>
-    <div className="meta">
-      <span className={`dot ${tone}`} aria-hidden="true" /><span>coverage {groupExactText(String(metric.coverage.known))} / {groupExactText(String(metric.coverage.total))}{coverageUnit ?? coverage?.unit ? ` ${coverageUnit ?? coverage?.unit}` : ''}</span>
-      {exact && <span className="exact">exact {exact}</span>}
-      {metric.pricedCoverage && <span>priced token coverage <span className="exact">{groupExactText(metric.pricedCoverage.known_text)}</span> / <span className="exact">{groupExactText(metric.pricedCoverage.total_text)}</span></span>}
-      {metric.scheduleVersion && <span>schedule {metric.scheduleVersion}</span>}
-      {mixed && <><span>{metric.reason}</span>{metric.partitions.map(partition => <span className="partition" key={partition.semantics}>{partition.semantics}: <span className="exact">{partition.valueText === null ? 'Unavailable' : groupExactText(partition.valueText)}</span> · coverage {groupExactText(String(partition.coverage.known))} / {groupExactText(String(partition.coverage.total))}{coverageUnit ? ` ${coverageUnit}` : ''}</span>)}</>}
-      {unavailable && metric.reason && <span>{metric.reason}</span>}
-      {note && <span>{note}</span>}
+    {accountingGroups ? <AccountingGroupsValue metric={metric} /> : <p className={`value${unavailable ? ' unavailable' : ''}`}>{text}</p>}
+    {exact && <p className="exact-line">exact {exact}</p>}
+    <div className="coverage-line">
+      <span className={`dot ${tone}`} aria-hidden="true" /><span>{coverageText ?? `coverage ${groupExactText(String(metric.coverage.known))} / ${groupExactText(String(metric.coverage.total))}${coverageUnit ?? coverage?.unit ? ` ${coverageUnit ?? coverage?.unit}` : ''}`}</span>
     </div>
   </section>
 }
 
-export function HeadlineTile({ label, display, definition, unit, note, headlineText, related, coverageUnit }: Omit<KpiProps, 'value' | 'coverage' | 'semantics'> & { display: MetricDisplay }) {
-  return <div className="headline-tile"><KpiTile label={label} display={display} definition={definition} unit={unit} note={note} headlineText={headlineText} related={related} coverageUnit={coverageUnit} /></div>
+export function HeadlineTile(props: Omit<KpiProps, 'value' | 'coverage' | 'semantics'> & { display: MetricDisplay }) {
+  return <div className="headline-tile"><KpiTile {...props} /></div>
 }
 
 /* ----------------------------------------------------------- quality strip */

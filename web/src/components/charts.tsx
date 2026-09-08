@@ -3,7 +3,7 @@ import type { KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as Reac
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { ChartPoint, TokenMeasure, TokenRow } from '../dashboard/dashboardData'
 import { groupExactText } from './exactText'
-import { abbreviateDecimalText } from './primitives'
+import { abbreviateDecimalText, Popover } from './primitives'
 
 interface ShapeProps {
   x?: number
@@ -232,6 +232,7 @@ function OutputTokenBarShape(shape: TokenShapeProps) {
 export function TokenBars({ title, rows, onSelect }: { title: string; rows: TokenRow[]; onSelect?: (row: TokenRow, measure: TokenMeasure) => void }) {
   const [focused, setFocused] = useState<string>()
   const shapeContext = useMemo(() => ({ onSelect, onFocus: setFocused }), [onSelect])
+  const accountingGroups = [...new Set(rows.map(row => row.semantics))].sort()
   const data: TokenPlotRow[] = rows.map(row => ({
     ...row,
     inputPlot: row.input?.plotValue ?? undefined,
@@ -239,7 +240,13 @@ export function TokenBars({ title, rows, onSelect }: { title: string; rows: Toke
   }))
   const height = Math.max(140, rows.length * 42 + 28)
   return <section className="chart token-chart" aria-label={title}>
-    <div className="panel-head"><h3>{title}</h3><span className="chart-legend"><i className="input" />Input <i className="output" />Output</span></div>
+    <div className="panel-head token-chart-head"><div className="token-chart-title"><h3>{title}</h3>
+      <span className="accounting-hint">{accountingGroups.length} accounting {accountingGroups.length === 1 ? 'group' : 'groups'}, not summed</span>
+      <Popover label="Why token accounting groups are not summed" title="Token accounting groups">
+        <p>Token quantities stay separate when their accounting semantics differ.</p>
+        {accountingGroups.length > 0 && <p className="accounting-ids">In scope: {accountingGroups.map((semantics, index) => <span key={semantics}>{index > 0 && ', '}<code>{semantics}</code></span>)}</p>}
+      </Popover>
+    </div><span className="chart-legend"><i className="input" />Input <i className="output" />Output</span></div>
     {rows.length === 0 ? <p className="state-block">No token usage in scope.</p> : <TokenShapeContext.Provider value={shapeContext}><div className="chart-scroll vertical"><ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout="vertical" margin={{ top: 4, right: 32, left: 8, bottom: 4 }}>
         <XAxis type="number" hide />

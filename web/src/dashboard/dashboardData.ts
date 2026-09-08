@@ -9,6 +9,7 @@ import { createDrillEnvelope } from '../scope'
 import type { DrillEnvelopeV1 } from '../scope'
 import type { UrlScope } from '../scope'
 import type { Dimension } from '../components/bars'
+import { accountingGroupLabel } from '../components/accounting'
 
 export interface RejectQuality {
   countText: string | null
@@ -88,7 +89,7 @@ function tokenMeasure(partition: MetricPartition, model: string | null): TokenMe
     valueText: partition.value_text,
     plotValue: partition.value_text === null ? null : Number(partition.value_text),
     coverage: partition.coverage,
-    drill: createDrillEnvelope('accounting', `${modelLabel} · ${partition.semantics}`, partition.drill_scope),
+    drill: createDrillEnvelope('accounting', `${modelLabel} · ${accountingGroupLabel(partition.semantics)}`, partition.drill_scope),
   }
 }
 
@@ -101,7 +102,7 @@ export function tokenRows(input: MetricQuery, output: MetricQuery): TokenRow[] {
         const key = `${model ?? '\u0000'}\u0000${partition.semantics}`
         const row = rows.get(key) ?? {
           key,
-          label: `${model ?? 'Unknown model'} · ${partition.semantics}`,
+          label: `${model ?? 'Unknown model'} · ${accountingGroupLabel(partition.semantics)}`,
           model,
           semantics: partition.semantics,
         }
