@@ -219,3 +219,86 @@ Phase 1 validation: check paths/current behavior, review this document against e
 ## Cost estimate
 
 Phase 1: about 45–75 minutes for repository inspection, contract design, plan checks and commit. Implementation after review: 12–18 engineering hours — 2–3 domain/contracts, 4–6 adapter/views/exact aggregation, 2–3 use cases/API/compatibility, 4–6 reference fixtures/regressions/full validation and documentation. Reserve 2–3 additional hours for #11 contract alignment and cross-vendor review corrections. No paid model/API calls, dataset downloads or new runtime service are required.
+
+## Revision after review
+
+This section supersedes conflicting text above. All 19 findings are accepted. Implementation is
+now authorized by Phase 2; no frontend changes are required or planned.
+
+1. **P1 — executed unit/column tests.** Ship `tool_wall_latency_ms` and
+   `tool_internal_latency_ms`. Execute SQL against an independent Python oracle with wall=1500,
+   internal=400 on one tool, and input=10, output=7, cache-read=3 on one model call. Assert the
+   separate literal totals as well as oracle equality; no latency fallback or conversion.
+2. **P1 — time types.** Explicit view tables use `UtcDateTime` for every time column (never
+   reflection or bare DateTime). Test equivalent `+02:00` and `Z` bounds on real SQLite, and
+   UTC-aware midnight/next-midnight drill bounds.
+3. **P1 — complete indicators.** Add cache-read, cache-creation, reasoning tokens and the two
+   latency sums; add `unlinked_tools` (tool count with null model_call_id), `missing_usage`
+   (model calls with null input_tokens), and `unknown_timestamps` (model calls with null
+   started_at). Add `tool_is_unlinked` and `usage_missing` scope flags and `linked` tool dimension.
+   Add `imports_in_scope`: distinct import IDs contributing sessions or eligible child
+   observations in scope, never duplicate attempts without contributions. A session-only scope
+   includes session contributions; child-filtered scopes require eligible child observations.
+   Quality rejects deliberately remain the existing import report/reject-summary API: rejects
+   are pre-canonical records, cannot truthfully be attributed to canonical sessions, and do not
+   acquire a fabricated session drill. Document these recipes and test registry completeness,
+   imports-in-scope and unlinked-tool drill behavior.
+4. **P2 — validation.** Every invalid query (ISO date, enum, dimension, ID, scope combination)
+   returns 400 `invalid_input`, with `{path, message}` details. Preserve the existing handler;
+   assert the envelope in HTTP tests. No 422 contract is introduced.
+5. **P2 — coverage compatibility.** Keep `Coverage` exactly `{known, total}` with integer counts.
+   Exact text applies to aggregate values/partition values only; no coverage text twins.
+6. **P2 — resolvable fields.** The registry owns an explicit allowlist of projected canonical
+   measures/dimensions; TARGET_SCHEMA validates measure type/unit only. Adapter mapping:
+   model-call input/output/cache-read/cache-creation/reasoning field names map identically to
+   their view columns; tool wall/internal latency and exit_code map identically. Identity and
+   provenance `id/session_id/import_id/source`, session `agent`, derived `started_day/linked`
+   and internal `session_id` grouping are storage dimensions, not mapping targets.
+   `session.started_at/ended_at` are unresolvable: declared bounds are never observed bounds.
+   Reject unresolvable fields during registry construction. Extensibility covers projected
+   canonical integer fields only (including exit_code with unit count).
+7. **P2 — legacy partitions.** `by_semantics` remains `dict[str, int]`, known contributors only.
+   New `semantics_partitions` contains all partitions, including null values, exact text,
+   and independent coverage. Canonical query results use that name too.
+8. **P2 — scoped row counts.** Provide a batched per-session adapter operation accepting
+   TraceScope that computes model/tool counts and tokens under that scope. Repository lists
+   use it for their existing source/agent scope; #11 can pass the richer scope through this
+   same operation. Test scoped counts alongside summary/partition consistency. Cached all-time
+   counts are no longer the repository summary implementation.
+9. **P2 — migration safety.** Ship shared create/drop view helpers. Future batch alterations
+   of sessions/model_calls/tool_calls must drop all metric views first, recreate them last.
+   Document this in `docs/architecture/metric-layer.md` and exercise a throwaway batch column
+   alteration with this convention after upgrade.
+10. **P2 — migration integration.** `revision='0010'`, `down_revision='0004'` is a deliberate
+    branch placeholder. The coordinator must author an explicit Alembic merge revision if
+    other branches add heads, before startup/merged tests. Keep upgrade target `head` unchanged;
+    this branch's green tests do not validate a future merged migration graph.
+11. **P2 — realistic import fixtures.** Import-scope, contribution fan-out and re-import tests
+    use synthetic JSONL through StoreUpload/CommitImport (existing `_tracelab_line` pattern).
+    Direct ORM fixtures are limited to arithmetic, boundary, and filter edge cases.
+12. **P2 — mixed presentation.** The default TraceLab input-token canonical total is null
+    because its accounting is mixed. #11 must show per-partition exact values plus the reason
+    for mixed/unknown contributing accounting. Reserve `Unavailable` for no known usage;
+    comparability, coverage and partitions distinguish these cases in the response.
+13. **P3 — days.** SQLite `date(started_at)` returns ISO date string keys (null stays null).
+    Drill converts a known key to UTC-aware midnight and next midnight. Test exactly midnight
+    and 23:59:59.999999 on the same day and the exclusive next midnight.
+14. **P3 — empty semantics.** Empty accounting tags are explicitly unvalidated and normalize
+    to unknown for metrics, a measure-specific exception to general empty-string handling.
+    No storage constraint forbids empty tags; do not assume ingestion excludes them. Preserve
+    raw tags and test empty/null/literal unknown merging.
+15. **P3 — raw rows.** Session detail retains raw token_semantics for provenance; API docs
+    explain why metric normalization can label a raw null/empty tag unknown.
+16. **P3 — source.** Session.source is authoritative across all views/filters. Assert ingested
+    child sources agree with their owning session.
+17. **P3 — port home.** TraceQuery Protocol and UnitOfWork.trace_query live in ports.py;
+    metric_queries.py contains typed specs/results, validation and assembly, without ports imports.
+18. **P3 — metadata.** View Table objects use private MetaData, never Base.metadata.
+19. **P3 — exact aggregate failure.** Register only via the SQLite connect hook; explicitly
+    reject non-SQLite engines at factory setup. Unregistered external connections fail loudly
+    with no such function; never fall back to SUM or float aggregation.
+
+Additional exhaustive file-list entry: `docs/architecture/metric-layer.md` for field mapping,
+view migration convention and #11 recipes. Existing planned test files cover the added cases;
+Coverage's unchanged shape requires no edits to test_api_e2e.py. No ADR or web/src files are owned
+or changed by this implementation. PR_BODY.md is a local, uncommitted coordinator artifact.
