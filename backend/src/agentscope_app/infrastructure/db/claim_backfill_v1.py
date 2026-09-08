@@ -12,7 +12,7 @@ from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Connection, MetaData, Table, and_, select, update
+from sqlalchemy import Connection, MetaData, Table, Text, and_, cast, select, update
 
 from agentscope_app.domain.claims import (
     PROJECTION_FIELDS,
@@ -234,14 +234,17 @@ def backfill(c: Connection) -> None:
                 with c.begin_nested():
                     mapping_id = f["mapping_id"]
                     if mapping_id not in cache:
+                        # Reflection sees the historical JSON column, whose engine
+                        # decoder produces Decimal. Match PlainJson's text read and
+                        # stdlib decoder so mapping literals/defaults retain floats.
                         document = c.scalar(
-                            select(mappings.c.document).where(mappings.c.id == mapping_id)
+                            select(cast(mappings.c.document, Text)).where(
+                                mappings.c.id == mapping_id
+                            )
                         )
                         if document is None:
                             raise UnrecoverableError("Missing mapping revision")
-                        parsed = parse_mapping(
-                            json.loads(document) if isinstance(document, str) else document
-                        )
+                        parsed = parse_mapping(json.loads(document))
                         if not parsed.is_executable or parsed.spec is None:
                             raise UnrecoverableError("Stored mapping revision is not executable")
                         cache[mapping_id] = parsed.spec

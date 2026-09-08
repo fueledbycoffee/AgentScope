@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import random
 from collections import Counter
+from dataclasses import replace
 
 import pytest
 from alembic import command
@@ -85,6 +86,66 @@ def test_0005_backfill_matches_live_claims(env: Env):
     assert env.sql("SELECT warnings FROM imports WHERE id=:i", i=report.import_id) == [
         (json.dumps(report.warnings, ensure_ascii=False, separators=(",", ":")),)
     ]
+
+
+def numeric_mapping(env, field, value, mode):
+    original = mapping_record()
+    document = original.document
+    fields = {"external_id": {"literal": "s"}, "agent": {"literal": "h"}}
+    fields[field] = (
+        {"literal": value}
+        if mode == "literal"
+        else {"path": "$.missing", "on_missing": "default", "default": value}
+    )
+    document["rules"] = [{**document["rules"][0], "fields": fields}]
+    mapping = replace(
+        original, id="numeric", name="numeric", content_hash="numeric", document=document
+    )
+    with env.uow_factory() as uow:
+        uow.mappings.add(mapping)
+        uow.commit()
+    return mapping.id
+
+
+@pytest.mark.parametrize("mode", ["literal", "default"])
+@pytest.mark.parametrize("field", ["external_id", "repo"])
+@pytest.mark.parametrize("value", [1, 1.0, 1e20, 0.125, -0.0, 9007199254740993])
+def test_0005_numeric_mapping_backfill_matches_live_text(env: Env, field, value, mode):
+    mapping = numeric_mapping(env, field, value, mode)
+    _, report = commit_data(env, b"{}\n", mapping=mapping)
+    assert report.records["accepted"] == 1
+    query = (
+        "SELECT s.scope_text,p.projection_text,c.locator,c.emission_path "
+        "FROM entity_claims c JOIN claim_scopes s ON s.id=c.scope_id "
+        "JOIN claim_projections p ON p.scope_id=c.scope_id "
+        "AND p.projection_sha256=c.projection_sha256"
+    )
+    live = env.sql(query)
+    assert len(live) == 1
+    before = snapshots(env)
+    migrate(env, "downgrade", "0004")
+    run_migrations(env.engine)
+    assert snapshots(env) == before
+    # Compare exact stored canonical text, not decoded JSON numeric equality.
+    assert env.sql(query) == live
+    assert env.sql("SELECT code,message FROM import_claim_conditions") == []
+
+
+@pytest.mark.parametrize("mode", ["literal", "default"])
+@pytest.mark.parametrize("field,value", [("external_id", 1.0), ("repo", 1e20)])
+def test_0005_numeric_mapping_reexport_matches_historical_claim(env: Env, field, value, mode):
+    mapping = numeric_mapping(env, field, value, mode)
+    original, _ = commit_data(env, b"{}\n", mapping=mapping)
+    migrate(env, "downgrade", "0004")
+    run_migrations(env.engine)
+    reexport, report = commit_data(env, b"{ }\n", mapping=mapping)
+    assert reexport.sha256 != original.sha256
+    assert report.status == "committed"
+    assert report.warnings == {"matching_claim_equal_projection": 1}
+    with env.uow_factory() as uow:
+        diagnostics = uow.imports.diagnostics(report.import_id, None, None, None, 50, 0)
+    assert diagnostics.total == 1
+    assert diagnostics.items[0].peer.file_sha256 == original.sha256
 
 
 @pytest.mark.parametrize("damage", ["raw_records", "entity_contributions", "record_results"])
