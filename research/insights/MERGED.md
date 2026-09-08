@@ -84,12 +84,24 @@ the by-semantics split.
 | **Unit** | percentage plus the raw fraction, always both |
 | **Scope** | every canonical field, every source, every harness |
 | **Nulls** | this metric *is* the null report; absent key, explicit null and failed conversion stay distinguishable in diagnostics (ADR-003) |
-| **Coverage** | TraceLab measured; SWE-chat and Trace Commons render as **Unprofiled**, a distinct state from 0% **[C]** |
+| **Coverage** | measured per source from what has actually been imported — see the three states below; `Unprofiled` is one of them, not the default for anything that is not TraceLab |
+
+**Three states, not two.** A field is `measured` (a coverage fraction from the imported
+population), `Unavailable` with a reason (the source was profiled and the field is absent
+or unmapped there), or `Unprofiled` (nothing from that source has been profiled, so
+availability is unknown — a distinct state from 0% coverage **[C]**). As of
+`docs/verification/2026-09-08-second-source-two-models.md`, TraceLab and the SWE-chat
+excerpt are in the first two states; only Trace Commons is `Unprofiled` (§3.2, §3.3). #11
+must not render a source as unprofiled once an excerpt of it has been imported.
 
 *Data limits.* Coverage is provider-shaped, not random: cache fields are Claude-only,
 reasoning Codex-only, `project` Claude-only, internal latency effectively Codex-only
 **[O]**. Schema presence is not non-null coverage **[C]**. Record-outcome percentages and
-entity coverage use different denominators and cannot be combined **[C]**.
+entity coverage use different denominators and cannot be combined **[C]**. Coverage is also
+mapping-shaped: a field absent from a source's *committed mapping* is `Unavailable` for the
+same reason as a field absent from the source, and the reason names which it is — SWE-chat's
+session-level token aggregates are unmapped by design, not missing from the data
+(report, Source audit).
 
 | Field | Known / total | Source |
 | --- | ---: | --- |
@@ -523,10 +535,19 @@ an adversarial fixture with duplicate claimed ids and inverted timestamps (O G3,
 priorities); the implausible-measure flag table (O G5 — 11 sessions with output ÷ input
 below 0.0005; a 1-round session with 168,891 input and 3 output tokens; 83 rounds under 10
 output tokens, flagged never rejected); reasoning inclusion-semantics validation (C F2);
-profiling a bounded SWE-chat or Trace Commons excerpt (C later stage 1, O L9).
+profiling a bounded Trace Commons excerpt (C later stage 1, O L9).
 *Waits because* they are ingestion and fixture work rather than dashboard work — but the
 record-outcome report and the adversarial fixture are prerequisites for trusting §1.1's
 counts, so they are the first items to pull forward if time allows.
+
+**Already done, not waiting.** The same drafts listed "profile a bounded SWE-chat excerpt"
+as later work; #16 has since done it — 12 sessions and 518 conversation rows audited,
+imported and replayed
+(`docs/verification/2026-09-08-second-source-two-models.md`). What remains for SWE-chat is
+not profiling but source documentation: the conversations semantics (thinking rows counted
+as model calls, result rows dropped) are a reviewer's choice recorded in that report and
+belong to the source's own documentation before the mappings ship as defaults (#17). Its
+measured coverage is in §3.2 and is available to #10 and #11 now.
 
 **Deferred, not rejected.** Automated findings and anomaly suggestions are a validated
 later stage (C later stage 8), and natural-language data questions are outside v0.1.0
@@ -589,28 +610,79 @@ removed.
 15. **Model strings are recorded claims**, preserved as-is, never normalised to catalogue
     entries (O H3, C H2).
 
-### 3.2 SWE-chat (documented, never inspected)
+### 3.2 SWE-chat — the drafts' boundary, and what the excerpt now measures
 
-| Fact | Value | Source |
+**The drafts' evidence boundary (2026-09-07): TraceLab only.** Neither brainstorm opened
+the Parquet — `pyarrow` was absent from the backend uv environment and from system Python
+3.9 and neither agent installed anything **[O]**; C worked from the locally documented
+footer schemas that `docs/datasets/README.md` records **[C]**. So every SWE-chat statement
+in §§1–2 above that carries an **[O]** or **[C]** tag is a *documented* claim, not a
+measurement, and the whole-dataset figures below remain unmeasured:
+
+| Fact (whole dataset, documented only) | Value | Source |
 | --- | --- | --- |
 | Session rows | 5,851 | **[C, documented]** |
 | Conversation rows | 2,692,480 | **[C, documented]** |
 | `sessions.parquet` size | 1,997,377 B | **[O]** |
 | `conversations.parquet` size | 1,311,422,253 B (1.31 GB) | **[O]** |
 
-Neither draft opened the Parquet: `pyarrow` was absent from the backend uv environment and
-from system Python 3.9, and neither agent installed anything **[O]**; C worked from the
-locally documented Parquet footer schemas, which `docs/datasets/README.md` records
-**[C]**. Consequences: granularity is
-unvalidated ("a conversation entry" is not established as one model call), turn-to-invocation
-and token reconciliation are unvalidated **[C]**, there are no latency fields **[O]**, and
-its session-level `duration_seconds` is a *declared* quantity — comparing it to a TraceLab
-observed span is a category error **[O]**. The file is far beyond the product's 25 MiB /
-100k-record limits, so it needs a bounded, reviewed excerpt before it can be imported
-**[O]**. SWE-chat does carry `command`, `file_path` and `content` [documented], which makes
-content analyses source-specific and gated on the source, never offered globally **[O]**.
-Until a bounded excerpt is profiled, SWE-chat renders as **Unprofiled** — a distinct state
-from 0% coverage **[C]** — and no SWE-chat value may share an axis with a TraceLab one.
+The 1.31 GB file is far beyond the product's 25 MiB / 100k-record limits, so it can only be
+imported as a bounded excerpt **[O]** — which is exactly what has since been built.
+
+**Current coverage: the audited excerpt is real, measured evidence.** Issue #16 sampled
+`data/samples/swe-chat-1/` with `scripts/sample_swe_chat.py --per-agent 1` — **12 sessions,
+518 conversation rows**, not committed under the dataset terms — audited it in aggregate
+with `scripts/audit_swe_chat.py`, and imported and replayed it through the UI with two model
+configurations. Figures below cite
+`docs/verification/2026-09-08-second-source-two-models.md` by section. **SWE-chat is
+therefore not `Unprofiled`**: its fields are `measured` or `Unavailable with a reason`, and
+#11 must render them that way.
+
+| Measured on the excerpt | Value | Report section |
+| --- | --- | --- |
+| Conversation rows / sessions | 518 / 12 | Environment |
+| `turn_id` distinct | 518 / 518 | Source audit |
+| `session_id` present in the sessions table | 12 / 12 | Source audit |
+| `tool_call_id` | 88 distinct over 148 non-null rows — a call and its result share the id | Source audit |
+| `tool_name` | 88 / 88 `tool_use` rows; 44 / 62 `tool_result` rows | Source audit |
+| `timestamp` null | 112 conversation rows | Source audit |
+| `model` null | 470 conversation rows (present essentially on assistant rows) | Source audit |
+| Sessions `created_at` / `attribution_calculated_at` / `duration_seconds` null | 2 / 4 / 8 of 12 | Source audit |
+| Committed conversations import | 9 sessions, 149 model calls, 88 tool calls, 0 rejects | Runs (B-conversations-5, A-conversations-6); Replay |
+| Committed sessions import | 12 / 12 accepted | Runs (A-sessions-3, B-sessions-2) |
+
+What the excerpt **settles**, replacing the drafts' "unvalidated" with a measurement: an
+assistant row is **not** an API call — assistant rows equal the sessions table's declared
+`api_call_count` in 4 sessions, exceed it in 3 and fall short in 5 (Source audit) — and the
+mapped model-call count includes 22 `assistant_thinking` rows of 149, recorded as a coverage
+limit rather than corrected (Findings 6).
+
+What the excerpt **confirms as absent**, so these render `Unavailable` with a reason and
+never `Unprofiled` or `0`:
+
+- **Per-call tokens.** The sessions table's token totals are session aggregates with no
+  per-call rows and are left unmapped by design; `token_semantics` is `unknown` (Source
+  audit; Acceptance matrix coverage line). The compatibility rule of §0 and §1.4 is
+  unchanged and now grounded rather than hypothetical: `unknown` is never compatible, so no
+  SWE-chat token value may share an axis with a TraceLab one, and a mixed selection refuses.
+- **Latency and status.** Absent from the source (Acceptance matrix coverage line), so
+  §1.9's error rate and §1.10's latency table have no SWE-chat rows.
+- **Call intervals.** A conversation row carries one instant; the result arrives on another
+  row the mapping cannot join, so `ended_at` stays null and latency reads *unavailable*
+  rather than zero — the correction that both models needed and that a passing import did
+  not catch (Findings 7; Final documents).
+- **Provider field.** Absent (Acceptance matrix coverage line).
+- **`duration_seconds`** is a *declared* session quantity, null on 8 of 12 sessions;
+  comparing it to a TraceLab observed span is a category error **[O]**, and §1.6's tile
+  measures observed spans only.
+
+Still not shown, per the report's own closing section: the correctness of the conversations
+semantics for the full dataset — the excerpt is 12 sessions, and the two committed documents
+under `backend/tests/verification/documents/` encode a reviewer's choice (thinking rows as
+calls, result rows dropped) that belongs to the source's documentation before it ships as a
+default (#17). SWE-chat also carries `command`, `file_path` and `content` [documented],
+which keeps content analyses source-specific and gated on the source, never offered
+globally **[O]**.
 
 ### 3.3 Trace Commons
 
@@ -652,6 +724,14 @@ observations cannot be placed."
 Two additions from the decisions: the span tile's fixed label is **"observed span in
 imported data"** with its caveat in the tile (§4 Q4), and a cost figure always names its
 price-schedule version and priced coverage (§4 Q1).
+
+One correction of aim: "Unprofiled — … has not been validated" belongs to a source nothing
+has been imported from, which as of today means Trace Commons only. A profiled source whose
+field is genuinely absent gets the `Unavailable` string with the reason instead — for the
+SWE-chat excerpt that is "Unavailable — this source records no tool latency", "… no tool
+status", "… no per-call token accounting (session aggregates only, semantics unknown)" —
+because saying "unprofiled" about measured data understates what is known and hides what was
+verified.
 
 ---
 
