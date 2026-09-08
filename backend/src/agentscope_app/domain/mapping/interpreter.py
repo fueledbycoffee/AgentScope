@@ -95,7 +95,7 @@ def apply_mapping(
             emission_path = rule.id if is_root else f"{rule.id}[{index}]"
             occurrence = SourceOccurrence(file_sha256, locator, emission_path)
             try:
-                if not all(_holds(cond, item, record) for cond in rule.where):
+                if not rule_matches(rule, item, record):
                     continue
                 emission = _emit(rule, item, record, occurrence, root_emissions, warnings)
             except _FieldRejectError as fr:
@@ -109,6 +109,11 @@ def apply_mapping(
             if is_root:
                 root_emissions[rule.id] = emission
     return RecordResult(tuple(emissions), tuple(rejects), tuple(warnings))
+
+
+def rule_matches(rule: Rule, item: Any, root: Any) -> bool:
+    """Evaluate a rule's predicates for one selected item before reading its fields."""
+    return all(_holds(cond, item, root) for cond in rule.where)
 
 
 def _holds(cond: Condition, item: Any, root: Any) -> bool:

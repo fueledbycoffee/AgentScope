@@ -22,7 +22,7 @@ from agentscope_app.domain.claims import (
     prepare_claims,
 )
 from agentscope_app.domain.mapping.contract import MappingSpec
-from agentscope_app.domain.mapping.interpreter import Emission, apply_mapping
+from agentscope_app.domain.mapping.interpreter import Emission, apply_mapping, rule_matches
 from agentscope_app.domain.mapping.parser import parse_mapping
 from agentscope_app.domain.mapping.paths import MISSING, resolve_many, resolve_one
 from agentscope_app.domain.schema import FieldType
@@ -60,6 +60,8 @@ def _verify_coercion_provenance(spec: MappingSpec, payload: Any, locator: str) -
         if not sensitive:
             continue
         for item in resolve_many(rule.select, payload, payload, limit=10_000):
+            if not rule_matches(rule, item, payload):
+                continue
             for fm in sensitive:
                 for path in fm.paths:
                     value = (
