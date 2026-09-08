@@ -27,17 +27,20 @@ export const scopeParams = (): string[] => [...SCOPE_KEYS, ...EXTRA_SCOPE_PARAMS
 export const scopeLabel = (key: ScopeKey): string => key.charAt(0).toUpperCase() + key.slice(1)
 
 /**
- * One pure URL edit. Copies `search`, applies each entry with the same
- * normalisation `useScope().set` uses (trim; an empty value deletes the key),
+ * One pure URL edit. Copies `search`, writes each value **exactly** as given,
  * drops `offset` because a scope edit starts from the first page, and leaves
  * every other parameter alone — other scope keys, the drill envelope, and
  * anything the page owns.
+ *
+ * Nothing is trimmed between a cell and the URL: the backend stores and
+ * compares source and agent exactly, so an agent recorded as `"codex "` is not
+ * the agent `"codex"`, and trimming would filter for an identifier nobody
+ * clicked. Only an absent or empty value removes a key.
  */
 export function patchScope(search: URLSearchParams, patch: Record<string, string | undefined>): URLSearchParams {
   const next = new URLSearchParams(search)
   for (const [key, value] of Object.entries(patch)) {
-    const trimmed = value?.trim()
-    if (trimmed) next.set(key, trimmed); else next.delete(key)
+    if (value) next.set(key, value); else next.delete(key)
   }
   next.delete('offset')
   return next
@@ -49,7 +52,9 @@ export function useScopeUrl() {
   const [params, setParams] = useSearchParams()
   const { pathname } = useLocation()
 
-  const valueOf = useCallback((key: ScopeKey) => params.get(key)?.trim() ?? '', [params])
+  // Exactly what the URL carries: the active-value comparison must match the
+  // backend's, which is exact.
+  const valueOf = useCallback((key: ScopeKey) => params.get(key) ?? '', [params])
 
   /**
    * A link, so a scoped view opens in a new tab on middle-click. On the current
@@ -64,7 +69,7 @@ export function useScopeUrl() {
         return carried ? [[name, carried] as [string, string]] : []
       }),
     )
-    const cleared = valueOf(key) === value.trim()
+    const cleared = valueOf(key) === value
     return { pathname: target ?? pathname, search: searchOf(patchScope(base, { [key]: cleared ? '' : value })) }
   }, [params, pathname, valueOf])
 

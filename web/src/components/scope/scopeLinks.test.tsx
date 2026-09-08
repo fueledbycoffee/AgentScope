@@ -30,9 +30,16 @@ describe('patchScope is the one URL edit', () => {
     expect(patch('', { agent: 'claué-code' })).toBe('agent=clau%C3%A9-code')
   })
 
-  it('trims, and treats an empty value as a removal', () => {
-    expect(patch('', { source: '  swe  ' })).toBe('source=swe')
-    expect(patch('source=swe', { source: '   ' })).toBe('')
+  it('carries the value exactly, because the backend compares it exactly', () => {
+    // An agent stored as "codex " is not the agent "codex"; trimming here would
+    // filter for a different identifier than the one that was clicked.
+    expect(patch('', { agent: 'codex ' })).toBe('agent=codex+')
+    expect(patch('', { source: ' swe ' })).toBe('source=+swe+')
+    expect(patch('', { source: '   ' })).toBe('source=+++')
+  })
+
+  it('treats only an absent or empty value as a removal', () => {
+    expect(patch('source=swe', { source: '' })).toBe('')
     expect(patch('source=swe', { source: undefined })).toBe('')
   })
 
@@ -95,6 +102,24 @@ describe('ScopeCell', () => {
     const href = screen.getByRole('link', { name: /Filter by agent/ }).getAttribute('href')!
     expect(href).toContain('source=tracelab')
     expect(href).not.toContain('offset') // a scope edit starts from the first page
+  })
+
+  it('round-trips a value whose whitespace is part of it', () => {
+    at('/sessions', <ScopeCell dimension="agent" value="codex " />)
+    const href = screen.getByRole('link', { name: 'Filter by agent codex' }).getAttribute('href')!
+    // URLSearchParams writes a space as "+", which it and the backend both read
+    // back as a space; the property that matters is that the value survives.
+    expect(href).toBe('/sessions?agent=codex+')
+    expect(new URLSearchParams(href.split('?')[1]).get('agent')).toBe('codex ')
+    // The API client builds its query the same way, so the request carries it too.
+    expect(new URLSearchParams({ agent: 'codex ' }).toString()).toBe('agent=codex+')
+  })
+
+  it('marks the active value only on an exact match', () => {
+    at('/sessions?agent=codex%20', <><ScopeCell dimension="agent" value="codex " /><ScopeCell dimension="agent" value="codex" /></>)
+    const links = screen.getAllByRole('link')
+    expect(links[0]).toHaveAttribute('aria-current', 'true')   // "codex " is the active one
+    expect(links[1]).not.toHaveAttribute('aria-current')       // "codex" is a different agent
   })
 
   it('is plain text for a value that cannot be filtered on', () => {

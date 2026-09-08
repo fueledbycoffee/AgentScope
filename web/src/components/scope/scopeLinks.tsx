@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { SCOPE_KEYS } from '../../scope'
 import type { ScopeKey } from '../../scope'
 import { Icon } from '../icons'
+import { useTip } from '../tip'
 import { scopeLabel, useScopeUrl } from './scopeUrl'
 
 /**
@@ -19,24 +20,29 @@ export function ScopeCell({ dimension, value, target }: {
   target?: string
 }) {
   const { valueOf, scopeHref } = useScopeUrl()
+  const key = dimension as ScopeKey
+  const label = scopeLabel(key)
+  const active = value != null && valueOf(key) === value
+  // The active-value name wins over the target-route name: a matching source in
+  // the ledger announces clearing, not "show sessions from".
+  const name = value == null ? '' : active
+    ? `Clear the ${label.toLowerCase()} filter ${value}`
+    : target
+      ? `Show sessions from ${label.toLowerCase()} ${value}`
+      : `Filter by ${label.toLowerCase()} ${value}`
+  // Rendered outside the table's scroll container, which clips vertically.
+  const { hostProps, tip } = useTip(name)
   // An unknown value cannot be filtered on, and a dimension the API does not
   // accept yet must not pretend to: `model` becomes a link the moment #11 adds
   // the key, and stays plain text until then, with no edit here.
   if (value == null || value === '') return <span className="unavailable">Unavailable</span>
   if (!(SCOPE_KEYS as readonly string[]).includes(dimension)) return <>{value}</>
 
-  const key = dimension as ScopeKey
-  const label = scopeLabel(key)
-  const active = valueOf(key) === value
-  // The active-value name wins over the target-route name: a matching source in
-  // the ledger announces clearing, not "show sessions from".
-  const name = active
-    ? `Clear the ${label.toLowerCase()} filter ${value}`
-    : target
-      ? `Show sessions from ${label.toLowerCase()} ${value}`
-      : `Filter by ${label.toLowerCase()} ${value}`
-  return <Link className={`scope-cell${active ? ' active' : ''}`} to={scopeHref(key, value, target)}
-    aria-current={active ? 'true' : undefined} aria-label={name} data-tip={name}>{value}</Link>
+  return <>
+    <Link className={`scope-cell${active ? ' active' : ''}`} to={scopeHref(key, value, target)}
+      aria-current={active ? 'true' : undefined} aria-label={name} {...hostProps}>{value}</Link>
+    {tip}
+  </>
 }
 
 /**

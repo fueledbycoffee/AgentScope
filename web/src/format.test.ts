@@ -53,6 +53,17 @@ describe('formatExactText groups authoritative text without parsing it', () => {
     expect(formatExactText('0.5', at())).toBe('0.5')
   })
 
+  it.each(['en-US', 'es-ES', 'fr-FR', 'de-DE', 'ja-JP'])('groups exactly as num() does in %s', locale => {
+    const settings = at({ numberLocale: locale })
+    // Spanish groups only from five digits, so an inferred "every three" rule
+    // makes an exact value disagree with the ordinary one beside it.
+    expect(formatExactText('1234.5', settings)).toBe(num(1234.5, settings))
+    expect(formatExactText('1234567.5', settings)).toBe(num(1234567.5, settings))
+    expect(formatExactText('12345', settings)).toBe(num(12345, settings))
+    expect(formatExactText('999', settings)).toBe(num(999, settings))
+    expect(formatExactText('-1234.5', settings)).toBe(num(-1234.5, settings))
+  })
+
   it('returns anything that is not a plain decimal unchanged, and null as Unavailable', () => {
     expect(formatExactText('1e21', at())).toBe('1e21')
     expect(formatExactText('Unavailable', at())).toBe('Unavailable')
@@ -110,6 +121,29 @@ describe('the accepted timestamp grammar is the API\'s and nothing else', () => 
     expect(parseInstant('2026-09-08T14:05:00+23:59')).toBeDefined()
     expect(parseInstant('2026-09-08T14:05:00-23:59')).toBeDefined()
     expect(parseInstant('2026-09-08T14:05:00+05:45')).toBe(parseInstant('2026-09-08T08:20:00Z'))
+  })
+
+  it('accepts the early years the backend can serialise', () => {
+    // Date.UTC maps years 0-99 to 1900-1999, which would reject a valid instant
+    // and take its exact value away with it.
+    for (const value of ['0001-01-01T00:00:00Z', '0099-12-31T23:59:59Z', '0100-01-01T00:00:00Z']) {
+      expect(parseInstant(value), value).toBeDefined()
+      const formatted = formatDate(value, at())
+      expect(formatted.unavailable, value).toBe(false)
+      expect(formatted.iso).toBe(value)
+    }
+    expect(formatDate('0001-01-01T00:00:00Z', at()).absolute).toBe('0001-01-01 00:00')
+    expect(formatDate('0099-12-31T23:59:59Z', at()).absolute).toBe('0099-12-31 23:59')
+    expect(formatDate('0100-01-01T00:00:00Z', at()).absolute).toBe('0100-01-01 00:00')
+  })
+
+  it('keeps an instant before the epoch inside its own millisecond', () => {
+    // BigInt division truncates toward zero, which would round a negative
+    // instant up into the next day.
+    expect(formatDate('1969-12-31T23:59:59.999999Z', at()).absolute).toBe('1969-12-31 23:59')
+    expect(formatDate('1969-12-31T23:59:59.999999Z', at({ dateFormat: 'dmy' })).absolute).toBe('31 Dec 1969 23:59')
+    expect(formatDate('1970-01-01T00:00:00.000001Z', at()).absolute).toBe('1970-01-01 00:00')
+    expect(formatDate('1969-07-20T20:17:40.500000Z', at()).absolute).toBe('1969-07-20 20:17')
   })
 
   it('proves the reason for the seven-digit rule: microseconds are the arithmetic', () => {
@@ -256,6 +290,11 @@ describe('durations read as a person expects, with the exact value beside them',
     expect(formatDuration(59_600, at()).text).toBe('1 min') // not "0 min 60 s"
     expect(formatDuration(3_599_600, at()).text).toBe('1 h') // not "59 min 60 s"
     expect(formatDuration(86_399_600, at()).text).toBe('1 d') // not "23 h 60 min"
+  })
+
+  it('keeps a large latency exact, without rounding through a float', () => {
+    // 123456789012345 * 1000 exceeds Number.MAX_SAFE_INTEGER.
+    expect(formatDuration(123_456_789_012_345, at()).exact).toBe('123,456,789,012.345 s')
   })
 
   it('prints the exact seconds in the chosen locale', () => {

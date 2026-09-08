@@ -128,6 +128,47 @@ test('a timestamp and a chip are reachable and operable from the keyboard', asyn
   await expect(page.getByRole('status').filter({ hasText: 'Filters cleared' })).toBeFocused()
 })
 
+test('a tooltip in the last table row is not clipped by the table', async ({ page }) => {
+  await chooseOnSettings(page, { relative: false, format: /ISO 8601/, zone: 'UTC' })
+  const response = await page.request.get('/api/sessions?agent=codex&limit=1')
+  const [session] = await response.json() as { id: string }[]
+  await page.goto(`/sessions/${encodeURIComponent(session.id)}`)
+  await expect(page.getByRole('heading', { name: 'Session detail' })).toBeVisible()
+
+  // The last row of the tool-call table, whose wrapper scrolls horizontally and
+  // therefore clips vertically as well.
+  const table = page.getByRole('table', { name: 'Recorded tool-call observations' })
+  const rows = table.getByRole('row')
+  const last = rows.nth(await rows.count() - 1)
+  const control = last.getByRole('button', { name: /Activate to copy/ }).last()
+  await control.scrollIntoViewIfNeeded()
+  // Put it near the bottom edge, which is where a bubble anchored inside the
+  // scrolling container gets cut off.
+  await control.evaluate(element => {
+    const rect = element.getBoundingClientRect()
+    window.scrollBy(0, rect.bottom - (window.innerHeight - 12))
+  })
+  await control.focus()
+
+  const tip = page.getByRole('tooltip')
+  await expect(tip).toBeVisible()
+  const box = (await tip.boundingBox())!
+  const wrap = table.locator('xpath=ancestor::div[contains(@class,"table-wrap")]').first()
+  const wrapBox = (await wrap.boundingBox())!
+  const viewport = page.viewportSize()!
+
+  // Inside the viewport on every edge...
+  expect(box.y).toBeGreaterThanOrEqual(0)
+  expect(box.x).toBeGreaterThanOrEqual(0)
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height)
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width)
+  // ...and rendered outside the container that would have cut it off.
+  expect(await tip.evaluate(element => element.parentElement === document.body)).toBe(true)
+  const clipped = box.y + box.height > wrapBox.y + wrapBox.height && box.y > wrapBox.y + wrapBox.height
+  expect(clipped, 'the bubble must not sit past the bottom edge of a clipping container').toBe(false)
+  await expect(tip).toHaveText(/./)
+})
+
 test('no new accessibility violations on any route this branch touches', async ({ page }) => {
   test.setTimeout(300_000)
   expectNoNewViolations(await sweep(page, ROUTES))

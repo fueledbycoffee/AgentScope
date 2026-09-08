@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatDate, formatDuration, formatSpan } from '../format'
 import { useSettings } from '../settingsContext'
+import { useTip } from './tip'
 import type { FormattedDate, FormattedDuration } from '../format'
 
 /**
@@ -41,22 +42,32 @@ const UNAVAILABLE_COPY = 'Copy is unavailable — the exact value is in this too
 /** The shared button: visible text, exact value in the tooltip, the name and the clipboard. */
 function ExactValue({ text, exact, name, dateTime }: { text: string; exact: string; name: string; dateTime?: string }) {
   const [state, copy] = useCopy()
-  const tip = state === 'copied' ? 'Copied' : state === 'unavailable' ? UNAVAILABLE_COPY : exact
-  return <button type="button" className="time has-tip" data-tip={tip} title={exact}
-    aria-label={`${name}. Activate to copy`} onClick={() => copy(exact)}>
-    {dateTime ? <time dateTime={dateTime}>{text}</time> : text}
-    <span className="visually-hidden" aria-live="polite">
-      {state === 'copied' ? 'Copied' : state === 'unavailable' ? UNAVAILABLE_COPY : ''}
-    </span>
-  </button>
+  const label = state === 'copied' ? 'Copied' : state === 'unavailable' ? UNAVAILABLE_COPY : exact
+  const { hostProps, tip } = useTip(label)
+  return <>
+    <button type="button" className="time" title={exact}
+      aria-label={`${name}. Activate to copy`} onClick={() => copy(exact)} {...hostProps}>
+      {dateTime ? <time dateTime={dateTime}>{text}</time> : text}
+      <span className="visually-hidden" aria-live="polite">
+        {state === 'copied' ? 'Copied' : state === 'unavailable' ? UNAVAILABLE_COPY : ''}
+      </span>
+    </button>
+    {tip}
+  </>
 }
 
 /** Unavailable is a designed value: no button, because there is nothing exact to reveal. */
 function Unavailable({ reason }: { reason?: string }) {
+  // The reason is reachable by hover and by focus, so a keyboard user is told
+  // why. The bubble is rendered outside the table's scroll container, which
+  // would otherwise cut it off on the last row.
+  const { hostProps, tip } = useTip(reason ?? '')
   if (!reason) return <span className="unavailable">Unavailable</span>
-  // The reason is reachable by hover and by focus, so a keyboard user is told why.
-  return <span className="unavailable has-tip" tabIndex={0} role="note" data-tip={reason}
-    title={reason} aria-label={`Unavailable: ${reason}`}>Unavailable</span>
+  return <>
+    <span className="unavailable" tabIndex={0} role="note"
+      title={reason} aria-label={`Unavailable: ${reason}`} {...hostProps}>Unavailable</span>
+    {tip}
+  </>
 }
 
 export function DateText({ value, prefer, offset }: {

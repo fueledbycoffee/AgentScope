@@ -63,25 +63,15 @@ export function abbreviate(value: number, settings: Settings = readSettings()): 
 
 /* ------------------------------------------------- exact values as text --- */
 
-interface Separators { group: string; decimal: string; sizes: number[] }
-const separatorCache = new Map<string, Separators>()
+const decimalSeparators = new Map<string, string>()
 
-/**
- * The locale's separators and its grouping widths, read from the engine rather
- * than assumed: most locales group in threes, but `hi-IN` groups 3 then 2, and
- * some locales do not group at all.
- */
-function separators(locale: string): Separators {
-  let found = separatorCache.get(locale)
-  if (found) return found
-  const parts = numberFormat(locale).formatToParts(1234567890)
-  const group = parts.find(part => part.type === 'group')?.value ?? ''
-  const decimalPart = numberFormat(locale).formatToParts(1.5).find(part => part.type === 'decimal')
-  const chunks = parts.filter(part => part.type === 'integer').map(part => part.value.length)
-  // Widths from the right, ignoring the leftmost remainder.
-  const sizes = chunks.slice(1).reverse()
-  found = { group, decimal: decimalPart?.value ?? '.', sizes: sizes.length ? sizes : [3] }
-  separatorCache.set(locale, found)
+/** The locale's decimal separator, read from the engine rather than assumed. */
+function decimalSeparator(locale: string): string {
+  let found = decimalSeparators.get(locale)
+  if (found === undefined) {
+    found = numberFormat(locale).formatToParts(1.5).find(part => part.type === 'decimal')?.value ?? '.'
+    decimalSeparators.set(locale, found)
+  }
   return found
 }
 
@@ -100,21 +90,18 @@ export function formatExactText(text: string | null | undefined, settings: Setti
   const match = DECIMAL_TEXT.exec(text.trim())
   if (!match) return text // not a plain decimal: show exactly what we were given
   const [, sign, whole, fraction] = match
-  const { group, decimal: point, sizes } = separators(resolveLocale(settings))
-  let grouped = whole
-  if (group) {
-    const digits: string[] = []
-    let index = whole.length
-    let size = 0
-    while (index > 0) {
-      const width = sizes[Math.min(size, sizes.length - 1)]
-      digits.unshift(whole.slice(Math.max(0, index - width), index))
-      index -= width
-      size += 1
-    }
-    grouped = digits.join(group)
+  const locale = resolveLocale(settings)
+  // The integer part is grouped by Intl itself, on a bigint so no digit is
+  // lost. Inferring "every three digits" from a sample would disagree with
+  // `num` wherever a locale has a minimum grouping threshold: Spanish groups
+  // only from five digits, so 1234,5 must not become 1.234,5.
+  let grouped: string
+  try {
+    grouped = numberFormat(locale).format(BigInt(whole))
+  } catch {
+    grouped = whole
   }
-  return `${sign}${grouped}${fraction ? point + fraction : ''}`
+  return `${sign}${grouped}${fraction ? decimalSeparator(locale) + fraction : ''}`
 }
 
 /* --------------------------------------------------------------- instants */
@@ -139,9 +126,14 @@ export function parseInstant(value: unknown): bigint | undefined {
   const y = Number(year), mo = Number(month), d = Number(day)
   const h = Number(hour), mi = Number(minute), s = Number(second)
   if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 59) return undefined
-  const utc = Date.UTC(y, mo - 1, d, h, mi, s)
-  const back = new Date(utc)
+  // Not Date.UTC: it maps years 0-99 to 1900-1999, which would reject an early
+  // instant the backend can serialise and take its exact value away with it.
+  const back = new Date(0)
+  back.setUTCFullYear(y, mo - 1, d)
+  back.setUTCHours(h, mi, s, 0)
+  const utc = back.getTime()
   // A calendar round trip rejects 2026-02-30 and 2026-02-29 rather than shifting them.
+  if (!Number.isFinite(utc)) return undefined
   if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return undefined
   const micros = BigInt(utc) * 1000n + BigInt((fraction ?? '').padEnd(6, '0') || '0')
   if (zone === 'Z') return micros
@@ -168,6 +160,16 @@ export interface FormattedDate {
   /** The API's string, verbatim: never rebuilt, so microseconds survive. */
   iso: string
   unavailable: boolean
+}
+
+/**
+ * Floor division on bigints. `/` truncates toward zero, so a microsecond before
+ * the epoch would round up into the next millisecond — and 1969-12-31T23:59:59.999999Z
+ * would display as 1970-01-01.
+ */
+function floorDiv(value: bigint, by: bigint): bigint {
+  const quotient = value / by
+  return value % by !== 0n && (value < 0n) !== (by < 0n) ? quotient - 1n : quotient
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -213,7 +215,9 @@ function absoluteText(settings: Settings, timeZone: string, at: Date): string {
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
     hour12: h12, hourCycle: h12 ? 'h12' : 'h23',
   }), at)
-  const { year, month, day, hour, minute } = parts
+  // Intl prints year 1 as "1"; every rendering here is a fixed-width date.
+  const year = (parts.year ?? '').padStart(4, '0')
+  const { month, day, hour, minute } = parts
   if (settings.dateFormat === 'iso') return `${year}-${month}-${day} ${hour}:${minute}`
   // Month names come from a fixed table: engines disagree ("Sep" against "Sept"),
   // and the number locale is a choice about digits, not about language.
@@ -262,7 +266,7 @@ export function formatDate(
 ): FormattedDate {
   const micros = parseInstant(value)
   if (micros === undefined || typeof value !== 'string') return unavailableDate()
-  const at = new Date(Number(micros / 1000n))
+  const at = new Date(Number(floorDiv(micros, 1000n)))
   if (Number.isNaN(at.getTime())) return unavailableDate()
   const timeZone = resolveTimeZone(settings)
   let absolute = absoluteText(settings, timeZone, at)
@@ -337,7 +341,10 @@ export function formatDuration(ms: number | null | undefined, settings: Settings
   if (ms == null) return unavailableDuration('no duration recorded')
   if (!Number.isFinite(ms)) return unavailableDuration('the duration is not a number')
   if (ms < 0) return unavailableDuration('the duration is negative')
-  const micros = BigInt(Math.round(ms * 1000))
+  // Integer milliseconds become microseconds on the bigint side: 123456789012345
+  // multiplied as a float loses its last digits before it can be converted.
+  const whole = Math.trunc(ms)
+  const micros = BigInt(whole) * 1000n + BigInt(Math.round((ms - whole) * 1000))
   return { text: durationText(micros, settings), exact: exactSeconds(micros, settings), unavailable: false }
 }
 

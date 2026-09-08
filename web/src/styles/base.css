@@ -204,3 +204,10 @@ table.data td .time { font-variant-numeric: tabular-nums; }
 .scope-cell { color: var(--accent); }
 .scope-cell.active { background: var(--accent-soft); box-shadow: inset 0 -1px 0 var(--accent-line); border-radius: var(--r-1); padding: 0 4px; }
 .chips { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; }
+/* Tooltips for controls inside a scrolling table: rendered into the body, so
+   .table-wrap's overflow cannot cut them off, and flipped when the viewport
+   bottom is close. Same look as .has-tip, which stays for the rail and bar. */
+.tip { position: fixed; transform: translateX(-50%); padding: 3px 8px; border-radius: var(--r-1);
+  background: var(--ink); color: var(--bg); font-size: var(--fs-0); font-weight: 500; letter-spacing: 0.01em;
+  white-space: nowrap; pointer-events: none; z-index: 60; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; }
+.tip.flipped { transform: translate(-50%, -100%); }
