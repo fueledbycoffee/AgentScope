@@ -452,7 +452,12 @@ def _json_body(response: httpx2.Response) -> Any:
 
 
 def _error_message(response: httpx2.Response) -> str:
-    """The provider's error message when the body is a structured error, else a body excerpt."""
+    """The provider's error message when the body is a structured error, else the body text.
+
+    Never bounded here: a cut before the key scrub can leave a fragment of the credential in
+    the excerpt, and a cut before classification can lose the words that name a rejection.
+    ``_quote`` scrubs first and bounds last; the body itself is capped at ``_MAX_RESPONSE_BYTES``.
+    """
     payload = _json_body(response)
     if isinstance(payload, dict):
         error = payload.get("error")
@@ -463,13 +468,13 @@ def _error_message(response: httpx2.Response) -> str:
                 # message says only "Provider returned error": the reason is what a person needs
                 raw = _provider_reason(error)
                 return f"{message}: {raw}" if raw else message
-            return json.dumps(error, ensure_ascii=False)[: _ERROR_QUOTE_CHARS * 2]
+            return json.dumps(error, ensure_ascii=False)
         if isinstance(error, str):
             return error
         if isinstance(payload.get("message"), str):
             return str(payload["message"])
     try:
-        return response.text[: _ERROR_QUOTE_CHARS * 2]
+        return response.text
     except Exception:  # noqa: BLE001 - a diagnostic must never raise
         return "<unreadable body>"
 
@@ -497,7 +502,7 @@ def _reasoning_budget_note(usage: Any, max_tokens: int) -> str:
 
 
 def _provider_reason(error: dict[str, Any]) -> str:
-    """The upstream reason relayed under ``error.metadata.raw`` (a JSON string or text), bounded."""
+    """The upstream reason relayed under ``error.metadata.raw`` (a JSON string or text), whole."""
     metadata = error.get("metadata")
     raw = metadata.get("raw") if isinstance(metadata, dict) else None
     if not isinstance(raw, str) or not raw.strip():
@@ -509,11 +514,12 @@ def _provider_reason(error: dict[str, Any]) -> str:
     if isinstance(parsed, dict):
         for key in ("message", "error", "reason"):
             value = parsed.get(key)
-            if isinstance(value, dict) and isinstance(value.get("message"), str):
-                return str(value["message"])[:_ERROR_QUOTE_CHARS]
+            nested = value.get("message") if isinstance(value, dict) else None
+            if isinstance(nested, str) and nested.strip():
+                return nested
             if isinstance(value, str) and value.strip():
-                return value[:_ERROR_QUOTE_CHARS]
-    return raw[:_ERROR_QUOTE_CHARS]
+                return value
+    return raw
 
 
 _ESCAPE = re.compile(r"\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})|\\(/)")

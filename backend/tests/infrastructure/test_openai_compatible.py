@@ -196,6 +196,50 @@ def test_auto_mode_reads_the_rejection_relayed_under_openrouter_metadata_raw() -
     assert "response_format" in server.body(0) and "response_format" not in server.body(1)
 
 
+def _relayed(message: str) -> dict[str, Any]:
+    return {
+        "error": {
+            "message": "Provider returned error",
+            "metadata": {"raw": json.dumps({"message": message})},
+        }
+    }
+
+
+def test_a_relayed_reason_is_scrubbed_before_it_is_cut() -> None:
+    # the key, escape-encoded, placed so that a 200-character cut would split it: no fragment
+    # of it may reach the message (adversarial review of #44)
+    escaped = "".join(f"\\u{ord(c):04x}" for c in KEY)
+    padding = "request rejected by the upstream model gateway for the configured deployment " * 2
+    server = Server(httpx2.Response(400, json=_relayed(f"{padding}invalid: {escaped} and more")))
+    with pytest.raises(AssistantError) as caught:
+        adapter(server, json_mode="on").complete(prepared())
+    text = str(caught.value)
+    assert KEY not in text and escaped not in text
+    for start in range(0, len(KEY) - 8):
+        assert KEY[start : start + 8] not in text, text
+    assert "<key>" in text
+
+
+def test_a_long_relayed_rejection_still_switches_json_mode_off() -> None:
+    # the feature name sits beyond 200 characters of provider context
+    context = "model: vendor/some-model-with-a-long-name on provider deployment eu-west-2 " * 4
+    server = Server(
+        httpx2.Response(
+            400, json=_relayed(f"{context}does not support feature: structured-outputs")
+        ),
+        ok(recording("synthetic_openrouter_ok")),
+    )
+    reply = adapter(server).complete(prepared())
+    assert reply.notes == ("json_mode_off_after_rejection",) and len(server.requests) == 2
+
+
+def test_error_excerpts_stay_bounded_after_the_scrub() -> None:
+    server = Server(httpx2.Response(400, json=_relayed("x" * 5000)))
+    with pytest.raises(AssistantError) as caught:
+        adapter(server, json_mode="on").complete(prepared())
+    assert len(str(caught.value)) < 600
+
+
 def test_a_provider_error_names_the_relayed_upstream_reason() -> None:
     server = Server(
         httpx2.Response(400, json=recording("synthetic_openrouter_400_structured_outputs"))
