@@ -44,6 +44,7 @@ class TraceScope:
     tool_is_linked: bool = False  # inverse null-link bucket drill
     # A day drill narrows its activity grain, preserving the original sibling witnesses.
     witness_time_override: bool = False
+    witness_required: bool = False
     witness_started_from: datetime | None = None
     witness_started_before: datetime | None = None
     witness_timestamp_missing: bool = False
@@ -76,7 +77,9 @@ class TraceScope:
         )
         if self.witness_time_override and self.activity_grain is None:
             raise invalid("witness_time_override", "Witness time override needs an activity grain")
-        if (witness_bounds or self.witness_timestamp_missing) and not self.witness_time_override:
+        if (
+            witness_bounds or self.witness_timestamp_missing or self.witness_required
+        ) and not self.witness_time_override:
             raise invalid("witness_time_override", "Witness time fields need an explicit override")
         if self.witness_timestamp_missing and witness_bounds:
             raise invalid("witness_timestamp_missing", "Missing witness time excludes date bounds")
@@ -139,6 +142,8 @@ class MetricQuerySpec:
             or any(d not in DIMENSIONS[self.definition.grain] for d in self.group_by)
         ):
             raise invalid("group_by", "Use at most two distinct dimensions supported by the grain")
+        if self.definition.grain in (EntityGrain.MODEL_CALL, EntityGrain.TOOL_CALL):
+            object.__setattr__(self, "scope", _activity_scope(self.scope, self.definition.grain))
         population = self.definition.population
         if population is not None:
             # Explicit fields keep this contract statically typed.
@@ -147,11 +152,6 @@ class MetricQuerySpec:
                 tool_is_unlinked=self.scope.tool_is_unlinked or population == "tool_is_unlinked",
                 usage_missing=self.scope.usage_missing or population == "usage_missing",
                 timestamp_missing=self.scope.timestamp_missing or population == "timestamp_missing",
-                activity_grain=(
-                    self.definition.grain
-                    if population == "timestamp_missing"
-                    else self.scope.activity_grain
-                ),
             )
             object.__setattr__(self, "scope", self_scope)
 
@@ -170,11 +170,13 @@ class AggregateRows:
 
 
 def _activity_scope(scope: TraceScope, grain: EntityGrain) -> TraceScope:
-    if scope.witness_time_override and scope.activity_grain != grain:
+    if scope.activity_grain is not None and scope.activity_grain != grain:
         # Switching chart grains makes the previous activity grain the sibling witness.
         return replace(
             scope,
             activity_grain=grain,
+            witness_time_override=True,
+            witness_required=True,
             witness_started_from=scope.started_from,
             witness_started_before=scope.started_before,
             witness_timestamp_missing=scope.timestamp_missing,

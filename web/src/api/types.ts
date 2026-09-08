@@ -92,6 +92,7 @@ export interface MetricDrillScope {
   usage_missing: boolean
   tool_is_linked: boolean
   witness_time_override: boolean
+  witness_required: boolean
   witness_started_from: string | null
   witness_started_before: string | null
   witness_timestamp_missing: boolean

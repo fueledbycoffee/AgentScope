@@ -275,6 +275,7 @@ def test_returned_scopes_round_trip_after_every_grain_switch(client, origin, bou
     "params",
     [
         {"witness_time_override": True},
+        {"witness_required": True},
         {"witness_started_from": "2026-01-01T00:00:00Z"},
         {
             "witness_time_override": True,
@@ -407,3 +408,39 @@ def test_scheduled_cost_exact_rates_semantics_splits_and_token_coverage(client, 
         "total_text": "275",
     }
     assert "schedule unavailable" in result["reason"]
+
+
+@pytest.mark.parametrize("tool_filter", [False, True])
+def test_unknown_timestamp_population_round_trips_tool_witness_over_http(client, tool_filter):
+    container = client.app.state.container
+    mapping_id = container.list_mappings.execute()[0].id
+    records = []
+    for sid, tool_time in [("s1", None), ("s2", "2026-01-01T12:00:00Z")]:
+        record = json.loads(_tracelab_line(sid))
+        record["timing_events"] = []
+        record["tools"] = [{"tool_name": "shell", "emitted_at": tool_time}]
+        records.append(json.dumps(record) + "\n")
+    info = container.store_upload.execute("unknown.jsonl", "".join(records).encode())
+    report = container.commit_import.execute("tracelab", [FileBinding(info.upload_id, mapping_id)])
+    assert report.records["accepted"] == 2 and report.reject_count == 0
+
+    def query(metric, scope, groups=()):
+        params = {k: v for k, v in scope.items() if v is not None}
+        response = client.get(
+            "/api/metrics/query", params={**params, "metric_id": metric, "group_by": groups}
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    initial = {"tool": "shell"} if tool_filter else {}
+    bucket = query("tool_calls", initial, ["started_day"])["buckets"][0]
+    assert bucket["keys"] == [None]
+    result = query("unknown_timestamps", bucket["drill_scope"])
+    assert result["overall"]["value_text"] == "1"
+    for scope in [result["scope"], result["buckets"][0]["drill_scope"]]:
+        assert scope["witness_required"] and scope["witness_timestamp_missing"]
+        for metric in ["sessions", "model_calls", "tool_calls", "unknown_timestamps"]:
+            assert query(metric, scope)["overall"]["value_text"] == "1"
+        tokens = query("input_tokens", scope)
+        for part in tokens["overall"]["semantics_partitions"]:
+            assert query("sessions", part["drill_scope"])["overall"]["value_text"] == "1"

@@ -155,9 +155,17 @@ def _scope_clauses(grain: EntityGrain, scope: TraceScope) -> list[Any]:
         clauses.append(session_id.in_(scope.session_ids))
     if grain != EntityGrain.SESSION:
         clauses.extend(_child_predicates(table, grain, scope))
-        if grain == EntityGrain.MODEL_CALL and scope.has_tool_predicate:
+        if grain == EntityGrain.MODEL_CALL and (
+            scope.has_tool_predicate
+            or scope.activity_grain == EntityGrain.TOOL_CALL
+            or scope.witness_required
+        ):
             clauses.append(_witness(session_id, EntityGrain.TOOL_CALL, scope))
-        if grain == EntityGrain.TOOL_CALL and scope.has_model_predicate:
+        if grain == EntityGrain.TOOL_CALL and (
+            scope.has_model_predicate
+            or scope.activity_grain == EntityGrain.MODEL_CALL
+            or scope.witness_required
+        ):
             clauses.append(_witness(session_id, EntityGrain.MODEL_CALL, scope))
         return clauses
 
@@ -182,6 +190,13 @@ def _scope_clauses(grain: EntityGrain, scope: TraceScope) -> list[Any]:
         clauses.append(_witness(session_id, EntityGrain.TOOL_CALL, scope))
     if scope.activity_grain is not None:
         clauses.append(_witness(session_id, scope.activity_grain, scope))
+        if scope.witness_required:
+            sibling = (
+                EntityGrain.TOOL_CALL
+                if scope.activity_grain == EntityGrain.MODEL_CALL
+                else EntityGrain.MODEL_CALL
+            )
+            clauses.append(_witness(session_id, sibling, scope))
     elif scope.has_time_bounds and not (scope.has_model_predicate or scope.has_tool_predicate):
         clauses.append(
             or_(

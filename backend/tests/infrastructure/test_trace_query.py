@@ -736,3 +736,144 @@ def test_cost_preserves_scopes_entity_grain_and_unknown_timestamp_counts(databas
             TraceScope(started_from=datetime(2026, 1, 1, tzinfo=UTC)),
         )
         assert query.aggregate(spec).excluded_unknown_timestamps == 2
+
+
+def test_unknown_timestamps_preserves_missing_time_tool_drill_from_import(tmp_path):
+    import json
+
+    from agentscope_app.application.use_cases.queries import QueryMetric
+
+    engine = create_engine_for(f"sqlite:///{tmp_path / 'unknown-tool-drill.sqlite3'}")
+    run_migrations(engine)
+    factory, upload, commit, _, _ = _pipeline(engine, tmp_path)
+    records = []
+    for sid, tool_time in [("s1", None), ("s2", "2026-01-01T12:00:00Z")]:
+        record = json.loads(_tracelab_line(sid))
+        record["timing_events"] = []
+        record["tools"] = [{"tool_name": "shell", "emitted_at": tool_time}]
+        records.append(json.dumps(record) + "\n")
+    info = upload.execute("missing-times.jsonl", "".join(records).encode())
+    report = commit.execute("tracelab", [FileBinding(info.upload_id, "map_tracelab")])
+    assert report.status == "committed" and report.records["accepted"] == 2
+    assert report.reject_count == 0
+    query = QueryMetric(factory)
+    bucket = query.execute(
+        "tool_calls", TraceScope(tool="shell"), (Dimension.STARTED_DAY,)
+    ).buckets[0]
+    assert bucket.keys == (None,)
+    assert query.execute("sessions", bucket.drill_scope).overall.value_text == "1"
+    assert query.execute("model_calls", bucket.drill_scope).overall.value_text == "1"
+    assert query.execute("unknown_timestamps", bucket.drill_scope).overall.value_text == "1"
+    engine.dispose()
+
+
+def test_every_returned_day_scope_preserves_partitions_through_every_population(tmp_path):
+    """Exhaustive small-product oracle, independent of query/drill scope construction."""
+    import itertools
+    import json
+
+    from agentscope_app.application.errors import InvalidInputError
+    from agentscope_app.application.use_cases.queries import QueryMetric
+
+    engine = create_engine_for(f"sqlite:///{tmp_path / 'population-drills.sqlite3'}")
+    run_migrations(engine)
+    factory, upload, commit, _, _ = _pipeline(engine, tmp_path)
+    times = [None, "2026-01-01T12:00:00Z", "2026-01-02T12:00:00Z"]
+    cases = list(itertools.product(times, times, [None, 10], [False, True], ["a", "b"]))
+    records = []
+    for index, (model_time, tool_time, usage, _, _) in enumerate(cases):
+        record = json.loads(_tracelab_line(str(index)))
+        record["timing_events"] = [{"timestamp": model_time}] if model_time else []
+        record["input_tokens_total"] = usage
+        record["tools"] = [{"tool_name": "shell", "emitted_at": tool_time}]
+        records.append(json.dumps(record) + "\n")
+    info = upload.execute("population-product.jsonl", "".join(records).encode())
+    report = commit.execute("tracelab", [FileBinding(info.upload_id, "map_tracelab")])
+    assert report.status == "committed" and report.records["accepted"] == len(cases)
+    assert report.reject_count == 0
+    # The upload fixture links tools and fixes semantics; vary these canonical fields too.
+    with Session(engine) as session:
+        for call in session.scalars(select(m.ModelCall)):
+            index = int(call.locator.split(":")[1]) - 1
+            call.token_semantics = cases[index][4]
+        for tool in session.scalars(select(m.ToolCall)):
+            index = int(tool.locator.split(":")[1]) - 1
+            if not cases[index][3]:
+                tool.model_call_id = None
+        session.commit()
+    query = QueryMetric(factory)
+    targets = ["sessions", "model_calls", "tool_calls", "imports_in_scope", "input_tokens"]
+    targets += [d.id for d in REGISTRY.definitions.values() if d.population is not None]
+
+    def returned_scopes(result, cohort, origin_time):
+        yield result.scope, cohort
+        for part in result.overall.semantics_partitions:
+            yield part.drill_scope, [c for c in cohort if c[4] == part.semantics]
+        for bucket in result.buckets:
+            day = bucket.keys[0]
+            selected = [
+                c for c in cohort if (c[origin_time][:10] if c[origin_time] else None) == day
+            ]
+            assert bucket.result.coverage.total == len(selected)
+            yield bucket.drill_scope, selected
+            for part in bucket.result.semantics_partitions:
+                yield part.drill_scope, [c for c in selected if c[4] == part.semantics]
+
+    def fits_time(stamp, scope):
+        stamp = datetime.fromisoformat(stamp) if stamp else None
+        return (
+            (not scope.timestamp_missing or stamp is None)
+            and (scope.started_from is None or (stamp is not None and stamp >= scope.started_from))
+            and (
+                scope.started_before is None or (stamp is not None and stamp < scope.started_before)
+            )
+        )
+
+    for origin in ["tool_calls", "model_calls", "input_tokens"]:
+        origin_time = 1 if origin == "tool_calls" else 0
+        for filters in [TraceScope(), TraceScope(model="m", tool="shell")]:
+            result = query.execute(origin, filters, (Dimension.STARTED_DAY,))
+            for scope, cohort in returned_scopes(result, cases, origin_time):
+                for target in targets:
+                    definition = REGISTRY.get(target)
+                    if definition.population == "timestamp_missing" and scope.has_time_bounds:
+                        with pytest.raises(InvalidInputError):
+                            query.execute(target, scope)
+                        continue
+                    selected = list(cohort)
+                    if definition.grain in (EntityGrain.MODEL_CALL, EntityGrain.TOOL_CALL):
+                        time_index = 0 if definition.grain == EntityGrain.MODEL_CALL else 1
+                        selected = [c for c in selected if fits_time(c[time_index], scope)]
+                    if definition.population == "timestamp_missing":
+                        selected = [c for c in selected if c[0] is None]
+                        if (
+                            scope.has_tool_predicate
+                            and not scope.witness_time_override
+                            and scope.activity_grain != EntityGrain.TOOL_CALL
+                        ):
+                            selected = [c for c in selected if c[1] is None]
+                    elif definition.population == "usage_missing":
+                        selected = [c for c in selected if c[2] is None]
+                    elif definition.population == "tool_is_unlinked":
+                        selected = [c for c in selected if not c[3]]
+                    expected = (
+                        int(bool(selected)) if target == "imports_in_scope" else len(selected)
+                    )
+                    switched = query.execute(target, scope)
+                    context = (origin, scope, target)
+                    assert switched.overall.coverage.total == expected, context
+                    # Every scope emitted by the population/grain switch must reproduce its rows.
+                    pairs = [(switched.scope, switched.overall)]
+                    pairs += [(b.drill_scope, b.result) for b in switched.buckets]
+                    for returned, partition in pairs:
+                        followed = query.execute(target, returned).overall
+                        assert followed.coverage == partition.coverage, context
+                        assert followed.value_text == partition.value_text, context
+                        assert query.execute("sessions", returned).overall.value_text == str(
+                            len(selected)
+                        ), context
+                        for part in partition.semantics_partitions:
+                            followed = query.execute(target, part.drill_scope).overall
+                            assert followed.coverage == part.coverage, context
+                            assert followed.value_text == part.value_text, context
+    engine.dispose()

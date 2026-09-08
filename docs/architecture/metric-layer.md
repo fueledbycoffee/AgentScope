@@ -95,8 +95,12 @@ explicit witness-time override, preserving the original time bounds/missing-time
 for other-grain sibling witnesses while narrowing the activity grain to the bucket day.
 Without it, a model-day drill under an existing tool filter could silently lose sessions
 whose tool happened on a different day. #11 must forward `witness_time_override`,
-`witness_started_from`, `witness_started_before`, and `witness_timestamp_missing` from the
-returned scope. Ordinary filters retain the same-row time rule for all required witnesses.
+`witness_started_from`, `witness_started_before`, `witness_timestamp_missing`, and `witness_required` from the
+returned scope. All child queries normalize their activity grain before population predicates are applied.
+A switch retains the previous grain as a required sibling witness, even without model/tool
+label filters; `witness_required` records that requirement in the returned scope.
+This includes `unknown_timestamps` and every overall, bucket and accounting-partition scope.
+Ordinary filters retain the same-row time rule for all required witnesses.
 An independent original-population oracle and an HTTP round-trip test guard this case.
 Null labels are distinct from literal `unknown` labels. The session-ID port paginates deterministically by ID;
 `session_metrics(scope)` accepts richer scope for #11's session-list wiring. This issue
