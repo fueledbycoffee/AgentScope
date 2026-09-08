@@ -302,3 +302,36 @@ Additional exhaustive file-list entry: `docs/architecture/metric-layer.md` for f
 view migration convention and #11 recipes. Existing planned test files cover the added cases;
 Coverage's unchanged shape requires no edits to test_api_e2e.py. No ADR or web/src files are owned
 or changed by this implementation. PR_BODY.md is a local, uncommitted coordinator artifact.
+
+## Revision after the owner's decisions
+
+Phase 3 is authorized on 2026-09-08. This supersedes conflicting KPI, quantile and
+no-currency statements above. Source: `/Users/sean/.claude/jobs/fcddadde/tmp/wave1/decisions-28.md`;
+context: `research/insights/MERGE-DRAFT.md:347`.
+
+| Question | Registry | Query port / execution | API | Docs |
+| --- | --- | --- | --- | --- |
+| Q1 Prices | Add scheduled USD cost, priced tokens × exact per-token rates, by accounting group. | Extend typed results with token-weighted priced coverage and schedule version. Generic cost primitive uses canonical fields and validated billing rules. Codex prefix input stays unpriced. | Cost definition/query with per-semantics split, priced coverage and schedule version. | Add `backend/prices/` versioned JSON and provenance, `scripts/fetch_openrouter_prices.py`, one real keyless GET of the models endpoint; keep only public model IDs/rates, model count, fetch/revision date and response hash. Document unknown rates and partial pricing. No test/runtime network fetch. |
+| Q2 Prefix reuse | Already absent: `backend/src/agentscope_app/domain/metrics.py:263`. | Nothing to build; raw evidence already retained: `backend/mappings/tracelab-v1.json:74`. | No new reuse endpoint. | State deferred prefix metric; Claude-only cache panel remains the caching view. |
+| Q3 KPI slots | Existing IDs already so: `backend/src/agentscope_app/domain/metrics.py:263`; clarify labels and four-KPI metadata. | Already so: shared summary at `backend/src/agentscope_app/application/use_cases/queries.py:177`; coverage assembly at `backend/src/agentscope_app/application/metric_queries.py:307`. | Preserve sessions/model_calls/tool_calls/input_tokens keys and expose KPI metadata. | Explicitly name sessions, model-call observations, tool-call observations, input usage by accounting group, coverage each. |
+| Q4 Observed span | Add fixed label “observed span in imported data” with caveat: neither active time nor task duration; overlapping spans may overlap in real time. | Exact sum of known per-session observed end minus start, coverage known bounds / eligible sessions. Child filters select sessions; bounds remain their complete imported bounds. | Queryable span with exact milliseconds, scope, coverage and caveat. | Explain whole-session scope and mandatory headline caveat. |
+| Q5 Incompatible semantics | Change refusal reason to “not comparable: N token semantics in selection”; unknown never compatible. | Already refuses canonical sums and preserves partitions: `backend/src/agentscope_app/domain/metrics.py:191`, `backend/src/agentscope_app/application/metric_queries.py:341`. Add mixed-scope regression. | Visible reason plus per-semantics split; legacy recorded aliases stay noncanonical. | Require visible refusal and split control in #11. |
+| Q6 Quantiles | Declare nearest-rank quantiles, averaged even-n median and display precision in every definition; generic distribution operation. | Carry mergeable exact samples; overall quantiles use original observations, never bucket quantiles. | Exact distribution text with rules and precision through definitions. | State sample population, null/zero policy, and display rounding separately from exact transport. |
+| Q7 Timeline | Nothing to build. | Existing detail reads: `backend/src/agentscope_app/application/use_cases/queries.py:153`. | Call/tool evidence remains in detail; timeline deferred. | No timeline in v0.1.0; ordered table belongs to #11. |
+| Q8 Repeat-after-error | Already absent: `backend/src/agentscope_app/domain/metrics.py:263`. | Nothing to build; no adjacency aggregate. | Nothing published. | Deferred beyond v0.1.0. |
+| Q9 Reasoning | Total already so: `backend/src/agentscope_app/domain/metrics.py:42`, `:275`; add distributions by compatible model group; ratio only a diagnostic definitions entry. | Reuse distribution primitive and refusal; model grouping for reasoning reports; reject execution of diagnostic-only definition. | Totals/distributions carry scope, model/semantics groups and coverage; no ratio query/trend. | Explain diagnostic limitations; no trend finding. |
+| Q10 Latencies | Zero already included: `backend/src/agentscope_app/domain/metrics.py:255`; definition names instrumentation question (timer resolution, absent instrumentation, or real elapsed time?). | No value-based exclusion; test zero/one-ms rows and coverage. | Definition caveat goes to #11 tool table. | All recorded latencies remain until source evidence supports a validity rule. |
+
+Implementation order: small KPI/refusal/latency deltas; observed span; quantiles/reasoning;
+pricing; final API/architecture docs and local `PR_BODY.md` rewrite covering phases 2 and 3
+with the existing footer. Commit this revision alone first. Every implementation commit runs
+ruff format, ruff check src tests, mypy src, lint-imports, pytest -q.
+
+Additional files: domain pricing/distribution helpers, infrastructure price loader, focused
+metric/API/fetch-script tests; extend existing query DTO, adapter and SQLite helper files.
+No ingestion adapter, canonical schema, frontend or ADR changes. PR_BODY.md stays an
+uncommitted coordinator artifact. Exact model IDs only; no speculative aliases. Missing cache
+rates and cache creation remain unpriced. Codex total input cannot be treated as prompt because
+its prefix component is unvalidated. Quantile samples use memory proportional to observations;
+exact decimal products/medians must avoid rounding. A denied required public fetch is BLOCKED.
+Never push, gh, board, list processes, merge or rebase.
