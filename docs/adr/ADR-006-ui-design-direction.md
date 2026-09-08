@@ -59,6 +59,26 @@ proliferation. It does not prohibit the action-icon set established in the
 implemented Console shell: secondary icon-only actions use an accessible name
 and visible tooltip, while each stage's primary action keeps its written verb.
 
+### Amendment: dashboard hierarchy and URL drill scope (2026-09-08, issue #11)
+
+The Overview keeps exactly four visually dominant cards: Sessions,
+Model-call observations, Tool-call observations, and Input usage by accounting
+group. Scheduled cost and observed span in imported data sit in a quieter
+two-value headline strip. Output usage remains visible in the token panel and
+as the second Tokens-by-model series. This preserves the Console scan order
+without presenting six values as equal decisions.
+
+The global URL scope gains one versioned `drill` envelope as the sole carrier
+of an allowlisted server-returned chart or quality scope. It is part of the
+same scope as Source, Agent, Model, and Period—not component state and not a
+second drill mechanism—and explicitly excludes internal session IDs. Current
+base values take precedence over matching envelope fields. Removing a base
+value also removes that field and its mutually exclusive unknown predicate
+from the envelope; changing Period invalidates the envelope because its
+witness bounds describe the earlier period. The complete envelope remains in
+links and browser history so reload, Back, and chart-to-session navigation
+select the same population.
+
 ## Consequences
 
 - Integration is a dedicated issue (#30): tokens, shell and reusable
