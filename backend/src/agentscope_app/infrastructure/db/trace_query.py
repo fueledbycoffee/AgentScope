@@ -323,6 +323,7 @@ class SqlAlchemyTraceQuery:
                 usage.semantics,
                 priced_tokens=priced.priced_tokens,
                 total_tokens=priced.total_tokens,
+                unresolved_model_calls=int(priced.reason == "no rate for this model id"),
             )
             grouped[keys] = combine_parts(
                 AggregateRows((AggregateRow(keys, (*grouped.get(keys, ()), part)),))

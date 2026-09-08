@@ -347,6 +347,7 @@ def combine_parts(rows: AggregateRows) -> tuple[AggregatePart, ...]:
             tuple(v for p in parts for v in p.samples),
             sum(p.priced_tokens for p in parts),
             sum(p.total_tokens for p in parts),
+            sum(p.unresolved_model_calls for p in parts),
         )
         for semantics, parts in sorted(grouped.items(), key=lambda item: item[0] or "")
     )
@@ -393,6 +394,13 @@ def _result(
         reason = "Price schedule unavailable; no tokens priced."
     elif is_cost and result.known == 0:
         reason = "No recorded tokens have both a rate and validated billing semantics."
+    unresolved = sum(p.unresolved_model_calls for p in parts)
+    if is_cost and unresolved:
+        reason = (
+            "no rate for this model id"
+            if unresolved == result.total
+            else f"{reason} {unresolved} calls unpriced: no rate for this model id."
+        )
     return MetricResult(
         _text(result.value),
         _text(result.recorded_sum),

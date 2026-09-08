@@ -502,3 +502,94 @@ def test_invalid_inclusive_bounds_use_400(client, params):
     response = client.get("/api/metrics/query", params={"metric_id": "model_calls", **params})
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_input"
+
+
+def test_cost_alias_metadata_and_unresolved_reason(client):
+    from agentscope_app.infrastructure.prices import load_price_schedule
+
+    container = ingest(client)
+    schedule = load_price_schedule()
+    definitions = {d["id"]: d for d in client.get("/api/metrics/definitions").json()}
+    metadata = definitions["scheduled_cost_usd"]["price_schedule"]
+    assert metadata == {
+        "schedule_version": schedule.version,
+        "alias_version": "aliases-v1",
+        "aliases": dict(schedule.aliases),
+        "resolution": "Exact schedule key, then exact reviewed alias; otherwise unpriced.",
+    }
+    assert "claude-opus-4-7" in definitions["scheduled_cost_usd"]["caveat"]
+    with container.uow_factory() as uow:
+        for call, model in zip(
+            uow.session.scalars(select(m.ModelCall).order_by(m.ModelCall.id)),
+            ["claude-opus-4-7", "codex-auto-review", "gpt-5.5"],
+            strict=True,
+        ):
+            call.model = model
+            call.token_semantics = "unknown" if model == "gpt-5.5" else "tracelab-claude"
+            call.input_tokens, call.output_tokens = 100, 10
+            call.cache_read_tokens, call.cache_creation_tokens = 60, 20
+        uow.commit()
+    body = client.get(
+        "/api/metrics/query",
+        params={
+            "metric_id": "scheduled_cost_usd",
+            "group_by": "model",
+        },
+    ).json()
+    buckets = {b["keys"][0]: b["result"] for b in body["buckets"]}
+    assert buckets["claude-opus-4-7"]["value_text"] == "0.00038"
+    assert buckets["claude-opus-4-7"]["priced_coverage"]["known_text"] == "90"
+    assert buckets["codex-auto-review"]["reason"] == "no rate for this model id"
+    for model in ["codex-auto-review", "gpt-5.5"]:
+        assert buckets[model]["value_text"] is None
+        assert buckets[model]["priced_coverage"]["known_text"] == "0"
+        assert buckets[model]["priced_coverage"]["total_text"] == "110"
+    assert body["overall"]["priced_coverage"]["known_text"] == "90"
+    assert body["overall"]["priced_coverage"]["total_text"] == "330"
+    assert "no rate for this model id" in body["overall"]["reason"]
+
+
+def test_tracelab_fixture_scheduled_cost_by_accounting_group(client):
+    from tests.interfaces.test_api_e2e import FIXTURE
+
+    container = client.app.state.container
+    mapping_id = container.list_mappings.execute()[0].id
+    info = container.store_upload.execute("tracelab.jsonl.gz", FIXTURE.read_bytes())
+    report = container.commit_import.execute("tracelab", [FileBinding(info.upload_id, mapping_id)])
+    assert report.status == "committed"
+    body = client.get(
+        "/api/metrics/query",
+        params={
+            "metric_id": "scheduled_cost_usd",
+            "group_by": "model",
+        },
+    ).json()
+    overall = body["overall"]
+    assert overall["value_text"] is None  # mixed accounting groups still require a split
+    assert overall["recorded_sum_text"] == "132.8761978"
+    assert overall["coverage"] == {"known": 4622, "total": 4770}
+    parts = {p["semantics"]: p for p in overall["semantics_partitions"]}
+    # Independent raw-fixture arithmetic; see backend/prices/README.md.
+    for tag, cost, priced, total, calls in [
+        ("tracelab-claude", "107.8042053", "179280996", "187395949", 1583),
+        ("tracelab-codex", "25.0719925", "1496244", "368535755", 3039),
+    ]:
+        part = parts[tag]
+        assert part["value_text"] == cost
+        assert part["priced_coverage"]["known_text"] == priced
+        assert part["priced_coverage"]["total_text"] == total
+        assert part["coverage"]["known"] == calls
+        filtered = client.get(
+            "/api/metrics/query",
+            params={
+                "metric_id": "scheduled_cost_usd",
+                "token_semantics": tag,
+            },
+        ).json()["overall"]
+        assert filtered["value_text"] == cost
+        assert filtered["priced_coverage"] == part["priced_coverage"]
+    unresolved = {b["keys"][0] for b in body["buckets"] if b["result"]["value_text"] is None}
+    assert unresolved == {"gpt-5-codex", "gpt-5.3-codex-spark", "codex-auto-review"}
+    for bucket in body["buckets"]:
+        if bucket["keys"][0] in unresolved:
+            assert bucket["result"]["reason"] == "no rate for this model id"

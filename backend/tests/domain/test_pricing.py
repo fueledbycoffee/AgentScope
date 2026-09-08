@@ -73,3 +73,18 @@ def test_pricing_zero_missing_and_long_decimal_products_remain_exact():
     rates = PriceSchedule("precise", {"vendor/model": ModelRates(completion=Fraction(1, 10**40))})
     result = price_usage(replace(usage, output_tokens=10**40 + 1), rates)
     assert number_text(result.cost) == "1." + "0" * 39 + "1"
+
+
+def test_alias_resolution_preserves_semantics_gates_coverage_and_missing_model_reason():
+    aliased = replace(schedule(), aliases={"model": "vendor/model"}, alias_version="aliases-v1")
+    usage = TokenUsage("model", "tracelab-claude", 100, 10, 60, 20)
+    assert price_usage(usage, aliased) == price_usage(
+        replace(usage, model="vendor/model"), schedule()
+    )
+    assert price_usage(replace(usage, semantics="tracelab-codex"), aliased).priced_tokens == 10
+    for tag in ("unknown", "swe-chat", "other"):
+        result = price_usage(replace(usage, semantics=tag), aliased)
+        assert result.cost is None and result.priced_tokens == 0 and result.total_tokens == 110
+    result = price_usage(replace(usage, model="not-reviewed"), aliased)
+    assert result.reason == "no rate for this model id"
+    assert result.cost is None and result.priced_tokens == 0 and result.total_tokens == 110

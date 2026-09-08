@@ -9,10 +9,11 @@ const STOPS: { number: ImportStep; label: string }[] = [
   { number: 4, label: 'Confirm' },
 ]
 
-export function ImportRoute({ step, facts, onSelect, children }: {
+export function ImportRoute({ step, facts, onSelect, backtrackingDisabled, children }: {
   step: ImportStep
   facts: Partial<Record<ImportStep, string>>
   onSelect: (step: ImportStep) => void
+  backtrackingDisabled?: boolean
   children: ReactNode
 }) {
   return <div className="import-route-layout">
@@ -23,7 +24,7 @@ export function ImportRoute({ step, facts, onSelect, children }: {
           <span className="import-route-stop-marker" aria-hidden="true">{state === 'complete' ? <Icon name="check" size={13} /> : stop.number}</span>
           <div className="import-route-stop-copy">
             {state === 'complete'
-              ? <button type="button" onClick={() => onSelect(stop.number)}>{stop.label}</button>
+              ? <button type="button" disabled={backtrackingDisabled} onClick={() => onSelect(stop.number)}>{stop.label}</button>
               : <span aria-current={state === 'current' ? 'step' : undefined}>{stop.label}</span>}
             {state === 'complete' && facts[stop.number] && <span className="import-route-stop-fact mono">{facts[stop.number]}</span>}
           </div>
