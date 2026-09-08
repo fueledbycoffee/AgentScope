@@ -14,6 +14,7 @@ backend, nothing else.
 | `AGENTSCOPE_LLM_TIMEOUT_S` | Deadline of one generation call (positive seconds). A run with a repair takes at most twice this. Kept as text and parsed by the adapter: a typo disables the assistant, not the application | `60` |
 | `AGENTSCOPE_LLM_JSON_MODE` | `auto`, `on`, `off`: whether `response_format: {"type": "json_object"}` is sent (see below) | `auto` |
 | `AGENTSCOPE_LLM_MAX_TOKENS` | Upper bound on a reply (positive integer). A cut-off reply gets one repair, then fails clearly | `8192` |
+| `AGENTSCOPE_LLM_CONTEXT_BYTES` | Budget of the prepared context in UTF-8 bytes (at least 4096). Trimming order: sample records, examples 5→2, history, examples→0, then nested fields (deepest and rarest first, reported as `truncated.fields_omitted` and `profile.omitted` per parent path). `$` and top-level fields are never omitted; a context that cannot hold them answers `413 context_too_large` naming this variable's role | `65536` |
 
 An invalid or missing assistant configuration never stops the application:
 uploads, previews, imports, saved-mapping replay and the dashboards work, and

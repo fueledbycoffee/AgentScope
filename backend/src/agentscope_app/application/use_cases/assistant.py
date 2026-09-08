@@ -169,8 +169,13 @@ class PrepareContext:
         )
         truncated: dict[str, int] = {}
         examples = 5
+        omitted: list[str] = []  # field paths left out of the profile, deepest and rarest first
+        omission_order = _omission_order(profile["fields"])
         while True:
             document = self._document(request, info, profile, samples, history, message, mapping)
+            if omitted:
+                document["profile"] = _omit_fields(document["profile"], omitted)
+                truncated["fields_omitted"] = len(omitted)
             document["truncated"] = dict(sorted(truncated.items()))
             document["redaction"]["counts"] = _counts(
                 request,
@@ -194,11 +199,28 @@ class PrepareContext:
             elif history:
                 history.pop(0)
                 truncated["history_dropped"] = truncated.get("history_dropped", 0) + 1
+            elif examples > 0:
+                examples = 0
+                truncated["examples_removed"] = 1
+            elif len(omitted) < len(omission_order):
+                # the field list alone is too wide: leave out a slice of the deepest, rarest
+                # fields; the document keeps a count per parent so the model knows what is missing
+                remaining = len(omission_order) - len(omitted)
+                omitted.extend(omission_order[len(omitted) : len(omitted) + max(1, remaining // 8)])
             else:
                 raise ContextTooLargeError(
-                    f"The assistant context is {size} bytes after trimming; "
-                    f"the limit is {self._budget} bytes",
-                    [{"bytes": size, "limit": self._budget, "truncated": truncated}],
+                    f"The assistant context is {size} bytes after trimming ({len(omitted)} "
+                    f"nested fields omitted, {len(profile['fields']) - len(omitted)} kept); "
+                    f"the limit is {self._budget} bytes: raise the assistant context budget "
+                    "in the configuration or profile a narrower file",
+                    [
+                        {
+                            "bytes": size,
+                            "limit": self._budget,
+                            "truncated": truncated,
+                            "fields": len(profile["fields"]),
+                        }
+                    ],
                 )
         return PreparedContext(
             kind=request.kind,
@@ -499,6 +521,32 @@ def _counts(
         for reason, n in part.items():
             total[reason] = total.get(reason, 0) + n
     return dict(sorted(total.items()))
+
+
+def _omission_order(fields: list[dict[str, Any]]) -> list[str]:
+    """Nested field paths in the order they are left out: deepest first, then rarest.
+
+    ``$`` and top-level fields (depth 0 and 1) are never omitted: the model needs the shape of
+    a record to write any rule at all; a context that cannot hold even those is rejected.
+    """
+    nested = [f for f in fields if int(f.get("depth", 0)) > 1]
+    nested.sort(key=lambda f: (-int(f.get("depth", 0)), int(f.get("records", 0)), str(f["path"])))
+    return [str(f["path"]) for f in nested]
+
+
+def _omit_fields(profile: dict[str, Any], omitted: list[str]) -> dict[str, Any]:
+    """The profile without the omitted fields, plus a count of omitted fields per parent path."""
+    gone = set(omitted)
+    groups: dict[str, int] = {}
+    for f in profile["fields"]:
+        if f["path"] in gone:
+            parent = str(f["path"]).rsplit(".", 1)[0] if "." in str(f["path"]) else "$"
+            parent = parent.rsplit("[", 1)[0] if parent.endswith("]") else parent
+            groups[parent] = groups.get(parent, 0) + 1
+    reduced = dict(profile)
+    reduced["fields"] = [f for f in profile["fields"] if f["path"] not in gone]
+    reduced["omitted"] = dict(sorted(groups.items()))
+    return reduced
 
 
 def _reduce_examples(profile: dict[str, Any], keep: int) -> dict[str, Any]:

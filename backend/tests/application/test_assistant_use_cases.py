@@ -210,6 +210,74 @@ def test_budget_trims_samples_then_examples_then_history_and_reports_each_step()
     assert prepared.document["truncated"] == prepared.truncated
 
 
+def _wide_rows(fields: int, rows: int = 4) -> list[dict[str, Any]]:
+    """Records with a top-level shape plus hundreds of nested, unevenly present fields."""
+    out = []
+    for r in range(rows):
+        nested = {
+            f"k{i}": {"deep": {"leaf": i}} if i % 3 == 0 else i
+            for i in range(fields)
+            if (i + r) % 2 == 0
+        }
+        out.append(
+            {
+                "session_id": f"s{r}",
+                "ts": "2026-06-01T12:00:00Z",
+                "attachment": nested,
+                "meta": {"x": r},
+            }
+        )
+    return out
+
+
+def test_a_wide_file_fits_by_omitting_nested_fields_and_says_so() -> None:
+    # the reserved Trace Commons native file profiled to 234 fields and answered 413 (#47)
+    h = Harness()
+    upload_id = h.upload(_wide_rows(300))
+    wide = PrepareContext(h.uow.factory, h.store, h.reader, h.profile_file, budget_bytes=1 << 20)
+    full = wide.execute(h.request(upload_id))
+    assert full.truncated == {} and "omitted" not in full.document["profile"]
+    prepared = h.prepare.execute(h.request(upload_id))  # default 64 KiB budget
+    assert prepared.bytes <= 64 * 1024
+    assert prepared.truncated["fields_omitted"] > 0 and prepared.truncated["examples_removed"] == 1
+    kept = {f["path"] for f in prepared.document["profile"]["fields"]}
+    assert {"$", "$.session_id", "$.ts", "$.attachment", "$.meta"} <= kept  # never omitted
+    assert all(f["examples"] == [] for f in prepared.document["profile"]["fields"])
+    omitted = prepared.document["profile"]["omitted"]
+    assert sum(omitted.values()) == prepared.truncated["fields_omitted"]
+    assert set(omitted) and all(parent.startswith("$") for parent in omitted)
+    assert prepared.document["truncated"] == prepared.truncated
+    assert prepared.sha256 != full.sha256  # a different context has a different digest
+
+
+def test_omission_order_is_deepest_then_rarest_and_spares_top_level() -> None:
+    from agentscope_app.application.use_cases.assistant import _omission_order
+
+    fields = [
+        {"path": "$", "depth": 0, "records": 9},
+        {"path": "$.a", "depth": 1, "records": 9},
+        {"path": "$.a.b", "depth": 2, "records": 9},
+        {"path": "$.a.c", "depth": 2, "records": 1},
+        {"path": "$.a.b.d", "depth": 3, "records": 5},
+        {"path": "$.a.b.e", "depth": 3, "records": 2},
+    ]
+    assert _omission_order(fields) == ["$.a.b.e", "$.a.b.d", "$.a.c", "$.a.b"]
+
+
+def test_a_budget_below_the_top_level_shape_still_fails_and_names_the_counts() -> None:
+    h = Harness()
+    upload_id = h.upload(_wide_rows(300))
+    tiny = PrepareContext(h.uow.factory, h.store, h.reader, h.profile_file, budget_bytes=4_096)
+    with pytest.raises(ContextTooLargeError) as caught:
+        tiny.execute(h.request(upload_id))
+    detail = caught.value.details[0]
+    assert detail["limit"] == 4_096 and detail["fields"] > 0
+    assert detail["truncated"]["fields_omitted"] == detail["fields"] - 5  # all nested ones went
+    assert "nested fields omitted" in caught.value.message
+    assert "raise the assistant context budget" in caught.value.message
+    assert h.assistant.calls == []
+
+
 def test_budget_exhaustion_fails_before_any_call() -> None:
     h = Harness()
     upload_id = h.tracelab_upload()

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     llm_timeout_s: str = "60"  # deadline of one generation call in seconds
     llm_json_mode: str = "auto"  # auto | on | off: send response_format json_object
     llm_max_tokens: str = "8192"
+    llm_context_bytes: str = "65536"  # budget of the prepared assistant context (bytes of UTF-8)
 
     database_url: str = "sqlite:///./data/agentscope.sqlite3"
     raw_file_dir: Path = Path("./data/raw-files")

@@ -121,7 +121,10 @@ def build_container(settings: Settings) -> Container:
     store = FilesystemRawFileStore(settings.raw_file_dir)
     reader = FormatRouter()
     profile_file = ProfileFile(uow_factory, store, reader)
-    prepare_context = PrepareContext(uow_factory, store, reader, profile_file)
+    budget = _integer(settings.llm_context_bytes, "AGENTSCOPE_LLM_CONTEXT_BYTES")
+    if budget < 4_096:
+        raise ValueError(f"AGENTSCOPE_LLM_CONTEXT_BYTES must be at least 4096, got {budget}")
+    prepare_context = PrepareContext(uow_factory, store, reader, profile_file, budget_bytes=budget)
     assistant = build_assistant(settings)
     return Container(
         settings=settings,
