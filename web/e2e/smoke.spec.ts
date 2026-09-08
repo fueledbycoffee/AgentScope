@@ -200,8 +200,12 @@ test('day-1 path: guided import, deep links, report, re-import leaves totals unc
   await expect(tokens).not.toContainText('553447877')
   await expect(tokens).not.toContainText('553,447,877')
   const cost = page.getByRole('region', { name: 'Scheduled cost' })
-  await expect(cost).toContainText('Unavailable')
-  await expect(cost).toContainText('No recorded tokens have both a rate and validated billing semantics.')
+  // since the alias table (#59) the fixture's Claude models are priced; the Codex rows are not, and
+  // the two accounting semantics are refused as a total, so the tile shows the partitions
+  await expect(cost).toContainText('Not comparable')
+  await expect(cost).toContainText('priced token coverage 180,777,240 / 555,931,704')
+  await expect(cost).toContainText('148 calls unpriced: no rate for this model id')
+  await expect(cost).toContainText('tracelab-claude: 107.8042')
 
   // the same bytes again: the File stop names the earlier import, the report is a duplicate
   await page.goto('/import')
