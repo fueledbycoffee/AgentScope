@@ -33,8 +33,9 @@ reply budget 32,768 tokens, deadline 240 s, JSON mode auto.
 ## Findings so far
 
 0. **Model choice matters more than prompt tuning on an unseen file.** Ling
-   (the owner's default) answered on one of four runs; dots-3 answered
-   executable on the first. Both had the same context (67 fields omitted).
+   (the owner's default) produced one usable draft in three runs that reached
+   it (R1 never did: it failed at prepare); dots-3 answered executable on its
+   first. Both had the same context (67 fields omitted).
    For the rehearsal the owner switched to dots-3; the configuration guide
    should say that a reasoning free model is a poor default for the first
    contact with a new structure (follow-up on `docs/llm/configuration.md`).
@@ -71,9 +72,13 @@ reply budget 32,768 tokens, deadline 240 s, JSON mode auto.
   this format (`$.toolUseResult` rows as tool calls, `$.message.model` rows as
   model calls: a reviewer's reading of one file, recorded in the notes, not
   validated against the source's documentation).
-- Model behaviour, five runs: Ling answered usable JSON once in four tries
-  on this file; dots-3 answered executable-after-corrections twice in three.
-  Neither wrote `native_key` and `ended_at` right without a reviewer.
+- Model behaviour, seven workflow executions of which six reached a model
+  (R1 failed at prepare, an application defect, before any model call):
+  Ling produced one usable draft in three provider-reaching runs (R2; the two
+  R3 attempts failed); dots-3 produced an executable-after-corrections draft
+  in two of three (R4, R5 attempt 2; R5 attempt 1 wrote bare-string field
+  mappings). Neither wrote `native_key` and `ended_at` right without a
+  reviewer.
 
 ## Follow-ups filed
 
