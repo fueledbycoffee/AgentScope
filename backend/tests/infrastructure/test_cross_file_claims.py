@@ -223,8 +223,9 @@ def commit_data(env, data, source="src", mapping="map_tracelab"):
 
 
 def changed_rows(values, salt=""):
+    base = json.loads(_tracelab_line("same"))
     return b"".join(
-        _tracelab_line("same", f', "input_tokens_total": {v}, "salt": "{salt}"') for v in values
+        json.dumps({**base, "input_tokens_total": v, "salt": salt}).encode() + b"\n" for v in values
     )
 
 
@@ -310,3 +311,114 @@ def test_healthy_optional_unmapped_field_has_one_condition_per_file_rule(env: En
             "claim_scope_unavailable" not in r.warning_counts
             for r in uow.imports.records(report.import_id, None, None, 500, 0)
         )
+
+
+def test_timestamp_change_flags_call_but_parent_model_change_leaves_tool_equal(env: Env):
+    base = json.loads(_tracelab_line("tool"))
+    base["tools"] = [{"tool_call_id": "t", "tool_name": "read", "tool_wall_latency_ms": 15}]
+    commit_data(env, json.dumps(base).encode() + b"\n")
+    base["model"] = "new-model"
+    base["timing_events"][0]["timestamp"] = "2026-05-11T06:41:00Z"
+    _, report = commit_data(env, json.dumps(base).encode() + b"\n")
+    assert report.warnings["suspected_duplicate"] == 1
+    with env.uow_factory() as uow:
+        page = uow.imports.diagnostics(report.import_id, None, None, None, 50, 0)
+    assert {d.entity: d.code for d in page.items} == {
+        "session": "matching_claim_equal_projection",
+        "model_call": "suspected_duplicate",
+        "tool_call": "matching_claim_equal_projection",
+    }
+    assert report.entities == {"model_call": 1, "tool_call": 1}
+
+
+def test_partial_record_keeps_each_accepted_emission_diagnostic(env: Env):
+    base = json.loads(_tracelab_line("partial"))
+    base["tools"] = [{"tool_call_id": "valid", "tool_name": "read"}, {"tool_call_id": "bad"}]
+    commit_data(env, json.dumps(base).encode() + b"\n")
+    base["input_tokens_total"] = 25
+    base["tools"][0]["tool_name"] = "write"
+    _, report = commit_data(env, json.dumps(base).encode() + b"\n")
+    assert report.records["partial"] == 1 and report.records["accepted"] == 0
+    assert report.warnings["suspected_duplicate"] == 2
+    assert report.entities == {"model_call": 1, "tool_call": 1}
+    assert env.sql("SELECT COUNT(*) FROM entity_claims WHERE import_id=:i", i=report.import_id) == [
+        (3,)
+    ]
+
+
+def test_0005_parquet_replay_and_broken_file_are_independent(env: Env):
+    from tests.parquet_support import parquet_file, parquet_rows
+
+    good = env.upload.execute("good.parquet", parquet_file(parquet_rows("p", 3)))
+    bad, _, _ = imported(env)
+    report = env.commit.execute("src", [FileBinding(good.upload_id, "map_parquet")])
+    assert report.status == "committed", report.error
+    before_claims = env.sql(
+        "SELECT scope_id,projection_sha256,locator,entity FROM entity_claims "
+        "WHERE import_id=:i ORDER BY locator,entity",
+        i=report.import_id,
+    )
+    before = snapshots(env)
+    migrate(env, "downgrade", "0004")
+    with env.engine.begin() as c:
+        c.execute(text("DELETE FROM raw_records WHERE file_sha256=:f"), {"f": bad.sha256})
+    run_migrations(env.engine)
+    assert snapshots(env) == before
+    after_claims = env.sql(
+        "SELECT scope_id,projection_sha256,locator,entity FROM entity_claims "
+        "WHERE import_id=:i ORDER BY locator,entity",
+        i=report.import_id,
+    )
+    # Intern IDs may change; versioned projection digests and provenance must not.
+    assert [r[1:] for r in before_claims] == [r[1:] for r in after_claims]
+    assert env.sql(
+        "SELECT file_sha256 FROM import_claim_conditions WHERE code='claim_backfill_unavailable'"
+    ) == [(bad.sha256,)]
+
+
+@pytest.mark.parametrize("damage", ["invalid_mapping", "invalid_payload"])
+def test_0005_unreadable_data_never_blocks_startup(env: Env, damage):
+    imported(env)
+    migrate(env, "downgrade", "0004")
+    with env.engine.begin() as c:
+        if damage == "invalid_mapping":
+            c.execute(text("UPDATE mappings SET document='{}' WHERE id='map_tracelab'"))
+        else:
+            c.execute(text("UPDATE raw_records SET payload='broken json'"))
+    run_migrations(env.engine)
+    assert env.sql("SELECT COUNT(*) FROM entity_claims") == [(0,)]
+    assert env.sql("SELECT code FROM import_claim_conditions") == [("claim_backfill_unavailable",)]
+    assert env.sql("SELECT duplicate_detection_version FROM imports") == [(None,)]
+
+
+def test_0005_late_replay_mismatch_rolls_back_only_the_file(env: Env):
+    imported(env, ["s"] * 150)
+    migrate(env, "downgrade", "0004")
+    with env.engine.begin() as c:
+        c.execute(text("UPDATE model_calls SET input_tokens=987 WHERE locator='line:99'"))
+    before = snapshots(env)
+    run_migrations(env.engine)
+    assert snapshots(env) == before
+    for table in ("entity_claims", "claim_file_projections", "claim_projections", "claim_scopes"):
+        assert env.sql(f"SELECT COUNT(*) FROM {table}") == [(0,)]
+    assert env.sql("SELECT code FROM import_claim_conditions") == [("claim_backfill_unavailable",)]
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_equal_peer_witness_uses_numeric_locator_not_insertion_order(env: Env, reverse):
+    candidates = [candidate("a", "P", 10), candidate("a", "P", 2), candidate("b", "P", 1)]
+    _, rows = stage_synthetic(env, list(reversed(candidates)) if reverse else candidates)
+    assert next(r for r in rows if r["file_sha256"] == "b")["peer_locator"] == "line:2"
+
+
+def test_exact_chunk_multiple_has_no_extra_detection_query(env: Env, monkeypatch):
+    monkeypatch.setattr(claims_module, "PAGE_SIZE", 2)
+    captured = []
+    event.listen(
+        env.engine,
+        "before_cursor_execute",
+        lambda c, cursor, sql, params, ctx, many: captured.append(sql),
+    )
+    stage_synthetic(env, [candidate("a", "P", 1), candidate("b", "Q", 1)])
+    # Warmup import has two claims (one page); synthetic pass has four claims (two pages).
+    assert sum(sql.startswith("\nWITH candidates") for sql in captured) == 3

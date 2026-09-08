@@ -147,8 +147,12 @@ class ClaimIndex:
 
     def detect(self, import_id: str) -> list[dict[str, Any]]:
         after = 0
+        table = self.t["entity_claims"]
+        last = (
+            self.c.scalar(select(func.max(table.c.id)).where(table.c.import_id == import_id)) or 0
+        )
         diagnostics: list[dict[str, Any]] = []
-        while True:
+        while after < last:
             rows = (
                 self.c.execute(
                     text(DETECTION_SQL),

@@ -137,7 +137,7 @@ Migration 0005_cross_file_claims.py has parent 0004. Add ORM tables:
 | claim_scopes | id PK, version, scope_text UNIQUE(version,scope_text) |
 | claim_projections | scope_id + projection_sha256 PK, exact projection_text (not indexed) |
 | entity_claims | id PK, scope_id, projection_sha256, import_id, mapping_id, file_sha256, locator, locator_position, emission_path, rule_id, entity; unique incoming occurrence; index(import_id,id) |
-| claim_file_projections | scope_id + projection_sha256 + file_sha256 PK, witness claim_id; index(scope_id,file_sha256,projection_sha256) |
+| claim_file_projections | scope_id + projection_sha256 + file_sha256 PK, witness claim_id and witness_sort; index(scope_id,file_sha256,projection_sha256) |
 | import_diagnostics | id PK, import_id, claim_id, peer_claim_id, code; UNIQUE(import_id,claim_id,code) |
 | import_claim_conditions | import_id + file_sha256 + rule_id + code PK, affected_emissions, message |
 | import_files | additive non-null warnings JSON default {} |
@@ -151,11 +151,13 @@ plus indexes below 6 times existing entity/contribution tables; report actual by
 Use SQLite on_conflict_do_nothing for scopes/projections and deterministic witness
 upserts for file projections. Intern scopes with batched inserts and bounded bulk
 reads. Insert claims with executemany, read by import/id in 128-row keyset pages.
+Add an import/file/locator index on entity_contributions for historical replay.
 Choose within-file witnesses by numeric locator, locator text, emission path,
 entity, independent of insert ID.
 
-Each detection page runs one SELECT with three indexed scalar probes: an equal
-projection in another file (skip at most one own-file row), and a scope witness
+One indexed max-ID read bounds the detection pass, avoiding an extra empty page
+when the candidate count is a multiple of 128. Each page runs one SELECT with
+three indexed scalar probes: an equal projection in another file (skip at most one own-file row), and a scope witness
 from file hashes strictly below/above the incoming file (each LIMIT 1). File-range
 probes use index(scope_id,file_sha256,projection_sha256) and scan no own-file rows,
 even if one file has many projections. Prefer equal witness, else a stable witness
@@ -217,7 +219,8 @@ No web/src changes in this phase (owner instruction). PR_BODY.md describes repor
 history notices, filters, evidence links and unavailable-state UI follow-up. Existing
 generic warnings carry new codes. Session detail gets no new duplicate marker;
 its reducer diagnostics remain separate. Docs describe shipped API, not completed
-UI. No ADR rule changes, session identity migration, assistant or metric changes.
+UI. An ADR-002 amendment pins equal-peer precedence. No session identity migration,
+assistant or metric changes.
 
 ## Files touched
 
@@ -231,7 +234,8 @@ UI. No ADR rule changes, session identity migration, assistant or metric changes
   test_cross_file_claims.py (new), test_database.py, test_multifile_import.py;
   backend/tests/application/{fakes.py,test_import_use_cases.py};
   backend/tests/interfaces/test_api_cross_file_diagnostics.py (new).
-- docs/api/v0.1.md; docs/architecture/import-pipeline.md;
+- docs/adr/ADR-002-identities.md (amendment only); docs/api/v0.1.md;
+  docs/architecture/import-pipeline.md;
   docs/verification/2026-09-08-cross-file-duplicates.md (new).
 - PR_BODY.md at root, deliberately uncommitted.
 

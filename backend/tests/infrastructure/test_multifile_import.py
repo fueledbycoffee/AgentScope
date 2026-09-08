@@ -560,3 +560,29 @@ def test_non_occurrence_integrity_failure_is_not_a_byte_race(env: Env, monkeypat
     assert env.sql("SELECT COUNT(*) FROM entity_claims") == [(0,)]
     assert env.sql("SELECT COUNT(*) FROM model_calls") == [(0,)]
     assert env.sql("SELECT status,committed FROM import_files") == [("failed", 0)]
+
+
+def test_failed_new_claims_leave_preexisting_peer_state_unchanged(env: Env):
+    a = env.upload.execute("a.jsonl", jsonl("peer"))
+    original = env.commit.execute("src", [FileBinding(a.upload_id, "map_tracelab")])
+    before = {
+        t: env.sql(f"SELECT * FROM {t}")
+        for t in (
+            "entity_claims",
+            "claim_projections",
+            "claim_scopes",
+            "claim_file_projections",
+            "model_calls",
+            "sessions",
+            "import_diagnostics",
+        )
+    }
+    b = env.upload.execute("b.jsonl", jsonl("peer").replace(b'"model": "m"', b'"model": "other"'))
+    failing = env.commit_with(
+        _failing_factory(env, "add_results", RuntimeError("after diagnostics"))
+    )
+    report = failing.execute("src", [FileBinding(b.upload_id, "map_tracelab")])
+    assert report.status == "failed"
+    assert all(env.sql(f"SELECT * FROM {t}") == rows for t, rows in before.items())
+    with env.uow_factory() as uow:
+        assert uow.imports.get(original.import_id) == original

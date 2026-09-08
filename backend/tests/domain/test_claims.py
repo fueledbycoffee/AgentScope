@@ -156,3 +156,13 @@ def test_projection_size_limit():
     result = prepared(session(), emit(error_message="x" * MAX_CANONICAL_BYTES))
     assert len(result.claims) == 1
     assert result.conditions[0].code == "claim_projection_too_large"
+
+
+def test_source_session_and_entity_isolate_claims():
+    a = prepared(session(), emit()).claims[-1]
+    assert prepared(session(), emit(), source="other").claims[-1].scope_text != a.scope_text
+    other_session = prepared(
+        emit("session", external_id="other", agent="h"), emit(session_external_id="other")
+    ).claims[-1]
+    assert other_session.scope_text != a.scope_text
+    assert prepared(session(), emit("tool_call")).claims[-1].scope_text != a.scope_text

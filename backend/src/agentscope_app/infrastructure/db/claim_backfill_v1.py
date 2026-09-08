@@ -151,6 +151,8 @@ def _verify(
         stored = calls.get(r[f"{kind}_id"])
         if stored is None or stored["native_key"] != (list(e.native_key) if e.native_key else None):
             raise UnrecoverableError("Missing call or native key disagreement")
+        if stored["source"] != f["source"]:
+            raise UnrecoverableError("Call source namespace disagrees")
         for field in ("import_id", "file_sha256", "locator", "emission_path"):
             if stored[field] != r[field]:
                 raise UnrecoverableError("Call provenance disagrees")
