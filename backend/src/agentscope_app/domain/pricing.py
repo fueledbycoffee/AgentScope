@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 from types import MappingProxyType
 
@@ -25,11 +25,31 @@ class PriceSchedule:
     version: str
     models: Mapping[str, ModelRates]
     currency: str = "USD"
+    aliases: Mapping[str, str] = field(default_factory=dict)
+    alias_version: str | None = None
 
     def __post_init__(self) -> None:
         if not self.version or self.currency != "USD":
             raise ValueError("A price schedule needs a version and USD currency")
         object.__setattr__(self, "models", MappingProxyType(dict(self.models)))
+        if self.aliases and not self.alias_version:
+            raise ValueError("Aliases require a version")
+        for alias, target in self.aliases.items():
+            if (
+                not isinstance(alias, str)
+                or not alias
+                or not isinstance(target, str)
+                or target not in self.models
+                or alias in self.models
+            ):
+                raise ValueError("Aliases must map new IDs directly to existing schedule keys")
+        object.__setattr__(self, "aliases", MappingProxyType(dict(self.aliases)))
+
+    def resolve_model(self, model: str | None) -> str | None:
+        """Exact schedule key first, then the reviewed source-agnostic allowlist."""
+        if model in self.models:
+            return model
+        return self.aliases.get(model) if model is not None else None
 
 
 @dataclass(frozen=True)
@@ -47,10 +67,11 @@ class PricedUsage:
     cost: Fraction | None
     priced_tokens: int
     total_tokens: int
+    reason: str | None = None
 
 
 def price_usage(usage: TokenUsage, schedule: PriceSchedule | None) -> PricedUsage:
-    """No prefix billing inference, model aliases, missing-as-zero, or double counting."""
+    """Resolve reviewed aliases without inferring billing semantics or missing quantities."""
     input_total = usage.input_tokens
     read, creation = usage.cache_read_tokens, usage.cache_creation_tokens
     # Input/output are the disjoint observed denominator. If input is absent, only
@@ -58,7 +79,10 @@ def price_usage(usage: TokenUsage, schedule: PriceSchedule | None) -> PricedUsag
     total = (input_total if input_total is not None else (read or 0) + (creation or 0)) + (
         usage.output_tokens or 0
     )
-    rates = schedule.models.get(usage.model or "") if schedule else None
+    model = schedule.resolve_model(usage.model) if schedule else None
+    if schedule is not None and model is None:
+        return PricedUsage(None, 0, total, "no rate for this model id")
+    rates = schedule.models[model] if schedule is not None and model is not None else None
     if rates is None or usage.semantics not in {"tracelab-claude", "tracelab-codex"}:
         return PricedUsage(None, 0, total)
     components: list[tuple[int | None, Fraction | None]] = [(usage.output_tokens, rates.completion)]

@@ -209,6 +209,7 @@ class AggregatePart:
     samples: tuple[int, ...] = ()
     priced_tokens: int = 0
     total_tokens: int = 0
+    unresolved_model_calls: int = 0
 
 
 @dataclass(frozen=True)
@@ -333,7 +334,7 @@ REGISTRY: Final = MetricRegistry(
         OBSERVED_SPAN,
         MetricDefinition(
             id="scheduled_cost_usd",
-            version=1,
+            version=2,
             label="Scheduled token cost (USD)",
             description="Priced tokens × exact rates, by accounting group and schedule version.",
             grain=EntityGrain.MODEL_CALL,
@@ -342,7 +343,8 @@ REGISTRY: Final = MetricRegistry(
             unit="USD",
             formula="Sum priced tokens × scheduled USD rate. Priced coverage = tokens with "
             "a rate and validated billing semantics / all recorded input and output tokens.",
-            scope="Eligible model-call observations, exact model IDs, one pinned local schedule.",
+            scope="Eligible model-call observations, exact schedule keys then reviewed aliases, "
+            "one pinned local schedule and alias version.",
             null_handling="Missing rates/unvalidated semantics stay unpriced; no priced component "
             "yields null. Known zero contributes. Ordinary coverage counts calls with "
             "any priced component / eligible calls; priced coverage counts tokens.",
