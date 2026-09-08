@@ -197,6 +197,23 @@ describe('exact charts', () => {
     expect(select).toHaveBeenLastCalledWith(point)
   })
 
+  it('completes a pointer press on release without activating again on its click', () => {
+    const select = vi.fn()
+    render(<svg><AccessibleBarShape shape={{ x: 0, y: 0, width: 10, height: 20, payload: point }} onSelect={select} onFocus={() => undefined} /></svg>)
+    const bar = screen.getByRole('button')
+    fireEvent.pointerDown(bar, { button: 0, pointerId: 7, clientX: 4, clientY: 5 })
+    fireEvent.pointerUp(bar, { button: 0, pointerId: 7, clientX: 4, clientY: 5 })
+    fireEvent.click(bar, { detail: 1 })
+    expect(select).toHaveBeenCalledTimes(1)
+    expect(select).toHaveBeenCalledWith(point)
+
+    fireEvent.pointerDown(bar, { button: 0, pointerId: 8, clientX: 4, clientY: 5 })
+    fireEvent.pointerMove(bar, { pointerId: 8, clientX: 14, clientY: 5 })
+    fireEvent.pointerUp(bar, { button: 0, pointerId: 8, clientX: 4, clientY: 5 })
+    fireEvent.click(bar, { detail: 1 })
+    expect(select).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps exact text and coverage in the complete fallback tables', () => {
     const row = { key: 'claude\u0000sem', label: 'claude · sem', model: 'claude', semantics: 'sem', input: { valueText: '9007199254740993', plotValue: Number('9007199254740993'), coverage: { known: 1, total: 2 }, drill: point.drill } }
     render(<><DayBars title="Activity" data={[point]} /><TokenBars title="Tokens" rows={[row]} /></>)

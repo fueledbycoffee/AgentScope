@@ -197,3 +197,6 @@ details.disclosure > summary { cursor: pointer; color: var(--accent); font-size:
   .headline-strip { grid-template-columns: 1fr; }
   dialog.drawer { width: 100vw; border-left: 0; }
 }
+
+/* the hover cursor Recharts draws over a bar must not swallow the click meant for the bar */
+.recharts-tooltip-cursor { pointer-events: none; }

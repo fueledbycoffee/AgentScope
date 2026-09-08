@@ -512,14 +512,16 @@ describe('Dashboard', () => {
     expect(screen.getByRole('group', { name: 'Scope' })).toHaveTextContent('1 sessions · 4,770 model calls · from 1 imports')
   })
 
-  it('opens matching sessions when a tool chart bar is clicked', async () => {
+  it('keeps a tool bar mounted through hover and opens matching sessions on press and release', async () => {
     start('/overview')
     const chart = await screen.findByRole('region', { name: 'Tool calls' })
     const bar = within(chart).getByRole('button', { name: /^Agent:/ })
     expect(bar.tagName.toLowerCase()).toBe('rect')
-    act(() => {
-      bar.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-    })
+    fireEvent.mouseEnter(bar)
+    expect(within(chart).getByRole('button', { name: /^Agent:/ })).toBe(bar)
+    fireEvent.mouseDown(bar, { button: 0, clientX: 40, clientY: 20 })
+    expect(within(chart).getByRole('button', { name: /^Agent:/ })).toBe(bar)
+    fireEvent.mouseUp(bar, { button: 0, clientX: 40, clientY: 20 })
 
     expect(await screen.findByRole('heading', { name: 'Sessions' })).toBeInTheDocument()
     expect(screen.getByText('tool Agent')).toBeInTheDocument()
