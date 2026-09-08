@@ -58,6 +58,7 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
     ruleName: asString(rule.id) ?? `rule ${rule.index + 1}`,
     disabled,
     onEdit: edits => onEdit(edits),
+    onOpenJson,
     issueId,
     idFor: (part, extra) =>
       (part === 'opt'
@@ -170,6 +171,7 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
                 index={index}
                 disabled={disabled}
                 onEdit={onEdit}
+                onOpenJson={onOpenJson}
                 onRefuse={onRefuse}
                 onAddField={target => setAdding({ rule: target, name: '' })}
                 issueId={issueId}

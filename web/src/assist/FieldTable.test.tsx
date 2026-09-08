@@ -225,6 +225,32 @@ describe('the field table', () => {
     )
   })
 
+  it('never offers to create a section that exists but is malformed', () => {
+    const broken = DOC.replace('"transforms": ["trim"]', '"transforms": {"trim": {"extension": 9007199254740993}}')
+    const { onEdit, onOpenJson } = show(broken)
+    // "Add a transform" would replace the whole section with ["trim"] and lose what is there
+    expect(screen.queryByRole('button', { name: 'Add a transform to started_at in model_call' })).not.toBeInTheDocument()
+    const row = screen.getByRole('row', { name: 'started_at transforms and options' })
+    expect(row).toHaveTextContent('transforms must be a JSON array')
+    fireEvent.click(within(row).getByRole('button', { name: /Repair transforms of started_at/ }))
+    expect(onOpenJson).toHaveBeenCalledWith(['rules', 0, 'fields', 'started_at', 'transforms'])
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
+  it('routes a malformed where or native_key to the JSON view too', () => {
+    const broken = DOC
+      .replace('"where": [{"path": "$.kind", "op": "eq", "value": 9007199254740993}]', '"where": {"path": "$.kind"}')
+      .replace('"native_key": []', '"native_key": "id"')
+    const { onEdit, onOpenJson } = show(broken)
+    const rule = within(screen.getByRole('region', { name: 'Rule model_call' }))
+    expect(screen.queryByRole('button', { name: 'Add a condition to model_call' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Declare a native key for model_call' })).not.toBeInTheDocument()
+    expect(rule.getByText(/where must be a JSON array/)).toBeInTheDocument()
+    fireEvent.click(rule.getByRole('button', { name: /Repair native_key of model_call/ }))
+    expect(onOpenJson).toHaveBeenCalledWith(['rules', 0, 'native_key'])
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
   it('sends what it cannot represent to the JSON view instead of rewriting it', () => {
     const { onOpenJson } = show()
     expect(screen.getByRole('row', { name: /^broken/ })).toHaveTextContent('a field must be a JSON object')

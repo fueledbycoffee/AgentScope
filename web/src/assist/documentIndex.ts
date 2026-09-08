@@ -63,6 +63,10 @@ export interface FieldView {
   /** Several present kinds is a conflict the parser refuses; it is shown, never silently fixed. */
   source: { present: SourceKind[]; members: Record<SourceKind, Member>; paths: Member[] | null }
   transforms: TransformView[] | null
+  /** Present but not a JSON array: the section is repaired in the JSON view, never overwritten. */
+  transformsProblem: string | null
+  /** The same, for an ordered `paths` that is not a list. */
+  pathsProblem: string | null
   options: Record<FieldOption, Member>
   /** `unit` addressed as the ordered pair it is. */
   unit: { from: Member; to: Member }
@@ -78,6 +82,8 @@ export interface RuleView {
   select: Member
   parent: Member
   where: ConditionView[] | null
+  whereProblem: string | null
+  nativeKeyProblem: string | null
   /** `native_key` absent and `native_key: []` are different declarations. */
   nativeKey: { present: boolean; items: Member[] }
   fields: FieldView[]
@@ -122,7 +128,6 @@ const extrasOf = (tree: DocTree, path: DocPath, known: Set<string>): Member[] =>
   (keysOf(tree, path) ?? []).filter(key => !known.has(key)).map(key => member(tree, [...path, key]))
 
 function indexTransforms(tree: DocTree, path: DocPath): TransformView[] | null {
-  if (rawAt(tree, path) === null) return null
   const count = lengthOf(tree, path)
   if (count === null) return null
   return Array.from({ length: count }, (_unused, index) => {
@@ -148,7 +153,17 @@ function indexTransforms(tree: DocTree, path: DocPath): TransformView[] | null {
   })
 }
 
-function indexField(tree: DocTree, path: DocPath, name: string): FieldView {
+/** Present, but not the JSON type the DSL declares: a repair, not a missing member. */
+function wrongType(tree: DocTree, path: DocPath, kind: 'array' | 'object', malformed: { path: DocPath; reason: string }[]): string | null {
+  if (rawAt(tree, path) === null) return null
+  const node = nodeAt(tree, path)
+  if (node !== null && node.kind === kind) return null
+  const reason = `${String(path.at(-1))} must be a JSON ${kind}`
+  malformed.push({ path, reason })
+  return reason
+}
+
+function indexField(tree: DocTree, path: DocPath, name: string, malformed: { path: DocPath; reason: string }[]): FieldView {
   const node = nodeAt(tree, path)
   const empty = {
     name,
@@ -159,6 +174,8 @@ function indexField(tree: DocTree, path: DocPath, name: string): FieldView {
       paths: null,
     },
     transforms: null,
+    transformsProblem: null,
+    pathsProblem: null,
     options: Object.fromEntries(FIELD_OPTIONS.map(option => [option, { path: [...path, option], raw: null }])) as Record<FieldOption, Member>,
     unit: { from: { path: [...path, 'unit', 'from'], raw: null }, to: { path: [...path, 'unit', 'to'], raw: null } },
     extras: [],
@@ -167,6 +184,8 @@ function indexField(tree: DocTree, path: DocPath, name: string): FieldView {
   if (node.kind !== 'object') return { ...empty, malformed: 'a field must be a JSON object' }
   const members = Object.fromEntries(SOURCE_KINDS.map(kind => [kind, member(tree, [...path, kind])])) as Record<SourceKind, Member>
   const pathsLength = lengthOf(tree, [...path, 'paths'])
+  const pathsProblem = wrongType(tree, [...path, 'paths'], 'array', malformed)
+  const transformsProblem = wrongType(tree, [...path, 'transforms'], 'array', malformed)
   return {
     name,
     path,
@@ -176,6 +195,8 @@ function indexField(tree: DocTree, path: DocPath, name: string): FieldView {
       paths: pathsLength === null ? null : Array.from({ length: pathsLength }, (_unused, i) => member(tree, [...path, 'paths', i])),
     },
     transforms: indexTransforms(tree, [...path, 'transforms']),
+    transformsProblem,
+    pathsProblem,
     options: Object.fromEntries(FIELD_OPTIONS.map(option => [option, member(tree, [...path, option])])) as Record<FieldOption, Member>,
     unit: { from: member(tree, [...path, 'unit', 'from']), to: member(tree, [...path, 'unit', 'to']) },
     extras: extrasOf(tree, path, FIELD_KEYS),
@@ -194,6 +215,8 @@ function indexRule(tree: DocTree, index: number, malformed: { path: DocPath; rea
     select: member(tree, [...path, 'select']),
     parent: member(tree, [...path, 'parent']),
     where: null,
+    whereProblem: null,
+    nativeKeyProblem: null,
     nativeKey: { present: false, items: [] },
     fields: [],
     extras: [],
@@ -212,6 +235,8 @@ function indexRule(tree: DocTree, index: number, malformed: { path: DocPath; rea
   }
   const whereLength = lengthOf(tree, [...path, 'where'])
   const nativeLength = lengthOf(tree, [...path, 'native_key'])
+  const whereProblem = wrongType(tree, [...path, 'where'], 'array', malformed)
+  const nativeKeyProblem = wrongType(tree, [...path, 'native_key'], 'array', malformed)
   return {
     ...base,
     where:
@@ -224,11 +249,13 @@ function indexRule(tree: DocTree, index: number, malformed: { path: DocPath; rea
             op: member(tree, [...path, 'where', i, 'op']),
             value: member(tree, [...path, 'where', i, 'value']),
           })),
+    whereProblem,
+    nativeKeyProblem,
     nativeKey: {
       present: rawAt(tree, [...path, 'native_key']) !== null,
       items: Array.from({ length: nativeLength ?? 0 }, (_unused, i) => member(tree, [...path, 'native_key', i])),
     },
-    fields: (fieldNames ?? []).map(name => indexField(tree, [...fieldsPath, name], name)),
+    fields: (fieldNames ?? []).map(name => indexField(tree, [...fieldsPath, name], name, malformed)),
     extras: extrasOf(tree, path, RULE_KEYS),
     malformed: ruleProblem,
   }
@@ -255,13 +282,9 @@ export function indexDocument(text: string): DocIndex {
 
   const malformed: { path: DocPath; reason: string }[] = []
   const ruleCount = lengthOf(tree, ['rules'])
-  if (rawAt(tree, ['rules']) !== null && ruleCount === null) {
-    malformed.push({ path: ['rules'], reason: 'rules must be a JSON array' })
-  }
+  wrongType(tree, ['rules'], 'array', malformed)
   const unmappedCount = lengthOf(tree, ['unmapped'])
-  if (rawAt(tree, ['unmapped']) !== null && unmappedCount === null) {
-    malformed.push({ path: ['unmapped'], reason: 'unmapped must be a JSON array' })
-  }
+  wrongType(tree, ['unmapped'], 'array', malformed)
   return {
     ok: true,
     problem: null,

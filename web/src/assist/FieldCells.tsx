@@ -13,6 +13,8 @@ export interface CellContext {
   ruleName: string
   disabled: boolean
   onEdit: (edits: DocEdit[]) => void
+  /** Send a section the table must not rewrite to the JSON view. */
+  onOpenJson: (path: DocPath) => void
   /** Issues attached to a control id, for `aria-invalid` and `aria-describedby`. */
   issueId: (id: string | null) => string | undefined
   idFor: (part: string, extra?: string) => string
@@ -168,6 +170,18 @@ export function OptionsCell({ field, context }: { field: FieldView; context: Cel
   )
 }
 
+/** A section the table refuses to touch, with the way to repair it. */
+export function RepairLink({ problem, what, path, context }: { problem: string; what: string; path: DocPath; context: CellContext }) {
+  return (
+    <span className="repair">
+      <span className="issue error">{problem}</span>{' '}
+      <button type="button" className="link" aria-label={`Repair ${what} in the JSON view`} onClick={() => context.onOpenJson(path)}>
+        Repair it in the JSON view
+      </button>
+    </span>
+  )
+}
+
 /** `path`, ordered `paths` or a `literal`: exactly one of them, switched in a single batch. */
 export function SourceCell({ field, context }: { field: FieldView; context: CellContext }) {
   const kinds = ['path', 'paths', 'literal'] as const
@@ -233,7 +247,10 @@ export function SourceCell({ field, context }: { field: FieldView; context: Cell
           onCommit={raw => context.onEdit([{ op: 'set', path: field.source.members.literal.path, raw }])}
         />
       )}
-      {present.includes('paths') && (
+      {present.includes('paths') && field.pathsProblem !== null && (
+        <RepairLink problem={field.pathsProblem} what={`paths of ${field.name} in ${context.ruleName}`} path={field.source.members.paths.path} context={context} />
+      )}
+      {present.includes('paths') && field.pathsProblem === null && (
         <span className="paths">
           {Array.from({ length: pathsCount }, (_unused, index) => (
             <span key={index} className="path-entry">
@@ -284,6 +301,10 @@ export function SourceCell({ field, context }: { field: FieldView; context: Cell
 export function TransformsCell({ field, context }: { field: FieldView; context: CellContext }): ReactNode {
   const transforms = field.transforms
   const listPath: DocPath = [...field.path, 'transforms']
+  if (field.transformsProblem !== null) {
+    // present, but not a list: creating one here would silently replace whatever is there
+    return <RepairLink problem={field.transformsProblem} what={`transforms of ${field.name} in ${context.ruleName}`} path={listPath} context={context} />
+  }
   if (transforms === null) {
     return (
       <IconButton

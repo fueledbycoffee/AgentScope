@@ -1,5 +1,5 @@
 import { IconButton } from '../components'
-import type { DocEdit } from './document'
+import type { DocEdit, DocPath } from './document'
 import { asString, type DocIndex, type RuleView } from './documentIndex'
 import { CONDITION_OPS, ENTITIES, parentChoices, referrers, VALUELESS_OPS } from './dsl'
 import { controlId } from './issuePaths'
@@ -11,6 +11,8 @@ export interface RuleHeaderProps {
   index: DocIndex
   disabled: boolean
   onEdit: (edits: DocEdit[]) => void
+  /** Send a section the table must not rewrite to the JSON view. */
+  onOpenJson: (path: DocPath) => void
   onRefuse: (reason: string) => void
   onAddField: (rule: RuleView) => void
   issueId: (id: string | null) => string | undefined
@@ -24,7 +26,15 @@ export interface RuleHeaderProps {
  * it, rather than cascading silently: references are the user's to change, and the refusal names
  * exactly what to change.
  */
-export function RuleHeader({ rule, index, disabled, onEdit, onRefuse, onAddField, issueId }: RuleHeaderProps) {
+export function RuleHeader({ rule, index, disabled, onEdit, onOpenJson, onRefuse, onAddField, issueId }: RuleHeaderProps) {
+  const repair = (problem: string, what: string, path: DocPath) => (
+    <span className="repair">
+      <span className="issue error">{problem}</span>{' '}
+      <button type="button" className="link" aria-label={`Repair ${what} of ${name} in the JSON view`} onClick={() => onOpenJson(path)}>
+        Repair it in the JSON view
+      </button>
+    </span>
+  )
   const id = asString(rule.id)
   const name = id ?? `rule ${rule.index + 1}`
   const ctl = (part: 'id' | 'entity' | 'select' | 'parent' | 'native_key' | 'where') =>
@@ -132,7 +142,9 @@ export function RuleHeader({ rule, index, disabled, onEdit, onRefuse, onAddField
       <div className="row">
         <span className="dim">
           <span>Native key</span>
-          {!rule.nativeKey.present ? (
+          {rule.nativeKeyProblem !== null ? (
+            repair(rule.nativeKeyProblem, 'native_key', [...rule.path, 'native_key'])
+          ) : !rule.nativeKey.present ? (
             <>
               <span className="muted">not declared</span>
               <IconButton
@@ -192,7 +204,8 @@ export function RuleHeader({ rule, index, disabled, onEdit, onRefuse, onAddField
       </div>
 
       <div className="conditions">
-        <span className="dim"><span>Where</span>{conditions.length === 0 && <span className="muted">no conditions</span>}</span>
+        <span className="dim"><span>Where</span>{rule.whereProblem === null && conditions.length === 0 && <span className="muted">no conditions</span>}</span>
+        {rule.whereProblem !== null && repair(rule.whereProblem, 'where', [...rule.path, 'where'])}
         {conditions.map((condition, at) => {
           const op = condition.op.raw !== null && condition.op.raw.startsWith('"') ? (JSON.parse(condition.op.raw) as string) : ''
           const conditionPath = condition.path
@@ -251,7 +264,7 @@ export function RuleHeader({ rule, index, disabled, onEdit, onRefuse, onAddField
             </span>
           )
         })}
-        <IconButton
+        {rule.whereProblem === null && <IconButton
           name="plus"
           label={`Add a condition to ${name}`}
           className="btn small icon-only"
@@ -263,7 +276,7 @@ export function RuleHeader({ rule, index, disabled, onEdit, onRefuse, onAddField
                 : [{ op: 'insert', path: [...rule.path, 'where'], index: conditions.length, raw: '{"path": "$", "op": "exists"}' }],
             )
           }
-        />
+        />}
       </div>
     </div>
   )

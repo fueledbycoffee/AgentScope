@@ -106,6 +106,55 @@ describe('the indexed view', () => {
     expect(index.rules[0].id.raw).toBeNull() // unaddressable, not "the last one"
   })
 
+  it('tells a missing container from a malformed one, everywhere it indexes one', () => {
+    // every one of these is present but of the wrong JSON type: none of them is "absent", and none
+    // may be silently replaced by a control that thinks it is creating the section
+    const index = indexDocument(`{
+      "rules": [
+        {
+          "id": "r",
+          "entity": "session",
+          "where": {"path": "$"},
+          "native_key": "id",
+          "fields": {
+            "external_id": { "path": "$.a", "transforms": {"trim": {"extension": 9007199254740993}} },
+            "other": { "paths": {"0": "$.b"} }
+          }
+        }
+      ],
+      "unmapped": {"path": "$.x"}
+    }`)
+    const rule = index.rules[0]
+    const [external, other] = rule.fields
+    expect(external.transforms).toBeNull()
+    expect(external.transformsProblem).toMatch(/transforms must be a JSON array/)
+    expect(other.source.paths).toBeNull()
+    expect(other.pathsProblem).toMatch(/paths must be a JSON array/)
+    expect(rule.where).toBeNull()
+    expect(rule.whereProblem).toMatch(/where must be a JSON array/)
+    expect(rule.nativeKeyProblem).toMatch(/native_key must be a JSON array/)
+    expect(rule.nativeKey.present).toBe(true)
+    // each one is also listed for the document, so the repair view can be reached from the top
+    const reasons = index.malformed.map(entry => entry.reason).join(' | ')
+    expect(reasons).toMatch(/transforms/)
+    expect(reasons).toMatch(/paths/)
+    expect(reasons).toMatch(/where/)
+    expect(reasons).toMatch(/native_key/)
+    expect(reasons).toMatch(/unmapped/)
+  })
+
+  it('leaves an absent container absent, with no problem attached', () => {
+    const index = indexDocument('{"rules": [{"id": "r", "entity": "session", "fields": {"external_id": {"path": "$.a"}}}]}')
+    const rule = index.rules[0]
+    expect(rule.where).toBeNull()
+    expect(rule.whereProblem).toBeNull()
+    expect(rule.nativeKey.present).toBe(false)
+    expect(rule.nativeKeyProblem).toBeNull()
+    expect(rule.fields[0].transforms).toBeNull()
+    expect(rule.fields[0].transformsProblem).toBeNull()
+    expect(index.malformed).toEqual([])
+  })
+
   it('says why a document cannot be shown as rows at all', () => {
     expect(indexDocument('').problem).toMatch(/empty/)
     expect(indexDocument('[1]').problem).toMatch(/must be a JSON object/)
