@@ -4,6 +4,21 @@ Access and bytes verified on **2026-09-07**. Run commands from the repository ro
 Only the reviewed TraceLab fixture is redistributed. Raw downloads, local samples
 and the reserved native file remain under gitignored `data/`.
 
+## Manifest inventory
+
+| Dataset | Manifest status | What it records |
+| --- | --- | --- |
+| TraceLab | [Committed fixture manifest](../../fixtures/tracelab/tracelab-sample.manifest.json), beside the redistributable fixture and attribution | Manifest version and generation time; pinned upstream URL/version/hash/bytes and retrieval receipt; deterministic seed, selection algorithm and source locators; selected session ids; output path/hash/bytes/row/session counts and gzip settings. Licence and redistribution review are linked from this page and [`ATTRIBUTION.md`](../../fixtures/tracelab/ATTRIBUTION.md). |
+| SWE-chat | Local `data/samples/swe-chat-1/manifest.json`, generated and gitignored; aggregate evidence is committed in the [two-model report](../verification/2026-09-08-second-source-two-models.md) | Build time, deterministic seed and per-agent cap, whole-session selection rule and limits, upstream file hashes/bytes, output hashes/bytes/row counts, and selected-session counts per agent. The local manifest does not currently carry the pinned dataset revision, licence or generator version; those remain explicit on this page rather than being invented in a clean clone. |
+| Trace Commons | Provenance only on this page; no import fixture or selection manifest | Pinned repository revision, remote paths, local hashes/bytes and the fact that the native holdout is reserved unseen. These local bytes are not a clean-clone input. |
+
+A manifest used for publication should let a reviewer identify the source and
+revision, verify upstream hashes, reproduce selection from its seed and caps,
+verify every output path/hash/byte/row count, identify the generator and version,
+and find the licence and redistribution decision. Missing fields must stay
+visibly missing; do not synthesize them after a run or copy a gated local
+manifest into the repository.
+
 ## TraceLab: available, excerpt committed
 
 - Reference: [TraceLab](https://github.com/uw-syfi/TraceLab),
@@ -100,7 +115,7 @@ This is a pattern-based review aid, not proof that all possible sensitive conten
 is absent. Any future positive candidate blocks fixture publication pending review;
 do not silently redact rows or choose another seed to conceal findings.
 
-## SWE-chat: gated, retrieved locally; excerpt pending
+## SWE-chat: gated, local excerpt verified; no bytes committed
 
 Reference: [SALT-NLP/SWE-chat](https://huggingface.co/datasets/SALT-NLP/SWE-chat).
 Revision: `f66cca95b14caaa4177f7ed5eaa424608dadcffa` (pinned in the commands below).
@@ -127,16 +142,18 @@ shasum -a 256 data/raw/swe-chat/sessions.parquet data/raw/swe-chat/conversations
 | sessions | `data/raw/swe-chat/sessions.parquet` | 1,997,377 | 5,851 | 39 | `2ada63973b182b691318916ca8c813e694091400e43744eca9cad3da2d958a95` |
 | conversations | `data/raw/swe-chat/conversations.parquet` | 1,311,422,253 | 2,692,480 | 35 | `9ee1d937dbf7eb73a8dad75071c69a4f6b5aac7f4120bd8ef3799ee50f4f1c36` |
 
-Row counts and column names were read from Parquet footers with pyarrow; no
-content was inspected beyond the schema.
+Row counts and column names for the full downloads were read from Parquet
+footers with pyarrow. A later bounded excerpt was inspected only through the
+aggregate audit and product workflow recorded below; the full conversation
+content was not published or committed.
 
 Schema notes relevant to normalisation. Field names and types come from the
 Parquet footers; row granularity is what the
 [dataset card](https://huggingface.co/datasets/SALT-NLP/SWE-chat/blob/f66cca95b14caaa4177f7ed5eaa424608dadcffa/README.md)
-states ("one row per coding session", "one row per conversation turn") and has
-not yet been validated against the data. Token-accounting semantics (what the
-session-level and entry-level token columns count, and whether they reconcile)
-are unvalidated until the excerpt is profiled.
+states ("one row per coding session", "one row per conversation turn"). The
+excerpt audit found that an assistant row is not equivalent to a provider API
+call. Token-accounting semantics (what the session-level and entry-level token
+columns count, and whether they reconcile) remain unvalidated.
 
 - `sessions` fields: `session_id`, `repo_id`, `user_id`, `agent`, `created_at`
   (UTC), `input_tokens`, `output_tokens`, `cache_creation_tokens`,
@@ -152,22 +169,31 @@ are unvalidated until the excerpt is profiled.
   before any model-call mapping is trusted; see the identity rules in the
   consolidated plan.
 
-The conversations file is far above the planned product limits (25 MiB per
-uploaded file, 100,000 records per batch). Before UI integration, build a local
-excerpt: select whole sessions from `sessions.parquet` (deterministic, stratified
-by `agent`), then filter `conversations.parquet` by those `session_id`s, writing
-both tables as Parquet under `data/samples/swe-chat/` with a manifest. The script
-must check both serialised outputs against the 25 MiB limit and both row counts
-against the 100,000-record limit, and either reduce the selection deterministically
-(drop the lowest-ranked whole sessions) or fail explicitly; it must never split a
-session. That script belongs to the second-source work (issues #8 and #16).
+The conversations file is above the product limits (25 MiB per uploaded file,
+100,000 records per batch). The committed
+[`scripts/sample_swe_chat.py`](../../scripts/sample_swe_chat.py) selects whole
+sessions deterministically, stratified by `agent`, and writes both source tables
+plus a local manifest. The verified invocation was:
+
+```sh
+uv --directory backend run python ../scripts/sample_swe_chat.py \
+  --raw-dir ../data/raw/swe-chat --per-agent 1 \
+  --out-dir ../data/samples/swe-chat-1
+```
+
+It produced the ignored excerpt recorded in the two-model report: 12 session
+rows and 518 conversation rows. The generator checks both output files against
+25 MiB, their combined rows against 100,000, and the closed outputs with the
+production Parquet reader. If a selected session contains a refused row or the
+outputs exceed a limit, its whole session is removed; sessions are never split.
 
 Redistribution decision: **none committed**. The files stay under gitignored
 `data/raw/`; ODC-BY permits redistribution with attribution, but the excerpt will be
 reviewed for sensitive content first and its terms re-read at that point.
 Sessions and conversations are different tables; do not treat their rows as
-interchangeable or assume their granularity matches TraceLab. The fallback second
-source remains **Trace Commons decoded Parquet**, downloaded below.
+interchangeable or assume their granularity matches TraceLab. Reviewed mappings
+and replay limits are in the [mapping inventory](../mapping/README.md). Trace
+Commons remains provenance-only fallback material, described below.
 
 ## Trace Commons: public fallback downloaded; native file reserved unseen
 
