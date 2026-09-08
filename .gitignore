@@ -43,3 +43,7 @@ web/dist/
 # Editors
 .idea/
 .vscode/
+
+# agent hand-off files, never committed
+PR_BODY.md
+REVIEW_REPLY*.md

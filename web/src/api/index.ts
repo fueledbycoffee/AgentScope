@@ -5,7 +5,8 @@ import type {
   SessionDetail, Upload, ValidationResult,
 } from './types'
 export type * from './types'
-import { envelopeWithRawJson } from '../assist/jsonText'
+import { envelopeWithRawJson, prettyJson } from '../assist/jsonText'
+import { rawValueOf } from '../assist/document'
 
 export class ApiError extends Error {
   readonly status: number
@@ -98,6 +99,30 @@ export async function runAssistant(body: AssistantRequestText, contextSha256: st
     throw new ApiError(response.status, error)
   }
   return { outcome: JSON.parse(rawText) as AssistantOutcome, rawText }
+}
+/**
+ * A saved mapping with its document as *text*, taken from the response bytes.
+ *
+ * `getMapping` parses the body, which rounds every large integer and rewrites `1.0` as `1` before
+ * the editor ever sees it. Reopening a saved revision to correct it has to start from what the
+ * server actually sent.
+ */
+export async function getMappingText(id: string): Promise<{ record: MappingDetail; documentText: string }> {
+  const response = await fetch(`/api/mappings/${encodeURIComponent(id)}`)
+  const rawText = await response.text()
+  if (!response.ok) {
+    let error: ErrorDetail = { code: 'http_error', message: `Request failed (${response.status})`, details: [] }
+    try {
+      const parsed = JSON.parse(rawText)
+      if (typeof parsed?.error?.code === 'string' && typeof parsed.error.message === 'string') {
+        error = { ...parsed.error, details: Array.isArray(parsed.error.details) ? parsed.error.details : [] }
+      }
+    } catch { /* non-JSON error page */ }
+    throw new ApiError(response.status, error)
+  }
+  const documentText = rawValueOf(rawText, ['document'])
+  if (documentText === null) throw new Error('The saved mapping could not be read as text from the response')
+  return { record: JSON.parse(rawText) as MappingDetail, documentText: prettyJson(documentText) }
 }
 export const getMappingSchema = () => request<{ [key: string]: Json }>('/mappings/schema')
 /**

@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { FieldProfile, FieldStat } from '../api/types'
 import { Icon, IconButton } from '../components'
+import { useMediaQuery } from '../useMediaQuery'
 
 function fmt(n: number) {
   return n.toLocaleString('en-US')
@@ -48,11 +49,30 @@ export interface EvidenceRailProps {
  * nulls / values), the sample toggle and the way to the outgoing payload.
  */
 export function EvidenceRail({ profile, loading, includeSample, onIncludeSample, onShowPayload, payloadAvailable, disabled }: EvidenceRailProps) {
+  // below 1280 px the rail is a real disclosure, not content hidden by CSS: it collapses by
+  // default and its button still states the numbers, so nothing is lost by closing it
+  const narrow = useMediaQuery('(max-width: 1279px)')
+  const [open, setOpen] = useState(false)
+  const expanded = !narrow || open
+  const id = useId()
+  const summary = profile
+    ? `${fmt(profile.inspected)} of ${fmt(profile.total_records)} records inspected, ${fmt(profile.fields.length)} paths`
+    : loading ? 'profiling…' : 'unavailable'
+
   return (
     <aside className="assist-rail" aria-label="Evidence">
-      <div className="panel-head"><h2>Evidence</h2>
+      <div className="panel-head">
+        {narrow ? (
+          <button type="button" className="btn small disclosure" aria-expanded={expanded} aria-controls={id} onClick={() => setOpen(!open)}>
+            <Icon name={expanded ? 'chevronUp' : 'chevronDown'} />
+            Evidence: {summary}
+          </button>
+        ) : (
+          <h2>Evidence</h2>
+        )}
         <IconButton name="braces" label="Show the exact text the assistant receives" className="btn small icon-only" disabled={!payloadAvailable} onClick={onShowPayload} />
       </div>
+      <div id={id} hidden={!expanded}>
       {loading && <p className="state-block">Profiling…</p>}
       {profile && (
         <>
@@ -87,6 +107,7 @@ export function EvidenceRail({ profile, loading, includeSample, onIncludeSample,
           )}
         </>
       )}
+      </div>
     </aside>
   )
 }

@@ -22,7 +22,10 @@ import type {
 } from '../api/types'
 import type { AssistantRequestText as AssistantRequest } from '../api'
 import type { ChatTurn } from './Conversation'
-import { extractMappingText, prettyJson }  from './jsonText'
+import { planEdits, type DocEdit } from './document'
+import { asString, indexDocument } from './documentIndex'
+import { isJsonObjectText } from './jsonGrammar'
+import { extractMappingText, prettyJson } from './jsonText'
 
 export const HISTORY_LIMIT = 20
 export const TURN_LIMIT = 4_000
@@ -30,6 +33,20 @@ export const TURN_LIMIT = 4_000
 export type Busy = 'none' | 'preparing' | 'awaiting_ack' | 'running' | 'validating' | 'saving' | 'previewing' | 'importing'
 
 export interface Notice { kind: 'info' | 'warn' | 'error'; text: string }
+
+/** Where the page was entered from, when that was an import report. */
+export interface AssistOrigin {
+  importId: string
+  importSource: string
+  importStatus: 'committed' | 'duplicate' | 'failed'
+  filename: string
+  sha256: string
+  fileStatus: string
+  fileDuplicateOf: string | null
+  mappingId: string | null
+  mappingName: string | null
+  mappingRevision: number | null
+}
 
 export interface AssistState {
   generation: number
@@ -47,13 +64,35 @@ export interface AssistState {
   /** How many times the current message was re-prepared after a 409; one automatic retry. */
   staleRetries: number
   lastOutcome: { generation: number; outcome: AssistantOutcome } | null
+  /**
+   * The document version a proposal created. Its ambiguities and explanations describe *that*
+   * text, so they stop being applicable the moment the document moves on; anchoring to the
+   * version the application produced (not the generation before it) is what makes a stale click
+   * impossible rather than unlikely.
+   */
+  proposalAnchor: { documentVersion: number } | null
   validation: { documentVersion: number; issues: MappingIssue[]; executable: boolean } | null
   saved: { documentText: string; record: SavedMapping } | null
   preview: { savedId: string; report: ImportPreview } | null
-  undo: string | null
+  /** The text *and* the identity to restore: the two must move together or a revise breaks. */
+  undo: { documentText: string; identity: { name: string; source: string } } | null
   busy: Busy
   notices: Notice[]
   omittedHistory: number
+  /**
+   * The report this correction started from. It is deliberately *not* a notice: `startPrepare`
+   * clears those, and the sentence about what that import did must not disappear when a message
+   * is sent.
+   */
+  origin: AssistOrigin | null
+  /** Loading the saved mapping is an asynchronous document replacement, so it has states. */
+  bootstrap: { phase: 'idle' | 'loading' | 'ready' | 'failed'; documentVersion: number; problem: string | null }
+  /**
+   * The source the import will be committed into. Without an origin this stays null and the
+   * mapping's own source is used, as before; entered from a report it defaults to that report's
+   * source, which is not necessarily the mapping's.
+   */
+  importSource: string | null
 }
 
 export function initialState(uploadId: string): AssistState {
@@ -70,6 +109,7 @@ export function initialState(uploadId: string): AssistState {
     acknowledged: null,
     staleRetries: 0,
     lastOutcome: null,
+    proposalAnchor: null,
     validation: null,
     saved: null,
     preview: null,
@@ -77,26 +117,100 @@ export function initialState(uploadId: string): AssistState {
     busy: 'none',
     notices: [],
     omittedHistory: 0,
+    origin: null,
+    bootstrap: { phase: 'idle', documentVersion: 0, problem: null },
+    importSource: null,
   }
+}
+
+// --- entering from an import report ------------------------------------------------------------
+
+export function startBootstrap(state: AssistState, origin: AssistOrigin): AssistState {
+  return {
+    ...state,
+    origin,
+    importSource: origin.importSource,
+    bootstrap: { phase: origin.mappingId === null ? 'failed' : 'loading', documentVersion: state.documentVersion, problem: origin.mappingId === null ? 'That file has no mapping binding on this report, so there is nothing to reopen. Start from a proposal instead.' : null },
+  }
+}
+
+/**
+ * The saved document arrived. A load that lost a race — the user edited meanwhile, or the origin
+ * changed — is never applied silently; it is offered instead.
+ */
+export function bootstrapArrived(state: AssistState, importId: string, documentText: string, identity: { name: string; source: string }): AssistState {
+  if (state.origin?.importId !== importId || state.bootstrap.phase !== 'loading') return state
+  if (state.documentVersion !== state.bootstrap.documentVersion) {
+    return {
+      ...state,
+      bootstrap: { ...state.bootstrap, phase: 'failed', problem: 'You changed the document while the saved mapping was loading, so it was not replaced.' },
+    }
+  }
+  const next = editDocument(state, documentText, null, identity)
+  return { ...next, bootstrap: { phase: 'ready', documentVersion: next.documentVersion, problem: null } }
+}
+
+export function bootstrapFailed(state: AssistState, importId: string, problem: string): AssistState {
+  if (state.origin?.importId !== importId) return state
+  return { ...state, bootstrap: { ...state.bootstrap, phase: 'failed', problem } }
+}
+
+export function setImportSource(state: AssistState, source: string): AssistState {
+  return invalidate({ ...state, importSource: source })
 }
 
 // --- context mutations (each one invalidates prepared/ack/run) --------------------------------
 
+/** Said when a change to the context ends a request whose reply would be discarded anyway. */
+export const RUN_SUPERSEDED =
+  'The context changed while the assistant was answering, so that reply no longer applies and was dropped. Your message is kept below; send it again when you are ready.'
+
+/**
+ * A context mutation makes every conversation request stale: `preparedArrived`, `runnable` and
+ * `outcomeArrived` all refuse a result from an older generation. So the operation has to *end*
+ * here as well — leaving `busy` at `running` for a reply that will be discarded disables every
+ * control for good, which is exactly what a report bootstrap landing mid-run used to do.
+ *
+ * The gate operations (validating, saving, previewing, importing) keep their state: their handlers
+ * check the document version or the saved id, and clearing `busy` would re-enable a second click
+ * while the first is still in flight.
+ */
 function invalidate(state: AssistState): AssistState {
-  return { ...state, generation: state.generation + 1, prepared: null, acknowledged: null, busy: state.busy === 'awaiting_ack' || state.busy === 'preparing' ? 'none' : state.busy }
+  const inConversation = state.busy === 'preparing' || state.busy === 'awaiting_ack' || state.busy === 'running'
+  return {
+    ...state,
+    generation: state.generation + 1,
+    prepared: null,
+    acknowledged: null,
+    busy: inConversation ? 'none' : state.busy,
+    notices: state.busy === 'running' ? [...state.notices, { kind: 'warn', text: RUN_SUPERSEDED }] : state.notices,
+  }
 }
 
 /** Every change to the document text moves the version and clears validation, save and preview. */
-function editDocument(state: AssistState, text: string, undo: string | null): AssistState {
+function editDocument(
+  state: AssistState,
+  text: string,
+  undo: AssistState['undo'],
+  identity = state.identity,
+): AssistState {
   return invalidate({
     ...state,
     documentText: text,
     documentVersion: state.documentVersion + 1,
+    identity,
     validation: null,
     saved: null,
     preview: null,
     undo,
   })
+}
+
+/** The identity a document declares, when it is addressable; the user's own otherwise. */
+export function identityOf(text: string, fallback: { name: string; source: string }): { name: string; source: string } {
+  const index = indexDocument(text)
+  if (!index.ok) return fallback
+  return { name: asString(index.head.name) ?? fallback.name, source: asString(index.head.source) ?? fallback.source }
 }
 
 export function setIdentity(state: AssistState, identity: { name: string; source: string }): AssistState {
@@ -108,12 +222,29 @@ export function setIncludeSample(state: AssistState, on: boolean): AssistState {
 }
 
 export function setDocumentText(state: AssistState, text: string): AssistState {
-  return editDocument(state, text, null)
+  // a direct edit of the JSON view may have changed name or source: the identity follows it
+  return editDocument(state, text, null, identityOf(text, state.identity))
+}
+
+/**
+ * Apply an edit batch from the field table: one version bump, one undo entry, the gates
+ * invalidated once. A batch the planner refuses changes nothing at all — text, version, undo and
+ * every gate stay as they were and the reason is shown.
+ */
+export function applyDocumentEdits(state: AssistState, edits: DocEdit[], identity?: { name: string; source: string }): AssistState {
+  const planned = planEdits(state.documentText, edits)
+  if ('problem' in planned) {
+    return { ...state, notices: [...state.notices, { kind: 'warn', text: `That change was not applied: ${planned.problem}.` }] }
+  }
+  if (planned.text === state.documentText && identity === undefined) return state
+  const undo = { documentText: state.documentText, identity: state.identity }
+  return editDocument(state, planned.text, undo, identity ?? identityOf(planned.text, state.identity))
 }
 
 export function undoDocument(state: AssistState): AssistState {
   if (state.undo === null) return state
-  return editDocument(state, state.undo, null)
+  // the identity is restored with the text, so the next revise still matches the document
+  return editDocument(state, state.undo.documentText, null, state.undo.identity)
 }
 
 // The shapes the server's redactor rewrites (domain/redaction.py), approximated; the server stays
@@ -191,6 +322,11 @@ export function buildRequest(state: AssistState, message: string): { request: As
 
 export function startPrepare(state: AssistState, message: string): { state: AssistState; request: AssistantRequest; generation: number } | { state: AssistState } {
   if (state.busy !== 'none') return { state }
+  if (state.bootstrap.phase === 'loading') {
+    // the document is about to be replaced by the saved revision: a request built from the one on
+    // screen would be answered about a draft that no longer exists
+    return { state: { ...state, notices: [...state.notices, { kind: 'warn', text: 'The saved revision is still loading; send this once it is here.' }] } }
+  }
   const built = buildRequest(state, message)
   if ('problem' in built) return { state: { ...state, notices: [...state.notices, { kind: 'error', text: built.problem }] } }
   const next: AssistState = { ...state, busy: 'preparing', pendingMessage: message, omittedHistory: built.omitted, notices: [], staleRetries: 0 }
@@ -251,20 +387,40 @@ function assistantText(outcome: AssistantOutcome): string {
 let turnCounter = 0
 const newId = (prefix: string) => `${prefix}-${++turnCounter}`
 
+/** Said when a proposal cannot be taken from the response text; nothing is applied. */
+export const UNREADABLE_PROPOSAL =
+  'The reply carried a proposal, but its mapping could not be read from the response text as one JSON object. Nothing was applied and the document is unchanged; the raw reply is in the run diagnostics.'
+
 export function outcomeArrived(state: AssistState, generation: number, outcome: AssistantOutcome, rawText?: string): AssistState {
   if (generation !== state.generation || state.busy !== 'running') return state
+  // the server's own text, re-indented without parsing numbers. There is deliberately no fallback
+  // to JSON.stringify(outcome.proposal.mapping): the browser has already rounded that object's
+  // numbers, and applying it would attach the outcome's validation to a document the server never
+  // saw, which would let Save through for changed data.
+  const mappingText = outcome.proposal !== null && rawText ? extractMappingText(rawText) : null
+  const readable = mappingText !== null && isJsonObjectText(mappingText)
+  const unreadable = outcome.proposal !== null && !readable
   const userTurn: ChatTurn = { id: newId('u'), role: 'user', content: state.pendingMessage ?? '' }
-  const assistantTurn: ChatTurn = { id: newId('a'), role: 'assistant', content: assistantText(outcome), meta: receipt(outcome) }
+  const assistantTurn: ChatTurn = {
+    id: newId('a'),
+    role: 'assistant',
+    content: unreadable ? UNREADABLE_PROPOSAL : assistantText(outcome),
+    meta: unreadable ? `not applied · ${outcome.diagnostics.model} · ${outcome.attempts} call${outcome.attempts > 1 ? 's' : ''}` : receipt(outcome),
+  }
   let next: AssistState = { ...state, busy: 'none', pendingMessage: null, prepared: null, acknowledged: null, lastOutcome: { generation, outcome }, turns: [...state.turns, userTurn, assistantTurn] }
-  if (outcome.proposal !== null) {
-    // the server's own text, re-indented without parsing numbers; parsed JSON only as a fallback
-    let mappingText: string | null = null
-    if (rawText) {
-      try { mappingText = extractMappingText(rawText) } catch { mappingText = null }
+  if (unreadable) {
+    // the document, its version, its undo entry and every gate stay exactly as they were
+    return { ...next, notices: [...next.notices, { kind: 'error', text: UNREADABLE_PROPOSAL }] }
+  }
+  if (readable && outcome.proposal !== null) {
+    const applied = prettyJson(mappingText)
+    const undo = state.documentText ? { documentText: state.documentText, identity: state.identity } : null
+    next = editDocument(next, applied, undo, identityOf(applied, state.identity))
+    next = {
+      ...next,
+      validation: { documentVersion: next.documentVersion, issues: outcome.issues, executable: outcome.proposal.executable },
+      proposalAnchor: { documentVersion: next.documentVersion },
     }
-    const applied = mappingText !== null ? prettyJson(mappingText) : JSON.stringify(outcome.proposal.mapping, null, 2)
-    next = editDocument(next, applied, state.documentText || null)
-    next = { ...next, validation: { documentVersion: next.documentVersion, issues: outcome.issues, executable: outcome.proposal.executable } }
   }
   return next
 }

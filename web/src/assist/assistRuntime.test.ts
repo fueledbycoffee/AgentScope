@@ -2,12 +2,18 @@ import { describe, expect, it } from 'vitest'
 import type { AssistantOutcome, PreparedContext, SavedMapping } from '../api/types'
 import {
   acknowledge,
+  applyDocumentEdits,
+  bootstrapArrived,
+  bootstrapFailed,
+  setImportSource,
+  startBootstrap,
   buildRequest,
   canImport,
   canPreview,
   canSave,
   identityProblem,
   initialState,
+  RUN_SUPERSEDED,
   outcomeArrived,
   preparedArrived,
   previewArrived,
@@ -49,6 +55,13 @@ function ready(): AssistState {
   return setIdentity(initialState('upl_1'), identity)
 }
 
+/**
+ * A run response as the server writes it. A proposal is only ever applied from this text: there is
+ * no fallback to the parsed object, whose numbers the browser has already rounded.
+ */
+const rawResponse = (mapping: Record<string, unknown>) =>
+  `{"proposal":{"mapping":${JSON.stringify(mapping)},"explanations":[],"ambiguities":[],"questions":[],"model":"fake/deterministic-1","executable":true},"issues":[],"attempts":1,"diagnostics":{}}`
+
 /** Drive one full send: prepare, (ack), run, outcome. */
 function send(state: AssistState, message: string, mapping: Record<string, unknown>, digest = 'd1'): AssistState {
   const started = startPrepare(state, message)
@@ -57,7 +70,7 @@ function send(state: AssistState, message: string, mapping: Record<string, unkno
   if (started.request.include_sample) next = acknowledge(next, digest)
   const run = runnable(next)
   if (run === null) throw new Error('not runnable')
-  return outcomeArrived(next, run.generation, outcome(mapping))
+  return outcomeArrived(next, run.generation, outcome(mapping), rawResponse(mapping))
 }
 
 describe('identity and request building', () => {
@@ -88,10 +101,15 @@ describe('identity and request building', () => {
     }
   })
 
-  it('refuses a document whose identity differs or that is not a JSON object', () => {
-    const state = setDocumentText(ready(), '{"name": "other", "source": "tracelab"}')
+  it('takes the identity from the document, and refuses one that cannot declare it', () => {
+    // a document the user pastes or edits carries the identity: the two can never disagree
+    const state = setDocumentText(ready(), '{"name": "other", "source": "elsewhere"}')
+    expect(state.identity).toEqual({ name: 'other', source: 'elsewhere' })
     const built = buildRequest({ ...state, turns: [{ id: 'a', role: 'user', content: 'x' }] }, 'm')
-    expect('problem' in built && built.problem).toMatch(/name and source/)
+    expect('request' in built && built.request.kind).toBe('revise')
+    // a document that declares neither still has to match the identity the user typed
+    const silent = buildRequest({ ...setDocumentText(ready(), '{"rules": []}'), turns: [{ id: 'a', role: 'user', content: 'x' }] }, 'm')
+    expect('problem' in silent && silent.problem).toMatch(/name and source/)
     const broken = buildRequest({ ...setDocumentText(ready(), '[1]'), turns: [{ id: 'a', role: 'user', content: 'x' }] }, 'm')
     expect('problem' in broken && broken.problem).toMatch(/JSON object/)
   })
@@ -113,7 +131,7 @@ describe('prepare, acknowledge, run', () => {
     expect(state.validation?.executable).toBe(true)
     expect(state.undo).toBeNull() // the document was empty before
     const again = send(state, 'more', { name: 'assisted', source: 'tracelab', rules: [], notes: 'v2' })
-    expect(again.undo).toBe(state.documentText)
+    expect(again.undo?.documentText).toBe(state.documentText)
     const undone = undoDocument(again)
     expect(undone.documentText).toBe(state.documentText)
     expect(undone.validation).toBeNull()
@@ -166,6 +184,148 @@ describe('prepare, acknowledge, run', () => {
     const refused = outcomeArrived(running, started.generation, outcome(null, { diagnostics: { finish: 'refusal', model: 'm', raw_text: '', failure: 'refusal', context_sha256: 'd9', sample_included: false } }))
     expect(refused.documentText).toBe(state.documentText)
     expect(refused.turns.at(-1)?.content).toMatch(/did not return a proposal \(refusal\)/)
+  })
+})
+
+describe('a document the indexer cannot walk', () => {
+  it('lands in repair mode instead of throwing out of the state update', () => {
+    const deep = `{"extra":${'['.repeat(4000)}0${']'.repeat(4000)}}`
+    const state = setIdentity(initialState('upl_1'), { name: 'a', source: 'b' })
+    expect(() => setDocumentText(state, deep)).not.toThrow()
+    const next = setDocumentText(state, deep)
+    expect(next.documentText).toBe(deep) // the draft is still there to repair
+    expect(next.identity).toEqual({ name: 'a', source: 'b' })
+  })
+})
+
+describe('table edits', () => {
+  const DOC = '{\n  "name": "assisted",\n  "source": "tracelab",\n  "big": 9007199254740993,\n  "rules": [{"id": "r", "fields": {"x": {"path": "$.a", "timestamp_format": "epoch_ms"}}}]\n}'
+
+  it('applies a batch as one version, one undo entry and one gate invalidation', () => {
+    let state = setDocumentText(ready(), DOC)
+    state = validationArrived(state, state.documentVersion, [], true)
+    state = savedArrived(state, state.documentText, saved('map_1'))
+    const version = state.documentVersion
+    const next = applyDocumentEdits(state, [
+      { op: 'set', path: ['rules', 0, 'fields', 'x', 'timestamp_format'], raw: '"epoch_s"' },
+      { op: 'set', path: ['rules', 0, 'fields', 'x', 'on_missing'], raw: '"reject"' },
+    ])
+    expect(next.documentVersion).toBe(version + 1) // one bump for the whole batch
+    expect(next.undo?.documentText).toBe(DOC)
+    expect(next.validation).toBeNull()
+    expect(next.saved).toBeNull()
+    expect(next.documentText).toContain('"epoch_s"')
+    expect(next.documentText).toContain('"on_missing": "reject"')
+    expect(next.documentText).toContain('9007199254740993') // untouched lexemes survive
+    expect(undoDocument(next).documentText).toBe(DOC)
+  })
+
+  it('changes nothing at all when the planner refuses the batch', () => {
+    let state = setDocumentText(ready(), DOC)
+    state = validationArrived(state, state.documentVersion, [], true)
+    const next = applyDocumentEdits(state, [
+      { op: 'set', path: ['rules', 0, 'fields', 'x'], raw: '{}' },
+      { op: 'set', path: ['rules', 0, 'fields', 'x', 'type'], raw: '"string"' },
+    ])
+    expect(next.documentText).toBe(state.documentText)
+    expect(next.documentVersion).toBe(state.documentVersion)
+    expect(next.undo).toBe(state.undo)
+    expect(next.validation).toBe(state.validation)
+    expect(next.notices.at(-1)?.text).toMatch(/was not applied/)
+  })
+
+  it('is a no-op when the batch would not change the text', () => {
+    const state = setDocumentText(ready(), DOC)
+    expect(applyDocumentEdits(state, [])).toBe(state)
+  })
+})
+
+describe('entering from an import report', () => {
+  const origin = {
+    importId: 'imp_1', importSource: 'tracelab', importStatus: 'committed' as const,
+    filename: 'trace.jsonl', sha256: 'a'.repeat(64), fileStatus: 'committed', fileDuplicateOf: null,
+    mappingId: 'map_1', mappingName: 'tracelab-v1', mappingRevision: 1,
+  }
+  const DOC = '{"name": "tracelab-v1", "source": "tracelab", "big": 9007199254740993, "rules": []}'
+
+  it('loads the file’s own revision and takes its identity with it', () => {
+    const started = startBootstrap(initialState('upl_1'), origin)
+    expect(started.bootstrap.phase).toBe('loading')
+    expect(started.importSource).toBe('tracelab') // the import's source, not the mapping's
+    const ready = bootstrapArrived(started, 'imp_1', DOC, { name: 'tracelab-v1', source: 'tracelab' })
+    expect(ready.bootstrap.phase).toBe('ready')
+    expect(ready.documentText).toBe(DOC)
+    expect(ready.identity).toEqual({ name: 'tracelab-v1', source: 'tracelab' })
+    expect(ready.saved).toBeNull() // a loaded document is not a saved one
+  })
+
+  it('never overwrites an edit the user made while it was loading', () => {
+    const started = startBootstrap(initialState('upl_1'), origin)
+    const edited = setDocumentText(started, '{"name": "mine", "source": "tracelab"}')
+    const late = bootstrapArrived(edited, 'imp_1', DOC, { name: 'tracelab-v1', source: 'tracelab' })
+    expect(late.documentText).toBe(edited.documentText)
+    expect(late.bootstrap.phase).toBe('failed')
+    expect(late.bootstrap.problem).toMatch(/while the saved mapping was loading/)
+  })
+
+  it('ignores a load for another origin, and reports a failure', () => {
+    const started = startBootstrap(initialState('upl_1'), origin)
+    expect(bootstrapArrived(started, 'imp_other', DOC, { name: 'x', source: 'y' })).toBe(started)
+    expect(bootstrapFailed(started, 'imp_other', 'nope')).toBe(started)
+    expect(bootstrapFailed(started, 'imp_1', 'the mapping is gone').bootstrap.problem).toBe('the mapping is gone')
+  })
+
+  it('says so when the file has no mapping binding, instead of loading nothing', () => {
+    const started = startBootstrap(initialState('upl_1'), { ...origin, mappingId: null })
+    expect(started.bootstrap.phase).toBe('failed')
+    expect(started.bootstrap.problem).toMatch(/no mapping binding/)
+  })
+
+  it('never leaves a run stranded when the saved revision arrives', () => {
+    // the run is in flight when the load lands: its reply will be discarded as stale, so the
+    // operation has to be ended here or every control stays disabled for good
+    let state = setIdentity(startBootstrap(initialState('upl_1'), origin), { name: 'tracelab-v1', source: 'tracelab' })
+    const started = startPrepare({ ...state, bootstrap: { ...state.bootstrap, phase: 'ready' } }, 'analyse')
+    if (!('request' in started)) throw new Error('could not start')
+    state = preparedArrived(started.state, started.generation, started.request, prepared('d1'))
+    expect(state.busy).toBe('running')
+
+    const loaded = bootstrapArrived({ ...state, bootstrap: { ...state.bootstrap, phase: 'loading' } }, 'imp_1', DOC, { name: 'tracelab-v1', source: 'tracelab' })
+    expect(loaded.documentText).toBe(DOC)
+    expect(loaded.busy).toBe('none')
+    expect(loaded.notices.at(-1)?.text).toBe(RUN_SUPERSEDED)
+    // the reply that arrives afterwards changes nothing at all
+    const late = outcomeArrived(loaded, started.generation, outcome({ name: 'x', source: 'y' }), '{"proposal":{"mapping":{"a":1}}}')
+    expect(late).toBe(loaded)
+    expect(late.busy).toBe('none')
+    // and the message is still there to send again
+    expect(loaded.pendingMessage).toBe('analyse')
+  })
+
+  it('refuses to send while the saved revision is still loading', () => {
+    const state = setIdentity(startBootstrap(initialState('upl_1'), origin), { name: 'tracelab-v1', source: 'tracelab' })
+    const started = startPrepare(state, 'analyse')
+    expect('request' in started).toBe(false)
+    expect(started.state.busy).toBe('none')
+    expect(started.state.notices.at(-1)?.text).toMatch(/loading/i)
+  })
+
+  it('ends a run that any other context change invalidates, not just a load', () => {
+    let state = setIdentity(initialState('upl_1'), { name: 'a', source: 'b' })
+    const started = startPrepare(state, 'analyse')
+    if (!('request' in started)) throw new Error('could not start')
+    state = preparedArrived(started.state, started.generation, started.request, prepared('d1'))
+    expect(state.busy).toBe('running')
+    // an edit, an identity change or a sample toggle all discard the reply: none may leave it busy
+    expect(setDocumentText(state, '{"name": "a", "source": "b"}').busy).toBe('none')
+    expect(setIdentity(state, { name: 'c', source: 'b' }).busy).toBe('none')
+    expect(setIncludeSample(state, true).busy).toBe('none')
+  })
+
+  it('keeps the import source editable and separate from the mapping', () => {
+    const started = setImportSource(startBootstrap(initialState('upl_1'), origin), 'tracelab-corrected')
+    expect(started.importSource).toBe('tracelab-corrected')
+    expect(started.origin?.importSource).toBe('tracelab')
   })
 })
 

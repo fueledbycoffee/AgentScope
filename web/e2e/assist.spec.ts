@@ -53,6 +53,8 @@ test('analyse, review the payload, revise the epoch unit, validate, save, previe
   const log = page.getByRole('log', { name: 'Conversation' })
   await expect(log).toContainText('model_call.started_at: epoch_s or epoch_ms', { timeout: 30_000 })
   await expect(log).toContainText('proposal applied · fake/deterministic-1 · 1 call · executable')
+  // the field table is the default view now; this spec follows the document as text
+  await page.getByRole('button', { name: 'JSON document' }).click()
   const editor = page.getByLabel('Mapping document (JSON)')
   await expect(editor).toHaveValue(/"timestamp_format": "epoch_ms"/)
   expect(requests.filter(r => r.endsWith('/assistant/run'))).toHaveLength(1)

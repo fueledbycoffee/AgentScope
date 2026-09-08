@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AssistantOutcome, FieldProfile, PreparedContext } from '../api/types'
@@ -46,16 +46,32 @@ beforeEach(() => {
     if (path.endsWith('/profile')) return respond({ upload_id: 'upl_1', profile, cached: false })
     if (path === '/assistant/prepare') return respond(prepared(body.include_sample ? 'sample-digest' : 'plain-digest', !!body.include_sample))
     if (path === '/assistant/run') return respond(outcome)
-    if (path === '/mappings/validate') return respond({ issues: [], executable: true })
+    if (path === '/mappings/validate') return respond({
+      issues: [
+        { stage: 'semantic', path: 'rules[0].fields.external_id.timestamp_format', code: 'ignored_option', message: 'not a timestamp field', severity: 'warning' },
+        { stage: 'semantic', path: 'rules[0].fields', code: 'required_field_unmapped', message: 'a required field is missing', severity: 'error' },
+      ],
+      executable: false,
+    })
+    if (path === '/mappings/map_1') {
+      // the raw text matters: the saved document carries an integer the browser would round
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '{"id": "map_1", "name": "tracelab-v1", "source": "tracelab", "revision": 1, "created_by": "user", "input_format": "jsonl", "issues": [], "document": {"name": "tracelab-v1", "source": "tracelab", "big": 9007199254740993, "rules": []}}' } as unknown as Response
+    }
     throw new Error(`unexpected ${path}`)
   }))
 })
 afterEach(() => vi.unstubAllGlobals())
 
-function renderPage() {
+const ORIGIN = {
+  importId: 'imp_1', importSource: 'tracelab', importStatus: 'committed' as const,
+  filename: 'epoch.jsonl', sha256: 'a'.repeat(64), fileStatus: 'committed', fileDuplicateOf: null,
+  mappingId: 'map_1', mappingName: 'tracelab-v1', mappingRevision: 1,
+}
+
+function renderPage(origin?: typeof ORIGIN) {
   return render(
     <ShellProvider>
-      <MemoryRouter initialEntries={[{ pathname: '/import/assist/upl_1', state: { upload: { upload_id: 'upl_1', filename: 'epoch.jsonl', sha256: 'a'.repeat(64), size_bytes: 10, format: 'jsonl', record_count: 30, preview: [], already_imported: [] } } }]}>
+      <MemoryRouter initialEntries={[{ pathname: '/import/assist/upl_1', state: { origin, upload: { upload_id: 'upl_1', filename: 'epoch.jsonl', sha256: 'a'.repeat(64), size_bytes: 10, format: 'jsonl', record_count: 30, preview: [], already_imported: [] } } }]}>
         <Routes><Route path="/import/assist/:uploadId" element={<AssistPage />} /></Routes>
       </MemoryRouter>
     </ShellProvider>,
@@ -90,14 +106,17 @@ describe('Assist page', () => {
     expect(run.context_sha256).toBe('plain-digest')
     expect(run.kind).toBe('propose')
     expect(run.message).toBe('Propose a mapping')
-    await waitFor(() => expect((screen.getByLabelText('Mapping document (JSON)') as HTMLTextAreaElement).value).toContain('"external_id"'))
+    // the proposal lands in the table, which is the default view now
+    await screen.findByRole('region', { name: 'Rule session' })
+    expect(screen.getByLabelText('path of external_id in session')).toHaveValue('$.session')
     // the thread's rendering needs a real layout (jsdom shows only the running indicator):
     // the receipt and the ambiguity text are asserted in e2e/assist.spec.ts
     // the outcome's validation counts: saving is possible without a second validate call
     expect(screen.getByRole('button', { name: 'Save a mapping revision' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Preview the import' })).toBeDisabled()
     expect(screen.getAllByText('Save a revision of this exact document first').length).toBeGreaterThan(0)
-    // an edit invalidates it again
+    // an edit invalidates it again; the JSON view is one icon away
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
     fireEvent.change(screen.getByLabelText('Mapping document (JSON)'), { target: { value: '{"dsl_version": 1}' } })
     expect(screen.getByRole('button', { name: 'Save a mapping revision' })).toBeDisabled()
     expect(screen.getAllByText('Validate the document first').length).toBeGreaterThan(0)
@@ -121,5 +140,142 @@ describe('Assist page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send this' }))
     await waitFor(() => expect(calls.filter(c => c.path === '/assistant/run')).toHaveLength(1))
     expect((calls.find(c => c.path === '/assistant/run')!.body as { context_sha256: string }).context_sha256).toBe('sample-digest')
+  })
+
+  it('switches to the field table, edits one option through the planner and keeps the rest of the text', async () => {
+    renderPage()
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    // the table leads now that it covers the DSL; the JSON view is one icon away
+    expect(screen.getByRole('button', { name: 'Field table' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'JSON document' })).toHaveAttribute('aria-pressed', 'false')
+
+    const document = '{"name": "draft", "source": "assist", "big": 9007199254740993, "rules": [{"id": "r", "entity": "session", "fields": {"started_at": {"path": "$.ts", "timestamp_format": "epoch_ms"}}}]}'
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
+    fireEvent.change(screen.getByLabelText('Mapping document (JSON)'), { target: { value: document } })
+    fireEvent.click(screen.getByRole('button', { name: 'Field table' }))
+    expect(screen.getByRole('region', { name: 'Rule r' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Mapping document (JSON)')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('timestamp_format of started_at in r'), { target: { value: 'epoch_s' } })
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
+    const text = (screen.getByLabelText('Mapping document (JSON)') as HTMLTextAreaElement).value
+    expect(text).toBe(document.replace('epoch_ms', 'epoch_s'))
+    expect(text).toContain('9007199254740993')
+    expect(calls.filter(c => c.path === '/mappings')).toHaveLength(0)
+  })
+
+  it('applies an ambiguity as an edit, once, and only while it describes this document', async () => {
+    renderPage()
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    fireEvent.change(screen.getByLabelText('Mapping name'), { target: { value: 'draft' } })
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'assist' } })
+    const input = screen.getByLabelText('Message to the assistant')
+    fireEvent.change(input, { target: { value: 'Propose a mapping' } })
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
+    // the fake's ambiguity is model_call.started_at with epoch_s or epoch_ms; the proposal has no
+    // model_call rule, so it stays prose rather than being applied to the wrong field
+    await screen.findByRole('region', { name: 'Ambiguities' })
+    expect(screen.getByRole('region', { name: 'Ambiguities' })).toHaveTextContent('model_call.started_at')
+    expect(screen.getByRole('button', { name: 'ask the assistant about it' })).toBeInTheDocument()
+  })
+
+  it('reopens a report’s own revision, with its numbers and its import source intact', async () => {
+    renderPage(ORIGIN)
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    await waitFor(() => expect(screen.getByLabelText('Mapping name in the document')).toHaveValue('tracelab-v1'))
+    // the document came from the response text, so the large integer survived
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
+    expect((screen.getByLabelText('Mapping document (JSON)') as HTMLTextAreaElement).value).toContain('9007199254740993')
+    // the import's source, which is not necessarily the mapping's, is what an import would use
+    expect(screen.getByLabelText('Import source')).toHaveValue('tracelab')
+    expect(screen.getByText(/Re-importing them into “tracelab” inserts nothing/)).toBeInTheDocument()
+    // and it survives sending a message, unlike a notice
+    fireEvent.change(screen.getByLabelText('Message to the assistant'), { target: { value: 'help' } })
+    fireEvent.keyDown(screen.getByLabelText('Message to the assistant'), { key: 'Enter', code: 'Enter' })
+    await waitFor(() => expect(calls.some(c => c.path === '/assistant/run')).toBe(true))
+    expect(screen.getByText(/Re-importing them into “tracelab” inserts nothing/)).toBeInTheDocument()
+  })
+
+  it('blocks the identity and the composer while the saved revision loads', async () => {
+    let release: ((value: unknown) => void) | undefined
+    const held = new Promise(resolve => { release = resolve })
+    const base = globalThis.fetch as unknown as (url: string, init?: RequestInit) => Promise<Response>
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/mappings/map_1')) {
+        await held
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '{"id": "map_1", "name": "tracelab-v1", "source": "tracelab", "revision": 1, "created_by": "user", "input_format": "jsonl", "issues": [], "document": {"name": "tracelab-v1", "source": "tracelab", "rules": []}}' } as unknown as Response
+      }
+      return base(url, init)
+    }))
+    renderPage(ORIGIN)
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    // nothing may be typed into a document that is about to be replaced
+    expect(screen.getByLabelText('Mapping name')).toBeDisabled()
+    expect(screen.getByLabelText('Message to the assistant')).toBeDisabled()
+    release!(null)
+    await waitFor(() => expect(screen.getByLabelText('Mapping name')).toBeEnabled())
+    expect(screen.getByLabelText('Message to the assistant')).toBeEnabled()
+  })
+
+  it('warns when the import source is changed away from the report’s', async () => {
+    renderPage(ORIGIN)
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    fireEvent.change(screen.getByLabelText('Import source'), { target: { value: 'elsewhere' } })
+    expect(screen.getByText(/not the “tracelab” this report used/)).toBeInTheDocument()
+  })
+
+  it('collapses the evidence rail below 1280 px, with the numbers still on the button', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('1279'), media: query, onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {},
+      dispatchEvent: () => false,
+    }))
+    renderPage()
+    const toggle = await screen.findByRole('button', { name: /^Evidence: / })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await waitFor(() => expect(toggle).toHaveTextContent('30 of 30 records inspected, 2 paths'))
+    const panel = document.getElementById(toggle.getAttribute('aria-controls')!)!
+    expect(panel).toHaveAttribute('hidden')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(panel).not.toHaveAttribute('hidden')
+  })
+
+  it('opens the JSON view when the table asks for it, and focuses a control when an issue does', async () => {
+    renderPage()
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    const document_ = '{"name": "draft", "source": "assist", "rules": [{"id": "r", "entity": "session", "fields": {"external_id": {"path": "$.s"}}}]}'
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
+    fireEvent.change(screen.getByLabelText('Mapping document (JSON)'), { target: { value: document_ } })
+    fireEvent.click(screen.getByRole('button', { name: 'Field table' }))
+
+    // "Open r in the JSON view" must actually open it, not focus the rule's id input
+    fireEvent.click(screen.getByRole('button', { name: 'Open r in the JSON view' }))
+    expect(screen.getByLabelText('Mapping document (JSON)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'JSON document' })).toHaveAttribute('aria-pressed', 'true')
+
+    // an issue goes to the control that owns it, and focuses it
+    fireEvent.click(screen.getByRole('button', { name: 'Field table' }))
+    await waitFor(() => expect(screen.getByLabelText('id of r')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Validate the document' }))
+    await waitFor(() => expect(calls.some(c => c.path === '/mappings/validate')).toBe(true))
+    const issues = await screen.findByRole('list', { name: 'Validation issues' })
+    for (const path of ['rules[0].fields.external_id.timestamp_format', 'rules[0].fields']) {
+      fireEvent.click(within(issues).getByRole('button', { name: path }))
+      const expected = path.endsWith('fields')
+        ? screen.getByRole('button', { name: 'Add a field to r' })
+        : screen.getByLabelText('timestamp_format of external_id in r')
+      expect(document.activeElement, path).toBe(expected)
+    }
+  })
+
+  it('keeps the JSON view when the document cannot be shown as rows, and says why', async () => {
+    renderPage()
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
+    fireEvent.change(screen.getByLabelText('Mapping document (JSON)'), { target: { value: '{"rules": [1,' } })
+    const table = screen.getByRole('button', { name: 'Field table' })
+    expect(table).toBeDisabled()
+    expect(table.getAttribute('data-tip')).toContain('The field table needs a JSON object')
   })
 })

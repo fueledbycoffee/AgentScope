@@ -26,3 +26,20 @@ if (typeof Element !== 'undefined') {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {}
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
 }
+
+// jsdom has no matchMedia; the assistant's rail asks for one to decide whether it collapses.
+// The stub reports no match, which is the wide layout: tests that need the narrow one override it.
+Object.defineProperty(window, 'matchMedia', {
+  configurable: true,
+  writable: true,
+  value: (query: string): MediaQueryList => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }),
+})

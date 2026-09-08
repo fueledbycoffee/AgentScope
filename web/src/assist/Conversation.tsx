@@ -1,5 +1,6 @@
 import {
   AssistantRuntimeProvider,
+  useAuiState,
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
@@ -28,11 +29,18 @@ export interface ConversationProps {
   status?: string
 }
 
-/** The receipt travels as a second text part so it renders under the reply, styled by position. */
+/**
+ * The receipt travels as message metadata, not as a second text part: the assistant message reads
+ * it back through the library's own message state, so it is never confused with reply text that
+ * happens to say the same thing, and no positional CSS is involved.
+ */
 function toThreadMessage(turn: ChatTurn): ThreadMessageLike {
-  const content: { type: 'text'; text: string }[] = [{ type: 'text', text: turn.content }]
-  if (turn.meta) content.push({ type: 'text', text: turn.meta })
-  return { id: turn.id, role: turn.role, content }
+  return {
+    id: turn.id,
+    role: turn.role,
+    content: [{ type: 'text', text: turn.content }],
+    ...(turn.meta === undefined ? {} : { metadata: { custom: { receipt: turn.meta } } }),
+  }
 }
 
 function UserMessage() {
@@ -44,9 +52,11 @@ function UserMessage() {
 }
 
 function AssistantMessage() {
+  const receipt = useAuiState(state => state.message.metadata.custom?.receipt)
   return (
     <MessagePrimitive.Root className="chat-msg chat-msg-assistant">
       <MessagePrimitive.Parts />
+      {typeof receipt === 'string' && <p className="chat-receipt">{receipt}</p>}
     </MessagePrimitive.Root>
   )
 }

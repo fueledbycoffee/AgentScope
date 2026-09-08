@@ -5,10 +5,14 @@
   gap: var(--sp-4);
   align-items: start;
 }
-@media (max-width: 1280px) {
+@media (max-width: 1279px) {
   .assist { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
   .assist-rail { grid-column: 1 / -1; }
 }
+.assist-rail .disclosure { flex: 1; min-width: 0; justify-content: flex-start; text-align: left; white-space: normal; }
+/* a tooltip is an absolutely positioned ::after: at the right edge of a full-width rail it would
+   push the page sideways, so it opens inwards there instead */
+.assist-rail .panel-head .has-tip::after { left: auto; right: 0; transform: none; }
 .assist-rail, .assist-editor, .assist-actions, .chat {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -79,4 +83,53 @@
   color: var(--ink);
 }
 .chat-input:focus-visible, .assist-editor .editor:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.chat-msg-assistant > :nth-child(2) { margin-top: 6px; font-size: 0.75rem; color: var(--ink-2); }
+/* the receipt is its own element, rendered from the message's metadata, not by position */
+.chat-receipt { margin: 6px 0 0; font-size: 0.75rem; color: var(--ink-2); }
+
+/* field table: an indexed view over the document text */
+.view-switch { display: flex; gap: 2px; }
+.view-switch .btn.selected { background: var(--surface-2); border-color: var(--accent); }
+.field-table { display: flex; flex-direction: column; gap: var(--sp-3); min-height: 420px; }
+.field-table .rule { border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--sp-2); }
+.field-table .rule h3 { margin: 0; flex: 1; font-size: 0.95rem; }
+.field-table .table-wrap { overflow-x: auto; }
+.field-table .options { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.field-table .options select { font-size: 0.8rem; }
+.field-table .chip.warn { color: var(--warn); }
+.field-table th[scope="row"] { text-align: left; font-weight: 500; white-space: nowrap; vertical-align: top; }
+/* a field is two lines: source and issues, then transforms and options */
+.field-table .field-line > td, .field-table .field-line > th { border-bottom: 0; }
+.field-table .field-line-two > td { padding-top: 0; }
+.field-table .field-line-two .transforms, .field-table .field-line-two .options { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.field-table .issues { margin: 0; }
+.field-table .state-block { margin-bottom: var(--sp-2); }
+
+/* every editable value: small, monospaced, and wide enough to read a path */
+.field-table input[type="text"], .document-head input[type="text"] { font-family: var(--mono); font-size: 0.8rem; min-width: 9ch; max-width: 24ch; }
+.field-table select.option, .document-head select.option { font-size: 0.8rem; max-width: 22ch; }
+.field-table input[aria-invalid="true"], .field-table select[aria-invalid="true"],
+.document-head input[aria-invalid="true"] { border-color: var(--bad); }
+.raw-json { display: inline-flex; align-items: center; gap: 4px; }
+.raw-json .issue { font-size: 0.7rem; }
+
+.rule-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--sp-2); }
+.rule-head .row, .document-head .row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.rule-head .dim, .document-head .dim { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; color: var(--ink-2); }
+.conditions, .unmapped { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.condition, .path-entry, .transform, .unit, .default, .source, .extras { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.document-head { border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-2); }
+.document-head .notes { align-items: flex-start; }
+.document-head textarea { flex: 1; min-width: 20ch; font: inherit; font-size: 0.8rem; padding: 4px; border: 1px solid var(--line); border-radius: var(--r-1); background: var(--bg); color: var(--ink); }
+.add-field, .add-rule { align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+
+/* ambiguities: an option becomes an edit only when the user names the operation */
+.suggestions { border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--sp-2); margin-top: var(--sp-2); }
+.suggestions h3 { margin: 0; flex: 1; font-size: 0.9rem; }
+.suggestions ul { list-style: none; margin: 0; padding: 0; }
+.suggestions .ambiguity { padding: 4px 0; border-top: 1px solid var(--line); }
+.suggestions .ambiguity:first-child { border-top: 0; }
+.suggestions p { margin: 2px 0; font-size: 0.85rem; }
+.suggestions .option-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.85rem; }
+.suggestions .suggestion { display: inline-flex; align-items: center; gap: 6px; }
+.suggestions .suggestion.blocked { font-size: 0.8rem; }
+.suggestions .issue.warn { font-size: 0.75rem; }
