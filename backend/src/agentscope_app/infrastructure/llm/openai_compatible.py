@@ -83,12 +83,20 @@ REPAIR_INSTRUCTION_END: Final = "\nvalidation-issues>>>"
 JSON_MODES: Final = ("auto", "on", "off")
 # the feature has several names: the parameter (response_format), OpenAI's "structured outputs",
 # "json mode", the json_object type; a rejection names one of them near a refusal word
-_UNSUPPORTED_PARAMETER: Final = re.compile(
-    r"(?i)(response_format|structured[ _-]?outputs?|json[ _-]?mode|json_object|json_schema)"
-    r".{0,120}?(not supported|unsupported|does not support|unknown|unrecognized|invalid|must be)|"
-    r"(not supported|unsupported|does not support|unknown|unrecognized|invalid).{0,120}?"
+# feature name and refusal word must share a sentence: a gap may not cross a sentence end
+# (". ", ";", "!", "?"); a dot inside a token ("response_format.type") is not a sentence end.
+# Whitespace is normalised before matching so a relayed newline cannot split the phrase.
+_FEATURE: Final = (
     r"(response_format|structured[ _-]?outputs?|json[ _-]?mode|json_object|json_schema)"
 )
+_REFUSAL: Final = (
+    r"(not supported|unsupported|does not support|unknown|unrecognized|invalid|must be)"
+)
+_GAP: Final = r"(?:[^.;!?]|\.(?!\s|$)){0,120}?"
+_UNSUPPORTED_PARAMETER: Final = re.compile(
+    rf"(?i){_FEATURE}{_GAP}{_REFUSAL}|{_REFUSAL}{_GAP}{_FEATURE}"
+)
+_WHITESPACE: Final = re.compile(r"\s+")
 _ERROR_QUOTE_CHARS: Final = 200
 _MAX_RESPONSE_BYTES: Final = 4 * 1024 * 1024
 _CANARY_ERROR: Final = (
@@ -290,7 +298,8 @@ class OpenAICompatibleAssistant:
             return False
         if self._configured_json_mode == "on":
             return False
-        return _UNSUPPORTED_PARAMETER.search(_error_message(response)) is not None
+        message = _WHITESPACE.sub(" ", _decode_escapes(_error_message(response)))
+        return _UNSUPPORTED_PARAMETER.search(message) is not None
 
     # -- reply -----------------------------------------------------------------------------
 

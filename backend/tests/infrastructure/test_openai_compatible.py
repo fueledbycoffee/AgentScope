@@ -269,6 +269,37 @@ def test_rejection_wording_variants_are_recognised(message: str) -> None:
     assert adapter(server).complete(prepared()).notes == ("json_mode_off_after_rejection",)
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        # the refusal and the feature name sit in different sentences (second adversarial review)
+        "Invalid request: max_tokens exceeds the remaining context window. "
+        "This endpoint supports structured outputs.",
+        "Unknown model. Structured outputs are available on this endpoint; json mode too.",
+        "invalid api key! response_format is fine here",
+    ],
+)
+def test_a_refusal_in_another_sentence_is_not_a_rejection(message: str) -> None:
+    server = Server(
+        httpx2.Response(400, json=_relayed(message)), ok(recording("synthetic_openrouter_ok"))
+    )
+    client = adapter(server)
+    with pytest.raises(AssistantError) as caught:
+        client.complete(prepared())
+    assert caught.value.kind == "provider" and len(server.requests) == 1
+    assert not client.json_mode_negotiated_off
+
+
+def test_a_relayed_rejection_split_across_lines_still_counts() -> None:
+    server = Server(
+        httpx2.Response(
+            400, json=_relayed("model x does not support feature:\nstructured-outputs")
+        ),
+        ok(recording("synthetic_openrouter_ok")),
+    )
+    assert adapter(server).complete(prepared()).notes == ("json_mode_off_after_rejection",)
+
+
 def test_unrelated_400s_do_not_switch_json_mode_off() -> None:
     server = Server(
         httpx2.Response(
