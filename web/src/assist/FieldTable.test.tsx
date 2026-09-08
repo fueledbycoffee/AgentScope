@@ -74,7 +74,7 @@ describe('the field table', () => {
     expect(screen.getByLabelText('unmapped reason 1')).toHaveValue('no target')
     // a key the DSL does not name is kept and shown, never dropped
     const modelCall = within(screen.getByRole('region', { name: 'Rule model_call' }))
-    expect(modelCall.getByRole('row', { name: /session_external_id/ })).toHaveTextContent('big: 9007199254740993')
+    expect(modelCall.getByRole('row', { name: 'session_external_id transforms and options' })).toHaveTextContent('big: 9007199254740993')
   })
 
   it('edits every closed option through the planner, and "not set" removes the member', () => {
@@ -203,7 +203,7 @@ describe('the field table', () => {
 
   it('sends what it cannot represent to the JSON view instead of rewriting it', () => {
     const { onOpenJson } = show()
-    expect(screen.getByRole('row', { name: /broken/ })).toHaveTextContent('a field must be a JSON object')
+    expect(screen.getByRole('row', { name: /^broken/ })).toHaveTextContent('a field must be a JSON object')
     fireEvent.click(screen.getAllByRole('button', { name: 'Repair it in the JSON view' })[0])
     expect(onOpenJson).toHaveBeenCalledWith(['rules', 0, 'fields', 'broken'])
   })
@@ -241,10 +241,13 @@ describe('the field table, for keyboard and screen-reader users', () => {
 
   it('reaches every control of a row with the keyboard', () => {
     show()
-    const row = screen.getByRole('row', { name: /started_at/ })
-    const focusable = within(row)
-      .getAllByRole('textbox')
-      .concat(within(row).getAllByRole('combobox'), within(row).getAllByRole('button'))
+    // a field is two table lines: its source and issues, then its transforms and options
+    const lines = [
+      screen.getAllByRole('row', { name: /^started_at/ })[0],
+      screen.getByRole('row', { name: 'started_at transforms and options' }),
+    ]
+    const focusable = lines
+      .flatMap(row => within(row).queryAllByRole('textbox').concat(within(row).queryAllByRole('combobox'), within(row).queryAllByRole('button')))
       .filter(control => !(control as HTMLButtonElement).disabled)
     expect(focusable.length).toBeGreaterThan(8)
     for (const control of focusable) {

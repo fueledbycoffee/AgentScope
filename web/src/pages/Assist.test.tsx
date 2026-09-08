@@ -197,6 +197,23 @@ describe('Assist page', () => {
     expect(screen.getByText(/not the “tracelab” this report used/)).toBeInTheDocument()
   })
 
+  it('collapses the evidence rail below 1280 px, with the numbers still on the button', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('1279'), media: query, onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {},
+      dispatchEvent: () => false,
+    }))
+    renderPage()
+    const toggle = await screen.findByRole('button', { name: /^Evidence: / })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await waitFor(() => expect(toggle).toHaveTextContent('30 of 30 records inspected, 2 paths'))
+    const panel = document.getElementById(toggle.getAttribute('aria-controls')!)!
+    expect(panel).toHaveAttribute('hidden')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(panel).not.toHaveAttribute('hidden')
+  })
+
   it('keeps the JSON view when the document cannot be shown as rows, and says why', async () => {
     renderPage()
     await screen.findByRole('complementary', { name: 'Evidence' })

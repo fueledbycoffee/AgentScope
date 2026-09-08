@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import type { MappingIssue } from '../api/types'
 import { IconButton } from '../components'
 import type { DocEdit, DocPath } from './document'
@@ -216,8 +216,6 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
                     <tr>
                       <th scope="col">Target</th>
                       <th scope="col">Source</th>
-                      <th scope="col">Transforms</th>
-                      <th scope="col">Options</th>
                       <th scope="col">Issues</th>
                     </tr>
                   </thead>
@@ -225,30 +223,53 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
                     {rule.fields.map(field => {
                       const fieldIssues = issuesFor(rule.index, field.name)
                       const context = contextFor(rule, field)
+                      // a field is two lines: eleven controls do not fit on one at 1280 px, and a
+                      // second line reads better than a table that scrolls sideways inside the page
                       return (
-                        <tr key={field.name}>
-                          <th scope="row" className="mono">
-                            {field.name}
-                            <IconButton
-                              name="trash"
-                              label={`Remove ${field.name} from ${ruleName}`}
-                              className="btn small icon-only"
-                              disabled={disabled}
-                              onClick={() => onEdit([{ op: 'remove', path: field.path }])}
-                            />
-                          </th>
-                          {field.malformed !== null ? (
-                            <td colSpan={4}>
-                              <span className="issue error">{field.malformed}</span>{' '}
-                              <button type="button" className="link" onClick={() => onOpenJson(field.path)}>
-                                Repair it in the JSON view
-                              </button>
-                            </td>
-                          ) : (
-                            <>
-                              <td><SourceCell field={field} context={context} /></td>
-                              <td><TransformsCell field={field} context={context} /></td>
-                              <td>
+                        <Fragment key={field.name}>
+                          <tr className="field-line">
+                            <th scope="row" className="mono" rowSpan={field.malformed === null ? 2 : 1}>
+                              {field.name}
+                              <IconButton
+                                name="trash"
+                                label={`Remove ${field.name} from ${ruleName}`}
+                                className="btn small icon-only"
+                                disabled={disabled}
+                                onClick={() => onEdit([{ op: 'remove', path: field.path }])}
+                              />
+                            </th>
+                            {field.malformed !== null ? (
+                              <td colSpan={2}>
+                                <span className="issue error">{field.malformed}</span>{' '}
+                                <button type="button" className="link" onClick={() => onOpenJson(field.path)}>
+                                  Repair it in the JSON view
+                                </button>
+                              </td>
+                            ) : (
+                              <>
+                                <td><SourceCell field={field} context={context} /></td>
+                                <td>
+                                  {fieldIssues.length === 0 ? (
+                                    <span className="muted">—</span>
+                                  ) : (
+                                    fieldIssues.map((issue, at) => (
+                                      <span
+                                        key={at}
+                                        id={issueId(controlIdFor(issue.path)) ?? undefined}
+                                        className={issue.severity === 'error' ? 'issue error' : 'issue warn'}
+                                      >
+                                        <span className="mono code">{issue.code}</span> {issue.message}
+                                      </span>
+                                    ))
+                                  )}
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                          {field.malformed === null && (
+                            <tr className="field-line-two" aria-label={`${field.name} transforms and options`}>
+                              <td colSpan={2}>
+                                <TransformsCell field={field} context={context} />
                                 <OptionsCell field={field} context={context} />
                                 {field.extras.length > 0 && (
                                   <span className="extras">
@@ -260,24 +281,9 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
                                   </span>
                                 )}
                               </td>
-                              <td>
-                                {fieldIssues.length === 0 ? (
-                                  <span className="muted">—</span>
-                                ) : (
-                                  fieldIssues.map((issue, at) => (
-                                    <span
-                                      key={at}
-                                      id={issueId(controlIdFor(issue.path)) ?? undefined}
-                                      className={issue.severity === 'error' ? 'issue error' : 'issue warn'}
-                                    >
-                                      <span className="mono code">{issue.code}</span> {issue.message}
-                                    </span>
-                                  ))
-                                )}
-                              </td>
-                            </>
+                            </tr>
                           )}
-                        </tr>
+                        </Fragment>
                       )
                     })}
                   </tbody>

@@ -5,10 +5,14 @@
   gap: var(--sp-4);
   align-items: start;
 }
-@media (max-width: 1280px) {
+@media (max-width: 1279px) {
   .assist { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
   .assist-rail { grid-column: 1 / -1; }
 }
+.assist-rail .disclosure { flex: 1; min-width: 0; justify-content: flex-start; text-align: left; white-space: normal; }
+/* a tooltip is an absolutely positioned ::after: at the right edge of a full-width rail it would
+   push the page sideways, so it opens inwards there instead */
+.assist-rail .panel-head .has-tip::after { left: auto; right: 0; transform: none; }
 .assist-rail, .assist-editor, .assist-actions, .chat {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -92,7 +96,11 @@
 .field-table .options { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .field-table .options select { font-size: 0.8rem; }
 .field-table .chip.warn { color: var(--warn); }
-.field-table th[scope="row"] { text-align: left; font-weight: 500; white-space: nowrap; }
+.field-table th[scope="row"] { text-align: left; font-weight: 500; white-space: nowrap; vertical-align: top; }
+/* a field is two lines: source and issues, then transforms and options */
+.field-table .field-line > td, .field-table .field-line > th { border-bottom: 0; }
+.field-table .field-line-two > td { padding-top: 0; }
+.field-table .field-line-two .transforms, .field-table .field-line-two .options { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .field-table .issues { margin: 0; }
 .field-table .state-block { margin-bottom: var(--sp-2); }
 

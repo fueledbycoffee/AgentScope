@@ -31,6 +31,8 @@ export default defineConfig({
   projects: [
     { name: 'chromium', testMatch: /smoke\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
     { name: 'assistant', testMatch: /assist\.spec\.ts/, dependencies: ['chromium'], use: { ...devices['Desktop Chrome'] } },
+    // the field table's own flow, after the other two so their unscoped totals are measured first
+    { name: 'assistant-table', testMatch: /assist-table\.spec\.ts/, dependencies: ['assistant'], use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: {
     command: 'node e2e/start-backend.mjs',
