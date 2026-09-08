@@ -1,3 +1,5 @@
+import { rawValueOf } from './document'
+
 /**
  * Lossless helpers over JSON *text*. The mapping document is edited and sent as text so numbers
  * keep the exact lexemes the user or the server wrote (`1.0` stays `1.0`, 2^53+1 stays itself);
@@ -90,35 +92,15 @@ function valueSpan(text: string, tokens: Token[], start: number): { text: string
 }
 
 /**
- * The raw text of `proposal.mapping` inside a run response, exactly as the server wrote it,
- * or null when the response has no proposal.
+ * The raw text of `proposal.mapping` inside a run response, exactly as the server wrote it, or
+ * null when the response has no proposal, is not valid JSON, or resolves its keys ambiguously.
+ *
+ * Addressing goes through the grammar in `document.ts`, so an escaped envelope key
+ * (`{"proposal": …}`) is found and a response with two `proposal` members is refused
+ * instead of being resolved differently from the server.
  */
 export function extractMappingText(rawResponse: string): string | null {
-  const tokens = tokenize(rawResponse)
-  // walk the top-level object: find key "proposal", then inside it key "mapping"
-  const findKey = (from: number, to: number, key: string): number | null => {
-    let depth = 0
-    for (let i = from; i <= to; i += 1) {
-      const t = tokens[i]
-      if (t.kind === 'punct') {
-        if (t.text === '{' || t.text === '[') depth += 1
-        else if (t.text === '}' || t.text === ']') depth -= 1
-        continue
-      }
-      if (depth === 1 && t.kind === 'string' && t.text === JSON.stringify(key) && tokens[i + 1]?.kind === 'punct' && tokens[i + 1].text === ':') {
-        return i + 2
-      }
-    }
-    return null
-  }
-  const proposalAt = findKey(0, tokens.length - 1, 'proposal')
-  if (proposalAt === null) return null
-  const proposal = tokens[proposalAt]
-  if (proposal.kind === 'scalar') return null // null
-  const proposalEnd = valueSpan(rawResponse, tokens, proposalAt).end
-  const mappingAt = findKey(proposalAt, proposalEnd, 'mapping')
-  if (mappingAt === null) return null
-  return valueSpan(rawResponse, tokens, mappingAt).text
+  return rawValueOf(rawResponse, ['proposal', 'mapping'])
 }
 
 /** Build a request envelope whose `document` (or another key) is the given text, verbatim. */

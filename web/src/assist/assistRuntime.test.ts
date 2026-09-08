@@ -49,6 +49,13 @@ function ready(): AssistState {
   return setIdentity(initialState('upl_1'), identity)
 }
 
+/**
+ * A run response as the server writes it. A proposal is only ever applied from this text: there is
+ * no fallback to the parsed object, whose numbers the browser has already rounded.
+ */
+const rawResponse = (mapping: Record<string, unknown>) =>
+  `{"proposal":{"mapping":${JSON.stringify(mapping)},"explanations":[],"ambiguities":[],"questions":[],"model":"fake/deterministic-1","executable":true},"issues":[],"attempts":1,"diagnostics":{}}`
+
 /** Drive one full send: prepare, (ack), run, outcome. */
 function send(state: AssistState, message: string, mapping: Record<string, unknown>, digest = 'd1'): AssistState {
   const started = startPrepare(state, message)
@@ -57,7 +64,7 @@ function send(state: AssistState, message: string, mapping: Record<string, unkno
   if (started.request.include_sample) next = acknowledge(next, digest)
   const run = runnable(next)
   if (run === null) throw new Error('not runnable')
-  return outcomeArrived(next, run.generation, outcome(mapping))
+  return outcomeArrived(next, run.generation, outcome(mapping), rawResponse(mapping))
 }
 
 describe('identity and request building', () => {

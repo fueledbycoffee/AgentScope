@@ -22,7 +22,8 @@ import type {
 } from '../api/types'
 import type { AssistantRequestText as AssistantRequest } from '../api'
 import type { ChatTurn } from './Conversation'
-import { extractMappingText, prettyJson }  from './jsonText'
+import { isJsonObjectText } from './jsonGrammar'
+import { extractMappingText, prettyJson } from './jsonText'
 
 export const HISTORY_LIMIT = 20
 export const TURN_LIMIT = 4_000
@@ -251,19 +252,33 @@ function assistantText(outcome: AssistantOutcome): string {
 let turnCounter = 0
 const newId = (prefix: string) => `${prefix}-${++turnCounter}`
 
+/** Said when a proposal cannot be taken from the response text; nothing is applied. */
+export const UNREADABLE_PROPOSAL =
+  'The reply carried a proposal, but its mapping could not be read from the response text as one JSON object. Nothing was applied and the document is unchanged; the raw reply is in the run diagnostics.'
+
 export function outcomeArrived(state: AssistState, generation: number, outcome: AssistantOutcome, rawText?: string): AssistState {
   if (generation !== state.generation || state.busy !== 'running') return state
+  // the server's own text, re-indented without parsing numbers. There is deliberately no fallback
+  // to JSON.stringify(outcome.proposal.mapping): the browser has already rounded that object's
+  // numbers, and applying it would attach the outcome's validation to a document the server never
+  // saw, which would let Save through for changed data.
+  const mappingText = outcome.proposal !== null && rawText ? extractMappingText(rawText) : null
+  const readable = mappingText !== null && isJsonObjectText(mappingText)
+  const unreadable = outcome.proposal !== null && !readable
   const userTurn: ChatTurn = { id: newId('u'), role: 'user', content: state.pendingMessage ?? '' }
-  const assistantTurn: ChatTurn = { id: newId('a'), role: 'assistant', content: assistantText(outcome), meta: receipt(outcome) }
+  const assistantTurn: ChatTurn = {
+    id: newId('a'),
+    role: 'assistant',
+    content: unreadable ? UNREADABLE_PROPOSAL : assistantText(outcome),
+    meta: unreadable ? `not applied · ${outcome.diagnostics.model} · ${outcome.attempts} call${outcome.attempts > 1 ? 's' : ''}` : receipt(outcome),
+  }
   let next: AssistState = { ...state, busy: 'none', pendingMessage: null, prepared: null, acknowledged: null, lastOutcome: { generation, outcome }, turns: [...state.turns, userTurn, assistantTurn] }
-  if (outcome.proposal !== null) {
-    // the server's own text, re-indented without parsing numbers; parsed JSON only as a fallback
-    let mappingText: string | null = null
-    if (rawText) {
-      try { mappingText = extractMappingText(rawText) } catch { mappingText = null }
-    }
-    const applied = mappingText !== null ? prettyJson(mappingText) : JSON.stringify(outcome.proposal.mapping, null, 2)
-    next = editDocument(next, applied, state.documentText || null)
+  if (unreadable) {
+    // the document, its version, its undo entry and every gate stay exactly as they were
+    return { ...next, notices: [...next.notices, { kind: 'error', text: UNREADABLE_PROPOSAL }] }
+  }
+  if (readable && outcome.proposal !== null) {
+    next = editDocument(next, prettyJson(mappingText), state.documentText || null)
     next = { ...next, validation: { documentVersion: next.documentVersion, issues: outcome.issues, executable: outcome.proposal.executable } }
   }
   return next
