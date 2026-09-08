@@ -650,7 +650,7 @@ def test_row_timestamp_mistake_is_named_in_contract_and_repair_guidance() -> Non
     h.adapter.complete(context, repair=RepairRequest(candidate, "[]"))
     rule = (
         "One timestamp per row is a start, never an end: map it to started_at; "
-        "ended_at only comes from a column that declares an end"
+        "never copy it into ended_at"
     )
     assert rule in context.document["target"]["dsl_reference"]
     instruction, issues_text = h.server.body(1)["messages"][3]["content"].split(

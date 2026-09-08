@@ -20,9 +20,10 @@ COMMON_MISTAKES_REFERENCE: Final = (
     'native_key lists mapped target field names, e.g. ["external_id"], never source columns. '
     'For example, fields: {"external_id": {"path": "$.session_id"}} uses '
     'native_key: ["external_id"], not ["session_id"] or ["$.session_id"]. '
-    "One timestamp per row is a start, never an end: map it to started_at; "
-    "ended_at only comes from a column that declares an end. Otherwise omit ended_at; "
-    "do not copy the row timestamp into both endpoints or invent an interval. "
+    "A single scalar timestamp on a row is a start, never an end: map it to started_at and "
+    "never copy it into ended_at. ended_at comes from a column that declares an end, or from "
+    'the bounds of an event array (e.g. {"path": "$.timing_events[*].timestamp", '
+    '"bounds": "max"}); otherwise omit ended_at rather than invent an interval. 
     'notes must be a string, never an object or array; use "" when there are no notes. '
     'Every field mapping must be a JSON object, e.g. {"path": "$.session_id"}, '
     'never a bare string; use {"literal": value} for a constant. '
