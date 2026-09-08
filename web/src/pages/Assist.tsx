@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ApiError,
   commitImport,
+  getMappingText,
   prepareContext,
   previewImport,
   profileUpload,
@@ -16,6 +17,11 @@ import { useFileBar } from '../shellHooks'
 import {
   acknowledge,
   applyDocumentEdits,
+  bootstrapArrived,
+  bootstrapFailed,
+  setImportSource,
+  startBootstrap,
+  type AssistOrigin,
   canImport,
   canPreview,
   canSave,
@@ -63,6 +69,48 @@ function messageOf(error: unknown): { status: number; message: string } {
 }
 
 /**
+ * What entering from an import report means for this file, said exactly.
+ *
+ * Duplicates are decided by file bytes and source (`use_cases/imports.py:375`), and the mapping's
+ * own source is not necessarily the source that import wrote into, so the two are kept apart and
+ * the sentence follows the *file's* status in the attempt, not the attempt's.
+ */
+function OriginPanel({ state, onSource }: { state: AssistState; onSource: (source: string) => void }) {
+  const origin = state.origin
+  if (origin === null) return null
+  const status = origin.fileStatus === 'pending' ? origin.importStatus : origin.fileStatus
+  const source = origin.importSource
+  const sentence =
+    status === 'committed'
+      ? `These bytes are committed in import ${origin.importId} under source “${source}”. Re-importing them into “${source}” inserts nothing, and that import's observations do not change. A corrected revision applies to the next import of this file — under a different source, or of a different file.`
+      : status === 'duplicate'
+        ? `These bytes were already committed${origin.fileDuplicateOf === null ? '' : ` by import ${origin.fileDuplicateOf}`} under source “${source}”, so this attempt inserted nothing. A corrected revision applies to the next import of this file.`
+        : `That attempt inserted nothing. Importing these bytes into “${source}” now is checked against what is committed in “${source}” today, so it may still be recorded as a duplicate: a failed attempt says what it wrote, not whether the bytes are absent.`
+  return (
+    <Notice kind={status === 'committed' ? 'info' : 'warn'} title={`Correcting the mapping of ${origin.filename}`}>
+      <p>{sentence}</p>
+      {state.bootstrap.phase === 'loading' && <p role="status">Loading the saved revision…</p>}
+      {state.bootstrap.problem !== null && <p className="issue error">{state.bootstrap.problem}</p>}
+      <label className="field">
+        Import source
+        <input
+          aria-label="Import source"
+          value={state.importSource ?? ''}
+          disabled={state.busy !== 'none'}
+          onChange={event => onSource(event.target.value)}
+        />
+      </label>
+      {state.importSource !== origin.importSource && (
+        <p className="issue warn">
+          This will import into “{state.importSource}”, not the “{origin.importSource}” this report
+          used. That is a different set of observations, not a correction of the old one.
+        </p>
+      )}
+    </Notice>
+  )
+}
+
+/**
  * The assistant page (ADR-005 in the browser): profile → prepare → (acknowledge) → run, then the
  * explicit gates validate → save → preview → import. All rules live in assistRuntime; this
  * component only wires effects to them.
@@ -71,7 +119,9 @@ export default function AssistPage() {
   const { uploadId = '' } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const upload = (location.state as { upload?: Upload } | null)?.upload
+  const routed = location.state as { upload?: Upload; origin?: AssistOrigin } | null
+  const upload = routed?.upload
+  const origin = routed?.origin
   const [state, setState] = useState<AssistState>(() => initialState(uploadId))
   const [profile, setProfile] = useState<FieldProfile | null>(null)
   const [profileError, setProfileError] = useState<unknown>()
@@ -101,6 +151,22 @@ export default function AssistPage() {
       .catch(error => { if (!cancelled) setProfileError(error) })
     return () => { cancelled = true }
   }, [uploadId])
+
+  // entering from an import report: load that file's exact revision, once, guarded
+  useEffect(() => {
+    if (origin === undefined) return
+    update(s => (s.origin?.importId === origin.importId ? s : startBootstrap(s, origin)))
+    if (origin.mappingId === null) return
+    let cancelled = false
+    getMappingText(origin.mappingId)
+      .then(({ record, documentText }) => {
+        if (!cancelled) update(s => bootstrapArrived(s, origin.importId, documentText, { name: record.name, source: record.source }))
+      })
+      .catch(error => {
+        if (!cancelled) update(s => bootstrapFailed(s, origin.importId, messageOf(error).message))
+      })
+    return () => { cancelled = true }
+  }, [origin, update])
 
   useFileBar('Assistant', [
     { label: 'File', value: upload?.filename ?? uploadId },
@@ -173,7 +239,7 @@ export default function AssistPage() {
     const saved = state.saved
     if (!saved || canImport(state) !== null) return
     update(s => setBusy(s, 'importing'))
-    commitImport({ upload_id: uploadId, mapping_id: saved.record.id, source: saved.record.source })
+    commitImport({ upload_id: uploadId, mapping_id: saved.record.id, source: state.importSource ?? saved.record.source })
       .then(report => { if (mounted.current) navigate(`/imports/${encodeURIComponent(report.import_id)}`) })
       .catch(error => update(s => ({ ...setBusy(s, 'none'), notices: [...s.notices, { kind: 'error', text: messageOf(error).message }] })))
   }
@@ -222,6 +288,7 @@ export default function AssistPage() {
         </label>
         {identityIssue && state.identity.name && state.identity.source && <p className="muted">{identityIssue}</p>}
       </form>
+      {state.origin !== null && <OriginPanel state={state} onSource={source => update(s => setImportSource(s, source))} />}
       {state.notices.map((notice, index) => (
         <Notice key={index} kind={notice.kind === 'error' ? 'bad' : notice.kind === 'warn' ? 'warn' : 'info'}>{notice.text}</Notice>
       ))}
@@ -248,7 +315,7 @@ export default function AssistPage() {
               <DocumentEditor
                 text={state.documentText}
                 onChange={text => update(s => setDocumentText(s, text))}
-                disabled={state.busy !== 'none'}
+                disabled={state.busy !== 'none' || state.bootstrap.phase === 'loading'}
                 focusRequest={focusRequest}
                 onNotFound={path => update(s => ({ ...s, notices: [...s.notices, { kind: 'info', text: `${path || '$'} has no line in this document; it is missing rather than wrong.` }] }))}
               />
@@ -279,7 +346,7 @@ export default function AssistPage() {
                 identity={state.identity}
                 issues={state.validation?.issues ?? null}
                 current={state.validation?.documentVersion === state.documentVersion}
-                disabled={state.busy !== 'none'}
+                disabled={state.busy !== 'none' || state.bootstrap.phase === 'loading'}
                 onEdit={(edits, nextIdentity) => update(s => applyDocumentEdits(s, edits, nextIdentity))}
                 onRefuse={reason => update(s => ({ ...s, notices: [...s.notices, { kind: 'warn', text: reason }] }))}
                 onOpenJson={(path: DocPath) => jumpTo(showPath(path))}
@@ -310,7 +377,7 @@ export default function AssistPage() {
             filename={upload?.filename ?? uploadId}
             sha256={upload?.sha256 ?? null}
             recordCount={upload?.record_count ?? profile?.total_records ?? null}
-            source={state.saved?.record.source ?? state.identity.source}
+            source={state.importSource ?? state.saved?.record.source ?? state.identity.source}
             onValidate={validate}
             onSave={save}
             onPreview={preview}

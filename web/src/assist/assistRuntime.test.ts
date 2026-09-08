@@ -3,6 +3,10 @@ import type { AssistantOutcome, PreparedContext, SavedMapping } from '../api/typ
 import {
   acknowledge,
   applyDocumentEdits,
+  bootstrapArrived,
+  bootstrapFailed,
+  setImportSource,
+  startBootstrap,
   buildRequest,
   canImport,
   canPreview,
@@ -221,6 +225,54 @@ describe('table edits', () => {
   it('is a no-op when the batch would not change the text', () => {
     const state = setDocumentText(ready(), DOC)
     expect(applyDocumentEdits(state, [])).toBe(state)
+  })
+})
+
+describe('entering from an import report', () => {
+  const origin = {
+    importId: 'imp_1', importSource: 'tracelab', importStatus: 'committed' as const,
+    filename: 'trace.jsonl', sha256: 'a'.repeat(64), fileStatus: 'committed', fileDuplicateOf: null,
+    mappingId: 'map_1', mappingName: 'tracelab-v1', mappingRevision: 1,
+  }
+  const DOC = '{"name": "tracelab-v1", "source": "tracelab", "big": 9007199254740993, "rules": []}'
+
+  it('loads the file’s own revision and takes its identity with it', () => {
+    const started = startBootstrap(initialState('upl_1'), origin)
+    expect(started.bootstrap.phase).toBe('loading')
+    expect(started.importSource).toBe('tracelab') // the import's source, not the mapping's
+    const ready = bootstrapArrived(started, 'imp_1', DOC, { name: 'tracelab-v1', source: 'tracelab' })
+    expect(ready.bootstrap.phase).toBe('ready')
+    expect(ready.documentText).toBe(DOC)
+    expect(ready.identity).toEqual({ name: 'tracelab-v1', source: 'tracelab' })
+    expect(ready.saved).toBeNull() // a loaded document is not a saved one
+  })
+
+  it('never overwrites an edit the user made while it was loading', () => {
+    const started = startBootstrap(initialState('upl_1'), origin)
+    const edited = setDocumentText(started, '{"name": "mine", "source": "tracelab"}')
+    const late = bootstrapArrived(edited, 'imp_1', DOC, { name: 'tracelab-v1', source: 'tracelab' })
+    expect(late.documentText).toBe(edited.documentText)
+    expect(late.bootstrap.phase).toBe('failed')
+    expect(late.bootstrap.problem).toMatch(/while the saved mapping was loading/)
+  })
+
+  it('ignores a load for another origin, and reports a failure', () => {
+    const started = startBootstrap(initialState('upl_1'), origin)
+    expect(bootstrapArrived(started, 'imp_other', DOC, { name: 'x', source: 'y' })).toBe(started)
+    expect(bootstrapFailed(started, 'imp_other', 'nope')).toBe(started)
+    expect(bootstrapFailed(started, 'imp_1', 'the mapping is gone').bootstrap.problem).toBe('the mapping is gone')
+  })
+
+  it('says so when the file has no mapping binding, instead of loading nothing', () => {
+    const started = startBootstrap(initialState('upl_1'), { ...origin, mappingId: null })
+    expect(started.bootstrap.phase).toBe('failed')
+    expect(started.bootstrap.problem).toMatch(/no mapping binding/)
+  })
+
+  it('keeps the import source editable and separate from the mapping', () => {
+    const started = setImportSource(startBootstrap(initialState('upl_1'), origin), 'tracelab-corrected')
+    expect(started.importSource).toBe('tracelab-corrected')
+    expect(started.origin?.importSource).toBe('tracelab')
   })
 })
 

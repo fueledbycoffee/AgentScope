@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getImport, getRejectSummary, listImports, listRecords, listRejects } from '../api'
 import type { ImportReport, ImportSummary, ImportedFile, ImportReject, RawReference, RecordRow, RejectSummary } from '../api'
 import { DataTable, Icon, IconButton, Notice, Pagination, SourceRecordDialog, StateBlock, StatusPill } from '../components'
@@ -8,6 +8,23 @@ import { display, entityCounts, PAGE_SIZE } from '../format'
 import { useScope } from '../scope'
 import { useFileBar } from '../shellHooks'
 import { useResource } from '../useResource'
+import { ReuploadDialog, type ReuploadTarget } from '../assist/ReuploadDialog'
+
+/** What the assistant needs to correct one file's mapping: the file's own binding, not the echo. */
+function correctionTarget(report: ImportReport, file: ImportedFile): ReuploadTarget {
+  return {
+    importId: report.import_id,
+    importSource: report.source,
+    importStatus: report.status,
+    filename: file.filename,
+    sha256: file.sha256,
+    fileStatus: file.status,
+    fileDuplicateOf: file.duplicate_of ?? null,
+    mappingId: file.mapping?.id ?? null,
+    mappingName: file.mapping?.name ?? null,
+    mappingRevision: file.mapping?.revision ?? null,
+  }
+}
 
 const n = (value: number | null | undefined) => value == null ? 'Unavailable' : value.toLocaleString('en-US')
 
@@ -134,7 +151,7 @@ function Records({ id, files, summary }: { id: string; files: ImportedFile[]; su
   </section>
 }
 
-function Rejects({ id, files, summary, total, report }: { id: string; files: ImportedFile[]; summary: SummaryResource; total: number; report: ImportReport }) {
+function Rejects({ id, files, summary, total, report, onCorrect }: { id: string; files: ImportedFile[]; summary: SummaryResource; total: number; report: ImportReport; onCorrect: () => void }) {
   const [code, setCode] = useState('')
   const [rule, setRule] = useState('')
   const [file, setFile] = useState('')
@@ -162,7 +179,8 @@ function Rejects({ id, files, summary, total, report }: { id: string; files: Imp
       <option value="">All</option>{Object.entries(options).map(([k, v]) => <option key={k} value={k}>{k} ({n(v)})</option>)}
     </select></label>
   return <section className="panel" id="rejects" aria-label="Rejects">
-    <div className="panel-head"><h2>Rejects</h2><span className="count">{n(total)} reject row{total === 1 ? '' : 's'}, one per rule that refused a record ({n(report.records.rejected)} record{report.records.rejected === 1 ? '' : 's'} rejected outright)</span></div>
+    <div className="panel-head"><h2>Rejects</h2><span className="count">{n(total)} reject row{total === 1 ? '' : 's'}, one per rule that refused a record ({n(report.records.rejected)} record{report.records.rejected === 1 ? '' : 's'} rejected outright)</span>
+      <IconButton name="mappings" label="Correct the mapping with the assistant" className="btn small icon-only" onClick={onCorrect} /></div>
     <SummaryProblem summary={summary} />
     <div className="row" style={{ marginBottom: 12 }}>
       {select('Code', code, setCode, summary.data?.codes ?? {})}
@@ -183,7 +201,11 @@ function Rejects({ id, files, summary, total, report }: { id: string; files: Imp
 
 export function ReportPage() {
   const { id = '' } = useParams()
+  const navigate = useNavigate()
   const { link } = useScope()
+  // the file whose mapping is being corrected, and the picker when the panel covers several
+  const [correcting, setCorrecting] = useState<ReuploadTarget | null>(null)
+  const [picking, setPicking] = useState(false)
   const resource = useResource(useCallback(() => getImport(id), [id]))
   const summary = useResource(useCallback(() => getRejectSummary(id), [id]))
   const report = resource.data
@@ -203,6 +225,10 @@ export function ReportPage() {
     { key: 'mapping', header: 'Mapping', render: f => f.mapping ? `${f.mapping.name} · rev ${f.mapping.revision}` : '—' },
     { key: 'status', header: 'Status', render: f => <StatusPill status={f.status} /> },
     { key: 'outcome', header: 'Outcome', render: f => Object.entries(f.records).filter(([, v]) => v).map(([k, v]) => `${k} ${n(v)}`).join(', ') || <span className="muted">—</span> },
+    { key: 'correct', header: 'Mapping assistant', render: f => report === undefined ? null : (
+      <IconButton name="mappings" label={`Correct the mapping of ${f.filename} with the assistant`} className="btn small icon-only"
+        onClick={() => setCorrecting(correctionTarget(report, f))} />
+    ) },
   ]
   return <>
     <nav className="crumbs" aria-label="Breadcrumb"><Link to="/imports">Imports</Link><span>/</span><span className="mono">{id}</span></nav>
@@ -224,8 +250,30 @@ export function ReportPage() {
           <DataTable caption="Imported files" hideCaption columns={fileColumns} rows={report.files} rowKey={f => f.sha256} empty="No files." /></section>
         <div className="actions"><a className="btn small" href="#rejects"><Icon name="alert" />View rejects ({n(report.reject_count)})</a><a className="btn small" href="#records"><Icon name="sessions" />Browse records</a><Link className="btn small" to={link('/overview')}><Icon name="overview" />Open dashboard</Link><Link className="btn small" to="/imports"><Icon name="imports" />Imports history</Link></div>
         {report.status !== 'failed' && <Records key={`records-${id}`} id={id} files={report.files} summary={summary} />}
-        <Rejects key={`rejects-${id}`} id={id} files={report.files} summary={summary} total={report.reject_count} report={report} />
+        <Rejects key={`rejects-${id}`} id={id} files={report.files} summary={summary} total={report.reject_count} report={report}
+          onCorrect={() => { if (report.files.length === 1) setCorrecting(correctionTarget(report, report.files[0])); else setPicking(true) }} />
       </>}
     </StateBlock>
+    {picking && report && (
+      <div className="notice info" role="dialog" aria-label="Which file?">
+        <div>
+          <p className="title">Which file's mapping?</p>
+          <div className="actions">
+            {report.files.map(file => (
+              <button key={file.sha256} type="button" className="btn small"
+                onClick={() => { setPicking(false); setCorrecting(correctionTarget(report, file)) }}>{file.filename}</button>
+            ))}
+            <button type="button" className="btn small" onClick={() => setPicking(false)}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    )}
+    {correcting && (
+      <ReuploadDialog
+        target={correcting}
+        onClose={() => setCorrecting(null)}
+        onResolved={upload => navigate(`/import/assist/${encodeURIComponent(upload.upload_id)}`, { state: { upload, origin: correcting } })}
+      />
+    )}
   </>
 }

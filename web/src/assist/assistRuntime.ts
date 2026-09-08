@@ -34,6 +34,20 @@ export type Busy = 'none' | 'preparing' | 'awaiting_ack' | 'running' | 'validati
 
 export interface Notice { kind: 'info' | 'warn' | 'error'; text: string }
 
+/** Where the page was entered from, when that was an import report. */
+export interface AssistOrigin {
+  importId: string
+  importSource: string
+  importStatus: 'committed' | 'duplicate' | 'failed'
+  filename: string
+  sha256: string
+  fileStatus: string
+  fileDuplicateOf: string | null
+  mappingId: string | null
+  mappingName: string | null
+  mappingRevision: number | null
+}
+
 export interface AssistState {
   generation: number
   uploadId: string
@@ -65,6 +79,20 @@ export interface AssistState {
   busy: Busy
   notices: Notice[]
   omittedHistory: number
+  /**
+   * The report this correction started from. It is deliberately *not* a notice: `startPrepare`
+   * clears those, and the sentence about what that import did must not disappear when a message
+   * is sent.
+   */
+  origin: AssistOrigin | null
+  /** Loading the saved mapping is an asynchronous document replacement, so it has states. */
+  bootstrap: { phase: 'idle' | 'loading' | 'ready' | 'failed'; documentVersion: number; problem: string | null }
+  /**
+   * The source the import will be committed into. Without an origin this stays null and the
+   * mapping's own source is used, as before; entered from a report it defaults to that report's
+   * source, which is not necessarily the mapping's.
+   */
+  importSource: string | null
 }
 
 export function initialState(uploadId: string): AssistState {
@@ -89,7 +117,46 @@ export function initialState(uploadId: string): AssistState {
     busy: 'none',
     notices: [],
     omittedHistory: 0,
+    origin: null,
+    bootstrap: { phase: 'idle', documentVersion: 0, problem: null },
+    importSource: null,
   }
+}
+
+// --- entering from an import report ------------------------------------------------------------
+
+export function startBootstrap(state: AssistState, origin: AssistOrigin): AssistState {
+  return {
+    ...state,
+    origin,
+    importSource: origin.importSource,
+    bootstrap: { phase: origin.mappingId === null ? 'failed' : 'loading', documentVersion: state.documentVersion, problem: origin.mappingId === null ? 'That file has no mapping binding on this report, so there is nothing to reopen. Start from a proposal instead.' : null },
+  }
+}
+
+/**
+ * The saved document arrived. A load that lost a race — the user edited meanwhile, or the origin
+ * changed — is never applied silently; it is offered instead.
+ */
+export function bootstrapArrived(state: AssistState, importId: string, documentText: string, identity: { name: string; source: string }): AssistState {
+  if (state.origin?.importId !== importId || state.bootstrap.phase !== 'loading') return state
+  if (state.documentVersion !== state.bootstrap.documentVersion) {
+    return {
+      ...state,
+      bootstrap: { ...state.bootstrap, phase: 'failed', problem: 'You changed the document while the saved mapping was loading, so it was not replaced.' },
+    }
+  }
+  const next = editDocument(state, documentText, null, identity)
+  return { ...next, bootstrap: { phase: 'ready', documentVersion: next.documentVersion, problem: null } }
+}
+
+export function bootstrapFailed(state: AssistState, importId: string, problem: string): AssistState {
+  if (state.origin?.importId !== importId) return state
+  return { ...state, bootstrap: { ...state.bootstrap, phase: 'failed', problem } }
+}
+
+export function setImportSource(state: AssistState, source: string): AssistState {
+  return invalidate({ ...state, importSource: source })
 }
 
 // --- context mutations (each one invalidates prepared/ack/run) --------------------------------

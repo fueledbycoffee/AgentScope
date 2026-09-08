@@ -47,15 +47,25 @@ beforeEach(() => {
     if (path === '/assistant/prepare') return respond(prepared(body.include_sample ? 'sample-digest' : 'plain-digest', !!body.include_sample))
     if (path === '/assistant/run') return respond(outcome)
     if (path === '/mappings/validate') return respond({ issues: [], executable: true })
+    if (path === '/mappings/map_1') {
+      // the raw text matters: the saved document carries an integer the browser would round
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '{"id": "map_1", "name": "tracelab-v1", "source": "tracelab", "revision": 1, "created_by": "user", "input_format": "jsonl", "issues": [], "document": {"name": "tracelab-v1", "source": "tracelab", "big": 9007199254740993, "rules": []}}' } as unknown as Response
+    }
     throw new Error(`unexpected ${path}`)
   }))
 })
 afterEach(() => vi.unstubAllGlobals())
 
-function renderPage() {
+const ORIGIN = {
+  importId: 'imp_1', importSource: 'tracelab', importStatus: 'committed' as const,
+  filename: 'epoch.jsonl', sha256: 'a'.repeat(64), fileStatus: 'committed', fileDuplicateOf: null,
+  mappingId: 'map_1', mappingName: 'tracelab-v1', mappingRevision: 1,
+}
+
+function renderPage(origin?: typeof ORIGIN) {
   return render(
     <ShellProvider>
-      <MemoryRouter initialEntries={[{ pathname: '/import/assist/upl_1', state: { upload: { upload_id: 'upl_1', filename: 'epoch.jsonl', sha256: 'a'.repeat(64), size_bytes: 10, format: 'jsonl', record_count: 30, preview: [], already_imported: [] } } }]}>
+      <MemoryRouter initialEntries={[{ pathname: '/import/assist/upl_1', state: { origin, upload: { upload_id: 'upl_1', filename: 'epoch.jsonl', sha256: 'a'.repeat(64), size_bytes: 10, format: 'jsonl', record_count: 30, preview: [], already_imported: [] } } }]}>
         <Routes><Route path="/import/assist/:uploadId" element={<AssistPage />} /></Routes>
       </MemoryRouter>
     </ShellProvider>,
@@ -161,6 +171,30 @@ describe('Assist page', () => {
     await screen.findByRole('region', { name: 'Ambiguities' })
     expect(screen.getByRole('region', { name: 'Ambiguities' })).toHaveTextContent('model_call.started_at')
     expect(screen.getByRole('button', { name: 'ask the assistant about it' })).toBeInTheDocument()
+  })
+
+  it('reopens a report’s own revision, with its numbers and its import source intact', async () => {
+    renderPage(ORIGIN)
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    await waitFor(() => expect(screen.getByLabelText('Mapping name in the document')).toHaveValue('tracelab-v1'))
+    // the document came from the response text, so the large integer survived
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
+    expect((screen.getByLabelText('Mapping document (JSON)') as HTMLTextAreaElement).value).toContain('9007199254740993')
+    // the import's source, which is not necessarily the mapping's, is what an import would use
+    expect(screen.getByLabelText('Import source')).toHaveValue('tracelab')
+    expect(screen.getByText(/Re-importing them into “tracelab” inserts nothing/)).toBeInTheDocument()
+    // and it survives sending a message, unlike a notice
+    fireEvent.change(screen.getByLabelText('Message to the assistant'), { target: { value: 'help' } })
+    fireEvent.keyDown(screen.getByLabelText('Message to the assistant'), { key: 'Enter', code: 'Enter' })
+    await waitFor(() => expect(calls.some(c => c.path === '/assistant/run')).toBe(true))
+    expect(screen.getByText(/Re-importing them into “tracelab” inserts nothing/)).toBeInTheDocument()
+  })
+
+  it('warns when the import source is changed away from the report’s', async () => {
+    renderPage(ORIGIN)
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    fireEvent.change(screen.getByLabelText('Import source'), { target: { value: 'elsewhere' } })
+    expect(screen.getByText(/not the “tracelab” this report used/)).toBeInTheDocument()
   })
 
   it('keeps the JSON view when the document cannot be shown as rows, and says why', async () => {
