@@ -163,6 +163,36 @@ def test_returned_tool_scope_preserves_exact_label_whitespace(client):
     assert [session["external_id"] for session in sessions.json()] == ["claude:padded-tool"]
 
 
+def test_returned_empty_tool_scope_replays_only_its_own_population(client):
+    container = client.app.state.container
+    mapping_id = container.list_mappings.execute()[0].id
+    records = []
+    for session_id, tool_name in [("empty-tool", ""), ("named-tool", "Read")]:
+        record = json.loads(_tracelab_line(session_id))
+        record["tools"] = [{"tool_name": tool_name}]
+        records.append(json.dumps(record) + "\n")
+    info = container.store_upload.execute("empty-tool.jsonl", "".join(records).encode())
+    report = container.commit_import.execute("tracelab", [FileBinding(info.upload_id, mapping_id)])
+    assert report.status == "committed"
+
+    grouped = client.get(
+        "/api/metrics/query",
+        params={"metric_id": "tool_calls", "group_by": "tool_name"},
+    )
+    assert grouped.status_code == 200, grouped.text
+    bucket = next(item for item in grouped.json()["buckets"] if item["keys"] == [""])
+    assert bucket["result"]["value_text"] == "1"
+    scope = {key: value for key, value in bucket["drill_scope"].items() if value is not None}
+    assert scope["tool"] == ""
+
+    replay = client.get("/api/metrics/query", params={**scope, "metric_id": "tool_calls"})
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["overall"]["value_text"] == "1"
+    sessions = client.get("/api/sessions", params=scope)
+    assert sessions.status_code == 200, sessions.text
+    assert [session["external_id"] for session in sessions.json()] == ["claude:empty-tool"]
+
+
 @pytest.mark.parametrize(
     "params",
     [

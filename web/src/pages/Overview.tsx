@@ -60,8 +60,11 @@ export default function OverviewPage() {
     const destination = { ...scope, drill }
     navigate({ pathname: '/sessions', search: scopeSearch(destination) })
   }
-  const activateToken = (_row: TokenRow, measure: TokenMeasure) => {
-    if (measure.drill) activateDrill(measure.drill)
+  const activateToken = (row: TokenRow, measure: TokenMeasure) => {
+    if (!measure.drill) return
+    const destination = { ...scope, drill: measure.drill }
+    if (row.model) destination.model = row.model
+    navigate({ pathname: '/sessions', search: scopeSearch(destination) })
   }
 
   const unknownQuality = (() => {

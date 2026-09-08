@@ -90,8 +90,8 @@ def _public_scope(request: Request, *extra: str) -> TraceScope:
 
     values: dict[str, Any] = {}
     for name in _SCOPE_TEXT:
-        text_value = request.query_params.get(name, "")
-        if text_value:
+        text_value = request.query_params.get(name)
+        if text_value is not None:
             values[name] = text_value
     for name in _SCOPE_DATES:
         date_text = request.query_params.get(name)

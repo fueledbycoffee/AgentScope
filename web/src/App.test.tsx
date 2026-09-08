@@ -551,6 +551,27 @@ describe('Dashboard', () => {
     })).toBe(true))
   })
 
+  it('keeps the drilled model visible when an accounting drill is followed by a tool drill', async () => {
+    start('/overview')
+    const tokens = await screen.findByRole('region', { name: 'Tokens by model' })
+
+    fireEvent.click(within(tokens).getByRole('button', { name: /claude.*input/i }))
+    await screen.findByRole('heading', { name: 'Sessions' })
+    fireEvent.click(screen.getByRole('link', { name: 'Overview' }))
+    const tools = await screen.findByRole('region', { name: 'Tool calls' })
+    fireEvent.click(within(tools).getByRole('button', { name: /^Agent:/ }))
+
+    await screen.findByRole('heading', { name: 'Sessions' })
+    expect(screen.getByLabelText('Model')).toHaveValue('claude')
+    expect(screen.getByText('tool Agent')).toBeInTheDocument()
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/sessions'
+        && url.searchParams.get('model') === 'claude'
+        && url.searchParams.get('tool') === 'Agent'
+    })).toBe(true))
+  })
+
   it('round-trips an exact padded model selected from the facet', async () => {
     const paddedModel = ' padded-model '
     fetchMock.mockImplementation((input, options) => {
@@ -737,6 +758,40 @@ describe('Scope in the shell', () => {
     expect(screen.getByLabelText('Period (UTC)')).toHaveValue('')
     expect(screen.queryByRole('button', { name: 'Clear all' })).not.toBeInTheDocument()
     await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => String(value) === '/api/metrics/summary')).toBe(true))
+  })
+
+  it('loads every session-detail facet and allows cleared values to be selected again', async () => {
+    const facets = {
+      sources: ['tracelab', 'other-source'],
+      agents: ['claude-code', 'codex'],
+      models: ['claude', 'gpt-5'],
+    }
+    fetchMock.mockImplementation((input, options) => {
+      const url = new URL(String(input), 'http://localhost')
+      if (url.pathname === '/api/metrics/facets') return Promise.resolve(json(facets))
+      return defaultResponse(input, options)
+    })
+    start('/sessions/ses_1?source=tracelab&agent=claude-code&model=claude')
+    await screen.findByRole('heading', { name: 'Session detail' })
+
+    for (const [label, values] of [
+      ['Source', facets.sources], ['Agent', facets.agents], ['Model', facets.models],
+    ] as const) {
+      const select = screen.getByLabelText(label)
+      await waitFor(() => {
+        for (const value of values) expect(within(select).getByRole('option', { name: value })).toBeInTheDocument()
+      })
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
+    await waitFor(() => expect(screen.getByLabelText('Model')).toHaveValue(''))
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'tracelab' } })
+    fireEvent.change(screen.getByLabelText('Agent'), { target: { value: 'claude-code' } })
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'claude' } })
+
+    expect(screen.getByLabelText('Source')).toHaveValue('tracelab')
+    expect(screen.getByLabelText('Agent')).toHaveValue('claude-code')
+    expect(screen.getByLabelText('Model')).toHaveValue('claude')
   })
 })
 
