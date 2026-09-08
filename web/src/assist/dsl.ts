@@ -36,11 +36,13 @@ export function referrers(index: DocIndex, ruleId: string | null): RuleView[] {
 }
 
 /**
- * The rules the parser accepts as a parent: only a `tool_call` may declare one, and it must be a
- * `model_call` rule whose `select` is exactly `$`, declared before the rule that uses it
- * (`domain/mapping/parser.py:304-333`).
+ * The rules the parser accepts as a parent of *this* rule: only a `tool_call` may declare one, and
+ * it must be a `model_call` rule whose `select` is exactly `$`, declared before the rule that uses
+ * it (`domain/mapping/parser.py:304-333`). A rule of any other entity is offered nothing, rather
+ * than a pairing the parser answers with `parent_not_allowed`.
  */
 export function parentChoices(index: DocIndex, rule: RuleView): RuleView[] {
+  if (asString(rule.entity) !== 'tool_call') return []
   return index.rules.filter(
     other =>
       other.index < rule.index &&

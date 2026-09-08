@@ -155,6 +155,14 @@ describe('the indexed view', () => {
     expect(index.malformed).toEqual([])
   })
 
+  it('reports very deep nesting as a repair, not as a crash', () => {
+    const deep = `{"extra":${'['.repeat(4000)}0${']'.repeat(4000)}}`
+    expect(() => JSON.parse(deep)).not.toThrow() // the browser itself accepts it
+    const index = indexDocument(deep)
+    expect(index.ok).toBe(false)
+    expect(index.problem).toMatch(/nested|deep/i)
+  })
+
   it('says why a document cannot be shown as rows at all', () => {
     expect(indexDocument('').problem).toMatch(/empty/)
     expect(indexDocument('[1]').problem).toMatch(/must be a JSON object/)

@@ -187,6 +187,17 @@ describe('prepare, acknowledge, run', () => {
   })
 })
 
+describe('a document the indexer cannot walk', () => {
+  it('lands in repair mode instead of throwing out of the state update', () => {
+    const deep = `{"extra":${'['.repeat(4000)}0${']'.repeat(4000)}}`
+    const state = setIdentity(initialState('upl_1'), { name: 'a', source: 'b' })
+    expect(() => setDocumentText(state, deep)).not.toThrow()
+    const next = setDocumentText(state, deep)
+    expect(next.documentText).toBe(deep) // the draft is still there to repair
+    expect(next.identity).toEqual({ name: 'a', source: 'b' })
+  })
+})
+
 describe('table edits', () => {
   const DOC = '{\n  "name": "assisted",\n  "source": "tracelab",\n  "big": 9007199254740993,\n  "rules": [{"id": "r", "fields": {"x": {"path": "$.a", "timestamp_format": "epoch_ms"}}}]\n}'
 

@@ -136,8 +136,18 @@ export function decodeJsonString(raw: string): string {
   return JSON.parse(raw) as string
 }
 
+/**
+ * How deep a document may nest before it is a repair rather than a table.
+ *
+ * The recursive descent below would otherwise overflow the stack on input the browser's own
+ * JSON.parse accepts, and that RangeError would escape a state update and take the draft with it.
+ * 512 is far past anything the DSL produces (a rule's deepest option is four levels).
+ */
+export const MAX_DEPTH = 512
+
 interface Cursor {
   at: number
+  depth: number
 }
 
 function parseValue(text: string, lexemes: Lexeme[], cursor: Cursor): JsonNode | Failure {
@@ -148,8 +158,15 @@ function parseValue(text: string, lexemes: Lexeme[], cursor: Cursor): JsonNode |
     const kind = lexeme.kind === 'string' ? 'string' : lexeme.kind === 'number' ? 'number' : 'literal'
     return { kind, start: lexeme.start, end: lexeme.end }
   }
-  if (lexeme.text === '{') return parseObject(text, lexemes, cursor)
-  if (lexeme.text === '[') return parseArray(text, lexemes, cursor)
+  if (lexeme.text === '{' || lexeme.text === '[') {
+    if (cursor.depth >= MAX_DEPTH) {
+      return { problem: `values are nested more than ${MAX_DEPTH} deep here`, offset: lexeme.start }
+    }
+    cursor.depth += 1
+    const node = lexeme.text === '{' ? parseObject(text, lexemes, cursor) : parseArray(text, lexemes, cursor)
+    cursor.depth -= 1
+    return node
+  }
   return { problem: `${lexeme.text} cannot start a value`, offset: lexeme.start }
 }
 
@@ -249,7 +266,7 @@ export function parseJson(text: string): { root: JsonNode } | Failure {
   const scanned = scan(text)
   if ('problem' in scanned) return scanned
   if (scanned.lexemes.length === 0) return { problem: 'There is no JSON value here', offset: 0 }
-  const cursor: Cursor = { at: 0 }
+  const cursor: Cursor = { at: 0, depth: 0 }
   const root = parseValue(text, scanned.lexemes, cursor)
   if ('problem' in root) return root
   const extra = scanned.lexemes[cursor.at]
