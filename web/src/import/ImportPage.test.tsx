@@ -106,7 +106,8 @@ describe('guided import route', () => {
     fetchMock.mockResolvedValueOnce(json({ error: { code: 'payload_too_large', message: 'too large', details: [] } }, 413))
     fireEvent.change(screen.getByLabelText('Add another trace file'), { target: { files: [new File(['too much'], 'large.jsonl')] } })
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('large.jsonl: This file is over the 25 MiB upload limit')
+    expect(alert).toHaveTextContent('large.jsonl: too large')
+    expect(alert).toHaveTextContent('25 MiB')
     expect(alert).toHaveFocus()
     const uploaded = screen.getByRole('heading', { name: 'Uploaded file' }).closest('section')!
     expect(within(uploaded).getByText('sample.jsonl.gz')).toBeInTheDocument()

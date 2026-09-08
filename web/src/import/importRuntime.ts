@@ -17,6 +17,16 @@ export interface ImportState {
   entries: ImportEntry[]
 }
 
+export interface PreviewSource {
+  filename: string
+  sha256: string
+}
+
+export interface AggregatedPreview extends Omit<ImportPreview, 'rejects' | 'emissions'> {
+  rejects: (ImportPreview['rejects'][number] & { source: PreviewSource })[]
+  emissions: (ImportPreview['emissions'][number] & { source: PreviewSource })[]
+}
+
 export type ImportAction =
   | { type: 'add'; entries: ImportEntry[] }
   | { type: 'remove'; uploadId: string }
@@ -164,8 +174,8 @@ export function totalRecords(entries: ImportEntry[]): number {
   return entries.reduce((total, entry) => total + entry.upload.record_count, 0)
 }
 
-export function aggregatePreview(entries: ImportEntry[]): ImportPreview {
-  const aggregate: ImportPreview = {
+export function aggregatePreview(entries: ImportEntry[]): AggregatedPreview {
+  const aggregate: AggregatedPreview = {
     records: { accepted: 0, partial: 0, rejected: 0, ignored: 0, sampled: 0 },
     entities: {},
     rejects: [],
@@ -175,14 +185,17 @@ export function aggregatePreview(entries: ImportEntry[]): ImportPreview {
   for (const entry of entries) {
     if (!entry.preview) continue
     const preview = entry.preview.value
+    const source = { filename: entry.upload.filename, sha256: entry.upload.sha256 }
     for (const key of ['accepted', 'partial', 'rejected', 'ignored', 'sampled'] as const) aggregate.records[key] += preview.records[key] ?? 0
     for (const [key, count] of Object.entries(preview.entities)) {
       const entity = key as keyof typeof aggregate.entities
       aggregate.entities[entity] = (aggregate.entities[entity] ?? 0) + (count ?? 0)
     }
     for (const [key, count] of Object.entries(preview.warnings)) aggregate.warnings[key] = (aggregate.warnings[key] ?? 0) + count
-    aggregate.rejects.push(...preview.rejects)
-    if (aggregate.emissions.length < 5) aggregate.emissions.push(...preview.emissions.slice(0, 5 - aggregate.emissions.length))
+    aggregate.rejects.push(...preview.rejects.map(row => ({ ...row, source })))
+    if (aggregate.emissions.length < 5) {
+      aggregate.emissions.push(...preview.emissions.slice(0, 5 - aggregate.emissions.length).map(row => ({ ...row, source })))
+    }
   }
   return aggregate
 }

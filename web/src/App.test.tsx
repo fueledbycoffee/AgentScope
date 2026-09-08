@@ -179,6 +179,32 @@ describe('Import flow', () => {
     await screen.findByRole('button', { name: 'Looks right, continue' })
   })
 
+  it.each([400, 409, 413, 500])('preserves the server error message for HTTP %i', async status => {
+    fetchMock.mockImplementation((url, options) => url === '/api/uploads'
+      ? Promise.resolve(json({ error: { code: 'limit_exceeded', message: `Server guidance for ${status}`, details: [] } }, status))
+      : defaultResponse(url, options))
+    start()
+
+    fireEvent.change(await screen.findByLabelText('Trace file'), { target: { files: [new File(['{}'], 'too-many-records.jsonl')] } })
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(`Server guidance for ${status}`)
+    expect(alert).not.toHaveTextContent('25 MiB')
+  })
+
+  it('adds upload-size guidance without replacing the message for an explicit upload-byte error code', async () => {
+    fetchMock.mockImplementation((url, options) => url === '/api/uploads'
+      ? Promise.resolve(json({ error: { code: 'payload_too_large', message: 'The server refused these upload bytes', details: [] } }, 413))
+      : defaultResponse(url, options))
+    start()
+
+    fireEvent.change(await screen.findByLabelText('Trace file'), { target: { files: [new File(['{}'], 'large.jsonl')] } })
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('The server refused these upload bytes')
+    expect(alert).toHaveTextContent('25 MiB')
+  })
+
   it('blocks repeated commits while importing and surfaces conflicts without claiming success', async () => {
     start()
     await makeConfirmation()
@@ -194,6 +220,20 @@ describe('Import flow', () => {
     await act(async () => finish(json({ error: { code: 'import_conflict', message: 'Another import committed these bytes', details: [] } }, 409)))
     expect(await screen.findByRole('alert')).toHaveTextContent('import_conflict')
     expect(screen.queryByRole('heading', { name: 'Import report' })).not.toBeInTheDocument()
+  })
+
+  it('keeps aggregate-limit guidance from a 413 commit response', async () => {
+    start()
+    await makeConfirmation()
+    fetchMock.mockResolvedValueOnce(json({
+      error: { code: 'limit_exceeded', message: 'The batch has 120000 records to read; the limit is 100000', details: [] },
+    }, 413))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import 3 records' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('The batch has 120000 records to read; the limit is 100000')
+    expect(alert).not.toHaveTextContent('25 MiB')
   })
 
   it('imports several files as one batch, each with its own mapping, and refuses the same bytes twice', async () => {
@@ -224,6 +264,43 @@ describe('Import flow', () => {
       body: JSON.stringify({ source: 'tracelab', files: [{ upload_id: 'upl_1', mapping_id: 'map_1' }, { upload_id: 'upl_2', mapping_id: 'map_2' }] }),
     }))
     expect(screen.getByRole('table', { name: 'Imported files' })).toHaveTextContent('tracelab-v1 · rev 1')
+  })
+
+  it('attributes every aggregated reject and emission row to its batch file', async () => {
+    const firstUpload = { ...upload, filename: 'first.jsonl', sha256: 'a'.repeat(64) }
+    const secondUpload = { ...upload, upload_id: 'upl_2', filename: 'second.jsonl', sha256: 'b'.repeat(64) }
+    sessionStorage.setItem('agentscope-import-page', serializeImportState({ entries: [
+      { upload: firstUpload, mappingId: 'map_1', preview: null },
+      { upload: secondUpload, mappingId: 'map_2', preview: null },
+    ] }))
+    fetchMock.mockImplementation((url, options) => {
+      if (url !== '/api/imports/preview') return defaultResponse(url, options)
+      const request = JSON.parse(String(options?.body)) as { upload_id: string }
+      const isFirst = request.upload_id === firstUpload.upload_id
+      const source = isFirst ? firstUpload : secondUpload
+      return Promise.resolve(json({
+        ...preview,
+        rejects: [{ ...reject, locator: isFirst ? 'line:11' : 'line:22', file_sha256: source.sha256 }],
+        emissions: [{ ...preview.emissions[0], locator: isFirst ? 'line:10' : 'line:20' }],
+      }))
+    })
+
+    start('/import?step=2')
+    fireEvent.click(await screen.findByRole('button', { name: 'Run a dry run' }))
+    await screen.findByRole('heading', { name: 'Dry run on up to 200 records per file' })
+    await screen.findByText('line:22')
+
+    for (const [caption, locators] of [
+      ['Rejects sample', ['line:11', 'line:22']],
+      ['Emissions sample', ['line:10', 'line:20']],
+    ] as const) {
+      const table = screen.getByRole('table', { name: caption })
+      for (const [index, row] of within(table).getAllByRole('row').slice(1).entries()) {
+        expect(row).toHaveTextContent(index === 0 ? 'first.jsonl' : 'second.jsonl')
+        expect(row).toHaveTextContent(index === 0 ? 'aaaaaaaaaaaa…' : 'bbbbbbbbbbbb…')
+      }
+      expect(within(table).getAllByRole('row')).toHaveLength(locators.length + 1)
+    }
   })
 
   it('shows a decoded-sample disclosure and decode errors for every file in a batch', async () => {
@@ -274,6 +351,45 @@ describe('Import flow', () => {
     await screen.findByRole('heading', { name: 'Dry run on up to 200 records per file' })
     expect(screen.getByText('Reject details are unavailable after this reload.')).toBeInTheDocument()
     expect(screen.queryByText('No rejects in this sample.')).not.toBeInTheDocument()
+  })
+
+  it('lets a reloaded reachable Preview stop run its missing dry run', async () => {
+    sessionStorage.setItem('agentscope-import-page', serializeImportState({ entries: [{
+      upload,
+      mappingId: 'map_1',
+      preview: null,
+    }] }))
+
+    start('/import?step=3')
+
+    await screen.findByRole('heading', { name: 'Dry run on up to 200 records per file' })
+    const run = screen.getByRole('button', { name: 'Run the dry run' })
+    expect(run).toBeEnabled()
+    fireEvent.click(run)
+    expect(await screen.findByRole('button', { name: 'Looks right, continue' })).toBeEnabled()
+  })
+
+  it('shows one persistence warning at every import stop when session storage fills up', async () => {
+    sessionStorage.setItem('agentscope-import-page', serializeImportState({ entries: [{
+      upload,
+      mappingId: 'map_1',
+      preview: { value: preview, detailsAvailable: true },
+    }] }))
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Quota exceeded', 'QuotaExceededError') })
+
+    start('/import?step=4')
+
+    const warning = 'This import will not survive a reload.'
+    await waitFor(() => expect(screen.getAllByText(warning)).toHaveLength(1))
+    for (const [stop, heading] of [
+      ['Preview', 'Dry run on up to 200 records per file'],
+      ['Mapping', 'Choose how to read it'],
+      ['File', 'Import a trace file'],
+    ] as const) {
+      fireEvent.click(screen.getByRole('button', { name: stop }))
+      await screen.findByRole('heading', { name: heading })
+      expect(screen.getAllByText(warning)).toHaveLength(1)
+    }
   })
 
   it('does not redirect away from a new page when an earlier import finishes', async () => {

@@ -42,8 +42,11 @@ async function uploadFixtureAndPreview(page: Page, screenshots = false) {
   await expect(page.getByRole('radio', { name: /tracelab-v1.*revision 1/ })).toBeChecked()
   await expect(page.getByText(/Neither fits\?/)).toContainText('Set up a new mapping with the assistant')
   if (screenshots) await page.screenshot({ path: `${SHOTS}/2-mapping.png`, fullPage: true })
-  await page.getByRole('button', { name: 'Run a dry run' }).click()
+  await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem('agentscope-import-page') ?? '{}').entries?.[0]?.mappingId)).toBeTruthy()
+  await page.goto('/import?step=3') // an interrupted dry run restores here without preview results
   await expect(page.getByRole('heading', { name: 'Dry run on up to 200 records per file' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Run the dry run' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Run the dry run' }).click()
   await expect(page.getByText('Ignored').locator('..')).toContainText('0')
   await expect(page.getByText('No rejects in this sample.')).toBeVisible()
   if (screenshots) await page.screenshot({ path: `${SHOTS}/3-preview.png`, fullPage: true })
