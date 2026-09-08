@@ -301,7 +301,7 @@ class FakeTraces:
         return TraceStoreResult(counts, tuple(diagnostics))
 
     def list_sessions(
-        self, *, source: str | None, agent: str | None, limit: int, offset: int
+        self, *, scope: TraceScope, limit: int, offset: int
     ) -> Sequence[SessionSummary]:
         return []
 

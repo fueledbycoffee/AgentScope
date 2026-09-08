@@ -421,9 +421,10 @@ def test_session_metrics_match_summary_definition_and_partitions(database):
         statements.append(statement)
 
     event.listen(engine, "before_cursor_execute", record)
-    rows = ListSessions(factory).execute(source=None, agent=None)
+    rows = ListSessions(factory).execute(scope=TraceScope())
     event.remove(engine, "before_cursor_execute", record)
-    assert len(statements) == 4  # session page plus three grouped metrics, independent of page size
+    # Scoped ID selection, hydration, then three grouped metrics; independent of page size.
+    assert len(statements) == 5
     # Fixture deliberately leaves cached counts at zero; repository uses actual scoped definitions.
     assert sum(r.model_call_count for r in rows) == 6
     assert sum(r.tool_call_count for r in rows) == 3

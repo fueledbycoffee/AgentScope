@@ -106,10 +106,35 @@ def test_metrics_http_metadata_coverage_and_exact_text(client):
     assert counts["overall"]["value_text"] == "0"
     assert counts["overall"]["coverage"] == {"known": 0, "total": 0}
     # Raw provenance stays raw while the metric normalizes the tag to unknown.
-    sessions = container.list_sessions.execute(source=None, agent=None)
+    sessions = container.list_sessions.execute(scope=TraceScope())
     assert any(
         container.get_session.execute(s.id).model_calls[0].token_semantics is None for s in sessions
     )
+
+
+def test_summary_facets_and_sessions_share_the_public_scope(client):
+    ingest(client)
+    facets = client.get("/api/metrics/facets")
+    assert facets.status_code == 200, facets.text
+    assert facets.json()["sources"] == ["tracelab"]
+    assert facets.json()["agents"]
+    assert all(value is not None for value in facets.json()["models"])
+
+    grouped = client.get(
+        "/api/metrics/query", params={"metric_id": "model_calls", "group_by": "model"}
+    ).json()
+    scope = {
+        key: value
+        for key, value in grouped["buckets"][0]["drill_scope"].items()
+        if key != "session_ids" and value is not None
+    }
+    for path in ("/api/metrics/summary", "/api/metrics/facets", "/api/sessions"):
+        response = client.get(path, params=scope)
+        assert response.status_code == 200, response.text
+
+    for path in ("/api/metrics/summary", "/api/metrics/facets", "/api/sessions"):
+        assert client.get(path, params={"session_ids": "private"}).status_code == 400
+        assert client.get(path, params=[("source", "one"), ("source", "two")]).status_code == 400
 
 
 @pytest.mark.parametrize(
