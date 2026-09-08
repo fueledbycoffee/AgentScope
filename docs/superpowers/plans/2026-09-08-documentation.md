@@ -401,3 +401,119 @@ Provider calls, dataset downloads, unseen-file rehearsal, release-note
 finalisation, tagging, publishing, and application fixes are excluded. Any
 failure found by the clean-clone rehearsal is reported to the owning issue or
 coordinator; fixing code or CI requires an explicit scope decision.
+
+## Revision after review
+
+The implementation facts are frozen at commit
+`2a351e90bd67dc7fd51aa5a16b8cf27cbddb0dc2`, committed at
+2026-09-08T10:14:25+02:00. Documentation and the clean-clone record will name
+that freeze and will not present behavior from later or unmerged work as fact;
+anything merged after it is a follow-up rather than a Phase 2 rewrite.
+
+### P1 findings
+
+1. **P1-1 accepted — clean clone, `.env`, and the offline assistant.** The
+   README will copy `.env.example` to `backend/.env`, tell the reader to leave
+   the key empty, and make `AGENTSCOPE_LLM_PROVIDER=fake` the deterministic
+   clean-clone default already used by the e2e harness. The quickstart and
+   rehearsal will exercise the fake-assisted analyse/review/save path as well
+   as the bundled TraceLab import path. `AGENTSCOPE_LLM_PROVIDER=none` remains
+   the explicit no-assistant variant. `.env.example` joins the write surface
+   and will warn that its real `openai_compatible` model plus an empty key can
+   start successfully but fail with provider authentication on first use, and
+   will point at `fake` for offline use.
+2. **P1-2 accepted — release content rather than empty headings.** The draft
+   release note will fill Supported inputs and main path and Known limits now,
+   using only merged code and linked evidence. Known limits will include the
+   source/mapping coverage constraints, hard upload/record/context limits,
+   hosted-model variability and reasoning-model budget guidance, v0.1 scope
+   exclusions, and the currently unused `sources` table. `TODO(coordinator)`
+   is restricted to tag, release date, tested commit, highlights, and final
+   verification links.
+
+### P2 findings
+
+1. **P2-1 accepted — model verification must exercise the assistant.** Health
+   will be labelled only as application liveness, never evidence that a model
+   switch worked. The numbered procedure will verify the assistant with the
+   exact existing command
+   `uv --directory backend run python ../scripts/llm_smoke.py`. It will require
+   reasoning models to use at least 32,768 reply tokens and a timeout measured
+   in minutes, and explain `json_mode_off_after_rejection` for endpoints that
+   reject structured-output mode.
+2. **P2-2 accepted — one metric-definition source.**
+   `queries.DEFINITIONS` will be named as the canonical source, its four
+   current strings will be reproduced verbatim in the metric reference, and
+   `/definitions` will be linked as the runtime view of those API strings.
+   `docs/api/v0.1.md` joins the write surface so its stale examples are
+   corrected in this change rather than left as an undeclared defect.
+3. **P2-3 accepted — separate README-server and Playwright evidence.** The
+   rehearsal record will distinguish (a) the documented server on port 8000,
+   manually walked through the browser with totals read from that server's own
+   `/api/metrics/summary` and its created `backend/data` paths recorded, from
+   (b) Playwright regression evidence. It will say explicitly that Playwright
+   uses a separate throwaway backend and does not test the README server.
+4. **P2-4 accepted — exact browser setup and ordering.** README,
+   CONTRIBUTING, and the rehearsal will name CI's
+   `pnpm exec playwright install --with-deps chromium-headless-shell` command.
+   They will state that backend `uv sync` must precede e2e startup and that
+   `pnpm --dir web e2e` rebuilds `web/dist` before running Playwright.
+5. **P2-5 accepted — CI commands verbatim.** CONTRIBUTING will mirror
+   `.github/workflows/ci.yml` and require both files to change together. The
+   backend checks are corrected to:
+
+   ```sh
+   uv --directory backend run ruff check . ../scripts
+   uv --directory backend run ruff format --check . ../scripts
+   uv --directory backend run mypy
+   uv --directory backend run lint-imports
+   uv --directory backend run pytest -q
+   uv --directory backend run python -m unittest discover -s ../scripts -p 'test_*.py'
+   ```
+
+   The web checks remain `pnpm --dir web lint`, `pnpm --dir web typecheck`,
+   `pnpm --dir web test`, `pnpm --dir web build`, and
+   `pnpm --dir web e2e`, matching the checked-in workflow and package scripts.
+6. **P2-6 accepted — bounded freeze and critical path.** Work starts from the
+   freeze named above instead of waiting for #10, #11, #17, #33, #39, #45, or
+   #47. CONTRIBUTING, the ERD, mapping and dataset inventories, and the model
+   procedure can be written immediately because their evidence is present at
+   the freeze. Only the metric page, removal of architecture progress wording,
+   and release draft require a final check against that frozen surface. The
+   verification record will name the freeze and tested documentation commit;
+   later merges are follow-ups. The estimate no longer depends on concurrent
+   work landing, and allows the cold clone installs, build, browser setup, and
+   separate repository/clone checks to take the time they actually require.
+
+### P3 findings
+
+1. **P3-1 accepted — bounded and checkable ERD.** The table set will be checked
+   against `EXPECTED_TABLES` in
+   `backend/tests/infrastructure/test_database.py`. Entities will show only
+   primary keys, real foreign keys, and idempotency-carrying unique constraints
+   (including the committed-import partial index); other constraints will be
+   prose. The diagram and release limits will say that `sources` exists but no
+   repository currently reads or writes it, and no false relationships will
+   be drawn from logical `source` strings.
+2. **P3-2 accepted — repair the reachable web guide.** `web/README.md` joins
+   the write surface and will describe the current `/overview` route and API
+   contract without day-one or historical-PR narration.
+3. **P3-3 accepted — correct the SWE-chat inventory.** The inventory will say
+   two Parquet tables and three reviewed documents, naming A-sessions-3,
+   B-conversations-5 (NVIDIA configuration), and A-conversations-6
+   (dots-studio configuration), together with each expected-result fixture.
+4. **P3-4 accepted — drift list, clone pin, and tool pins.** The drift list
+   includes #11 and #47. The clone command is pinned to
+   `git clone --no-local --branch docs/18-documentation`, and the record will
+   capture the resolved SHA. README and CONTRIBUTING will state uv 0.11.15,
+   Node.js 24, and pnpm 10.28.1 before the locked install commands.
+
+### Revised write surface and commit sequence
+
+In addition to the original Phase 2 list, implementation may change
+`.env.example`, `docs/api/v0.1.md`, and `web/README.md` for the accepted review
+findings. ADR-006 remains read-only. Reader-facing documentation will be split
+into small topical commits. After those commits, the pinned branch will be
+cloned with `--no-local`, the README server will be tested independently from
+Playwright, and the verification record will be committed last so it can name
+the exact documentation commit it proves.
