@@ -309,19 +309,24 @@ wrong for `period`. Copied from `11:269-276` and adopted:
 - `period` therefore becomes active when #11's client date-bound resolution and
   the receiving endpoints exist — not when a router accepts a `period`
   parameter, which it never will.
-- **One integration order, coordinator-owned: #46 lands first**, because its
-  shared-surface work (the number migration in `primitives.tsx`,
-  `charts.tsx`, `bars.tsx`, and the `scope.ts` helpers) is mechanical and #11
-  rebases onto it once. Checkpoint: **2026-09-09T18:00Z**, #46's shared-surface
-  commit on the branch, after which #11 rebases. If the coordinator inverts the
-  order, #11 must initialise **all four** labels and the period formatter
-  itself, since #46 ships only Source and Agent; the Revision 2 claim that
-  either order needs no adaptation is withdrawn.
+- **One integration order, coordinator-owned: the two issues run in parallel,
+  and #46 rebases after #11 merges.** #11 owns `web/src/scope.ts`
+  (`SCOPE_KEYS` with `model` and `period`, `SCOPE_PARAMS` with `drill`,
+  `setDrill`), `web/src/components/{primitives,charts,bars}.tsx`,
+  `web/src/shellContext.tsx` and `web/src/pages/Overview.tsx`. #46 compiles
+  against **main's** `scope.ts` until then, adds nothing to it, and composes
+  `useScope()` from a module of its own. **#46's locale migration of
+  `primitives.tsx`, `charts.tsx` and `bars.tsx`, and its consumption of the
+  `ScopeChip` tooltip upgrade, happen in that rebase**, not in its main pass.
+  Because #46 ships only the Source and Agent labels, #11 initialises all four
+  labels and the period formatter itself; the Revision 2 claim that either
+  order needs no adaptation is withdrawn.
 - **Shared-file ownership corrected.** Revision 2 said "#11 does not touch
   `bars.tsx`". It does: `11:503-504` replaces `ScopeBar`'s filter controls and
-  receipt. #46's edits there are confined to `ScopeReceipt`'s two number sites
-  (`:50,51`) and `ScopeChip`'s tooltip attributes (`:45-46`); #11 owns
-  `ScopeBar`. Same file, disjoint components, #46 first.
+  receipt, and under the coordinator boundary it owns the whole file. #46's
+  number migration of `ScopeReceipt` (`:50,51`) is a rebase item, and the
+  `.has-tip`/`data-tip` upgrade to `ScopeChip`'s remove button is **#11's to
+  make**; #46 consumes it (see §0.6 item 3).
 
 #### 0.5 Exact values are text, and text must be locale-formatted (C4)
 
@@ -361,16 +366,22 @@ implementation:
    or invalidate the drill.
 2. Resolve `11:564-565` ("changing a base filter removes stale witness state")
    against `11:312-315` (Source/Agent/Model preserve it). One rule.
-3. Replace "`ScopeChip` markup, name and tooltip do not change"
-   (`11:261-266`) with "public leaf props unchanged; preserve #46's
-   `.has-tip`/`data-tip` upgrade", and adopt `ScopeChipsProps` and the fixed
-   placement in §0.3.
+3. **Own the `ScopeChip` tooltip upgrade.** `bars.tsx` is #11's file under the
+   coordinator boundary, so the `.has-tip` + `data-tip` attributes on the
+   remove button are #11's to add, keeping the public leaf props unchanged.
+   #46 consumes the upgraded leaf and asserts the tooltip only after the
+   rebase. #11 also adopts `ScopeChipsProps` and the fixed placement in §0.3.
 4. State the reciprocal bootstrap: if #11 lands first it initialises all four
    labels and the period formatter; if #46 lands first it adds `model`,
    `period` and the period formatter. Adopt the single order in §0.4.
-5. Require `formatExactText` for every visible exact value, and name the joint
-   test: a locale change on the merged dashboard with a value above
-   `Number.MAX_SAFE_INTEGER` and one with a fractional decimal.
+5. Require `formatExactText` for every visible exact value. **#46 ships the
+   formatter, its tests and the Settings-page sample in its main pass; wiring
+   it into #11's KPI, coverage, receipt, tooltip, focus-hint and accessible
+   table surfaces is a rebase item, not part of #46's main pass.** The
+   formatter regroups a decimal string losslessly and never parses it to a
+   number. Joint test at the rebase: a locale change on the merged dashboard
+   with a value above `Number.MAX_SAFE_INTEGER` and one with a fractional
+   decimal.
 6. Name the shared drill tests with #46: a tool or accounting drill carried
    through a Session cell targeting `/sessions`; Model removal; Period removal;
    `Clear all`; and Back — each asserting the effective API scope **and** the
@@ -1000,17 +1011,20 @@ Day 3, 2026-09-10** (`docs/planning/2026-09-07-consolidated-plan.md:118-122`),
 and Day 4 belongs to #19, so the target is an **integrated, green acceptance
 candidate by `2026-09-10T23:00Z`** — not September 11.
 
-- **Sep 8, remainder** — this revision; §0.6 handed to the coordinator for #11;
-  begin the shared-surface number migration (`primitives.tsx`, `charts.tsx`,
-  `bars.tsx`, `format.ts` helpers).
-- **Sep 9, to 18:00Z** — finish the shared-surface commit; **checkpoint: #11
-  rebases from here.** Then the settings store and the formatters, which have
-  no #11 dependency.
-- **Sep 10, to 18:00Z** — cells, chips, the Settings page, styles, integration
-  tests, the Axe baseline; **checkpoint 14:00Z: #39 handoff on the assistant
-  and `Imports.tsx` files.**
-- **Sep 10, to 23:00Z** — Playwright, keyboard and screenshot evidence;
-  integrated #46/#11 acceptance green. September 11 is left to #19.
+- **Sep 8, remainder** — this revision; §0.6 handed to #11's reviewer; the
+  settings store, the formatters and the Settings page, none of which depend
+  on #11.
+- **Sep 9** — dates everywhere, `ScopeCell`/`ScopeChips` composed over main's
+  `scope.ts`, the Model cell, the locale migration of every file that is not
+  #11's, and the e2e spec with its Axe baseline. **#11 runs in parallel
+  throughout; #46 never edits #11's six files.**
+- **Sep 10, to 18:00Z** — **rebase after #11 merges**: the locale migration of
+  `primitives.tsx`, `charts.tsx` and `bars.tsx`, `formatExactText` wired into
+  #11's exact surfaces, `ScopeChips` above the Overview sessions panel, and
+  the chip-tooltip assertion once #11's leaf carries it. **Checkpoint 14:00Z:
+  #39 handoff on the assistant and `Imports.tsx` files.**
+- **Sep 10, to 23:00Z** — integrated #46/#11 acceptance green, keyboard and
+  screenshot evidence. September 11 is left to #19.
 
 **The honest arithmetic, and the decision it forces.** 27.5 h against roughly
 20 available hours between now and 2026-09-10T23:00Z is a deficit, and #11
