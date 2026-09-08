@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentscope_app.application.dto import CONTEXT_BUDGET_BYTES
 from agentscope_app.application.ports import MappingAssistant, UnitOfWorkFactory
 from agentscope_app.application.use_cases.assistant import (
     PrepareContext,
@@ -101,6 +102,17 @@ def _number(text: str, variable: str) -> float:
         raise ValueError(f"{variable} must be a number, got {text!r}") from None
 
 
+def _context_budget(settings: Settings) -> tuple[int, str | None]:
+    """The prepared-context budget, or the default plus the reason the setting was refused."""
+    try:
+        budget = _integer(settings.llm_context_bytes, "AGENTSCOPE_LLM_CONTEXT_BYTES")
+        if budget < 4_096:
+            raise ValueError(f"AGENTSCOPE_LLM_CONTEXT_BYTES must be at least 4096, got {budget}")
+    except ValueError as exc:
+        return CONTEXT_BUDGET_BYTES, str(exc)
+    return budget, None
+
+
 def _integer(text: str, variable: str) -> int:
     try:
         return int(text.strip())
@@ -121,8 +133,14 @@ def build_container(settings: Settings) -> Container:
     store = FilesystemRawFileStore(settings.raw_file_dir)
     reader = FormatRouter()
     profile_file = ProfileFile(uow_factory, store, reader)
-    prepare_context = PrepareContext(uow_factory, store, reader, profile_file)
-    assistant = build_assistant(settings)
+    # an invalid assistant setting disables the assistant, never the application
+    budget, budget_problem = _context_budget(settings)
+    prepare_context = PrepareContext(uow_factory, store, reader, profile_file, budget_bytes=budget)
+    assistant = (
+        build_assistant(settings)
+        if budget_problem is None
+        else UnavailableMappingAssistant(settings.llm_provider, reason=budget_problem)
+    )
     return Container(
         settings=settings,
         uow_factory=uow_factory,
