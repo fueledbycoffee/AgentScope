@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { IconButton } from '../components'
 import type { DocEdit, DocPath } from './document'
 import type { FieldView, Member } from './documentIndex'
@@ -58,17 +58,44 @@ export function OptionSelect({
   )
 }
 
-/** `unit` is an ordered pair; it is only written once both halves are chosen. */
+/**
+ * `unit` is an ordered pair, so it is only written once both halves are known — but a half the
+ * user has just picked is remembered as a draft until then, or the pair could never be created.
+ *
+ * An existing pair is edited at the member the user changed, never rebuilt: rebuilding it would
+ * drop anything else the object carries, which the parser accepts and the document must keep.
+ */
 function UnitPair({ field, context }: { field: FieldView; context: CellContext }) {
   const unit = field.options.unit
-  const from = plain(field.unit.from)
-  const to = plain(field.unit.to)
-  const write = (nextFrom: string, nextTo: string) => {
-    if (nextFrom === '' || nextTo === '') {
+  const committedFrom = plain(field.unit.from)
+  const committedTo = plain(field.unit.to)
+  // the draft is tied to the committed pair it was started from, so a document that changes
+  // elsewhere (a proposal, an undo, the JSON view) drops it during render rather than in an effect
+  const basis = `${committedFrom}|${committedTo}`
+  const [draft, setDraft] = useState<{ from?: string; to?: string; basis: string }>({ basis })
+  const current = draft.basis === basis ? draft : { basis }
+  const from = current.from ?? committedFrom
+  const to = current.to ?? committedTo
+
+  const write = (half: 'from' | 'to', value: string) => {
+    const next = { from, to, [half]: value }
+    if (value === '') {
+      // half a unit is not a unit: clearing either half removes the whole member
+      setDraft({ basis })
       context.onEdit(unit.raw === null ? [] : [{ op: 'remove', path: unit.path }])
       return
     }
-    context.onEdit([{ op: 'set', path: unit.path, raw: JSON.stringify({ from: nextFrom, to: nextTo }) }])
+    if (unit.raw !== null && committedFrom !== '' && committedTo !== '') {
+      setDraft({ basis })
+      context.onEdit([{ op: 'set', path: field.unit[half].path, raw: JSON.stringify(value) }])
+      return
+    }
+    if (next.from === '' || next.to === '') {
+      setDraft({ ...current, [half]: value })
+      return
+    }
+    setDraft({ basis })
+    context.onEdit([{ op: 'set', path: unit.path, raw: JSON.stringify({ from: next.from, to: next.to }) }])
   }
   const select = (half: 'from' | 'to', value: string, onChange: (next: string) => void) => (
     <select
@@ -88,8 +115,8 @@ function UnitPair({ field, context }: { field: FieldView; context: CellContext }
   )
   return (
     <span className="unit">
-      {select('from', from, next => write(next, to))}
-      {select('to', to, next => write(from, next))}
+      {select('from', from, next => write('from', next))}
+      {select('to', to, next => write('to', next))}
       {unit.raw !== null && from === '' && <span className="chip warn mono" title="unit is not an object with from and to">{unit.raw}</span>}
     </span>
   )

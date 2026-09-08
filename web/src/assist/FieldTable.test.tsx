@@ -100,14 +100,38 @@ describe('the field table', () => {
     expect(apply(4)).toContain('"on_invalid": "reject"')
   })
 
-  it('writes unit only once both halves are chosen', () => {
-    const { onEdit } = show()
+  it('creates a unit pair from two empty selects, writing once both halves are known', () => {
+    const { onEdit, apply } = show()
+    // the field has no unit at all: picking one half must be remembered, not thrown away
     fireEvent.change(screen.getByLabelText('unit from of started_at in model_call'), { target: { value: 's' } })
-    expect(onEdit.mock.calls[0][0]).toEqual([]) // half a unit is not a unit
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('unit from of started_at in model_call')).toHaveValue('s')
     fireEvent.change(screen.getByLabelText('unit to of started_at in model_call'), { target: { value: 'ms' } })
-    expect(onEdit.mock.calls[1][0]).toEqual([]) // still half: the other select has not been committed
-    const withUnit = indexDocument(DOC.replace('"bounds": "min"', '"unit": {"from": "s", "to": "ms"}'))
-    expect(withUnit.rules[0].fields[1].unit.from.raw).toBe('"s"')
+    expect(onEdit.mock.calls[0][0]).toEqual([
+      { op: 'set', path: ['rules', 0, 'fields', 'started_at', 'unit'], raw: '{"from":"s","to":"ms"}' },
+    ])
+    expect(apply()).toContain('"unit": {"from":"s","to":"ms"}')
+  })
+
+  it('edits one half of an existing unit without touching the rest of it', () => {
+    const withUnit = DOC.replace('"bounds": "min"', '"unit": {"from": "s", "to": "ms", "extension": 9007199254740993}')
+    const { onEdit, apply } = show(withUnit)
+    fireEvent.change(screen.getByLabelText('unit from of started_at in model_call'), { target: { value: 'us' } })
+    expect(onEdit.mock.calls[0][0]).toEqual([
+      { op: 'set', path: ['rules', 0, 'fields', 'started_at', 'unit', 'from'], raw: '"us"' },
+    ])
+    const next = apply()
+    expect(next).toContain('"from": "us"')
+    expect(next).toContain('"extension": 9007199254740993') // a member no control owns survives
+    expect(next).toContain('"to": "ms"')
+  })
+
+  it('removes the whole unit when a half goes back to "not set"', () => {
+    const withUnit = DOC.replace('"bounds": "min"', '"unit": {"from": "s", "to": "ms"}')
+    const { onEdit, apply } = show(withUnit)
+    fireEvent.change(screen.getByLabelText('unit to of started_at in model_call'), { target: { value: '' } })
+    expect(onEdit.mock.calls[0][0]).toEqual([{ op: 'remove', path: ['rules', 0, 'fields', 'started_at', 'unit'] }])
+    expect(apply()).not.toContain('unit')
   })
 
   it('switches the source kind in one batch that removes the others', () => {
