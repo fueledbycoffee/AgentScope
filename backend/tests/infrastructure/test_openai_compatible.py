@@ -25,6 +25,7 @@ from agentscope_app.application.use_cases.assistant import (
     RunAssistant,
 )
 from agentscope_app.application.use_cases.uploads import StoreUpload
+from agentscope_app.domain.mapping.parser import parse_mapping
 from agentscope_app.infrastructure.llm.fake import FakeMappingAssistant
 from agentscope_app.infrastructure.llm.openai_compatible import (
     PREAMBLE,
@@ -588,6 +589,75 @@ def test_invalid_then_valid_exercises_the_single_repair_through_the_adapter() ->
     assert second["messages"][1]["content"] == context.text
     assert second["messages"][2]["role"] == "assistant"
     assert "wildcard_in_field_path" in second["messages"][3]["content"]
+
+
+@pytest.mark.parametrize(
+    ("mistake", "path", "code", "rule"),
+    [
+        (
+            "native_key",
+            "rules[0].native_key",
+            "native_key_unmapped",
+            'native_key lists mapped target field names, e.g. ["external_id"], '
+            "never source columns",
+        ),
+        ("notes", "notes", "invalid_type", "notes must be a string, never an object or array"),
+        (
+            "field_object",
+            "rules[0].fields.external_id",
+            "not_an_object",
+            'Every field mapping must be a JSON object, e.g. {"path": "$.session_id"}, '
+            "never a bare string",
+        ),
+    ],
+)
+def test_contract_mistakes_name_the_rule_in_validation_and_repair(
+    mistake: str, path: str, code: str, rule: str
+) -> None:
+    bad = recording(f"synthetic_contract_{mistake}")
+    envelope = json.loads(bad["choices"][0]["message"]["content"])
+    parsed = parse_mapping(envelope["mapping"])
+    assert not parsed.is_executable
+    issue = next(i for i in parsed.issues if i.path == path and i.code == code)
+    assert rule in issue.message
+
+    h = Harness(Server(ok(bad), ok(recording("synthetic_openrouter_ok"))))
+    outcome, context = h.go()
+    assert outcome.attempts == 2 and outcome.proposal is not None
+    assert outcome.proposal.executable and outcome.issues == ()
+    assert PROMPT_VERSION == 2
+    assert rule in context.document["target"]["dsl_reference"]
+    repair = h.server.body(1)["messages"][3]["content"]
+    instruction, issues_text = repair.split("<<<validation-issues\n", 1)
+    assert rule in instruction
+    issues = json.loads(issues_text.removesuffix(REPAIR_INSTRUCTION_END))
+    assert {"path": path, "code": code, "message": issue.message} in issues
+
+
+def test_row_timestamp_mistake_is_named_in_contract_and_repair_guidance() -> None:
+    bad = recording("synthetic_contract_ended_at")
+    candidate = bad["choices"][0]["message"]["content"]
+    parsed = parse_mapping(json.loads(candidate)["mapping"])
+    # The parser validates DSL shape, not the source column's meaning. This
+    # semantic mistake alone does not trigger an automatic repair today.
+    assert parsed.is_executable and parsed.issues == ()
+    h = Harness(Server(ok(bad), ok(recording("synthetic_openrouter_ok"))))
+    outcome, context = h.go()
+    assert outcome.attempts == 1
+    assert outcome.proposal is not None and outcome.proposal.executable
+
+    # Exercise the repair request explicitly without inventing a validator error.
+    h.adapter.complete(context, repair=RepairRequest(candidate, "[]"))
+    rule = (
+        "One timestamp per row is a start, never an end: map it to started_at; "
+        "ended_at only comes from a column that declares an end"
+    )
+    assert rule in context.document["target"]["dsl_reference"]
+    instruction, issues_text = h.server.body(1)["messages"][3]["content"].split(
+        "<<<validation-issues\n", 1
+    )
+    assert rule in instruction
+    assert json.loads(issues_text.removesuffix(REPAIR_INSTRUCTION_END)) == []
 
 
 def test_the_captured_openrouter_reply_is_an_editable_draft_with_issues() -> None:

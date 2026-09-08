@@ -27,3 +27,25 @@ Synthetic bodies added 2026-09-08 (from shapes seen live on OpenRouter):
 Captured 2026-09-08: `captured_openrouter_ling3_2026-09-08.json` (+ provenance),
 `inclusionai/ling-3.0-flash-fin:free`, executable proposal with a 32,768-token
 budget; the body keeps the model's `reasoning` text about the public fixture.
+
+Synthetic contract regressions added for #51 (prompt v2):
+
+- `synthetic_contract_native_key.json`: source column `session_id` in
+  `native_key` instead of the mapped target `external_id`; validator code
+  `native_key_unmapped` names the target-field rule.
+- `synthetic_contract_notes.json`: object-valued `notes`; `invalid_type`
+  explains that notes must be a string.
+- `synthetic_contract_field_object.json`: a bare string mapping for
+  `external_id`; `not_an_object` includes the object form to use.
+- `synthetic_contract_ended_at.json`: the same row `$.timestamp` mapped to
+  both `started_at` and `ended_at`. This is structurally valid: the parser
+  cannot establish the source column's meaning and emits no issue. The
+  regression explicitly tests that limitation and checks the timestamp rule
+  in the prepared contract and an explicitly requested repair. It does not
+  claim that this mistake triggers automatic repair.
+
+Each body is hand-written, contains exactly one mistake, and uses synthetic
+metadata. The first three exercise validation followed by a successful repair
+through `RunAssistant` and `httpx2.MockTransport`. All four verify that the
+repair instruction repeats the relevant contract rule. These are not live
+model results; the coordinator runs the TraceLab smoke on the host.
