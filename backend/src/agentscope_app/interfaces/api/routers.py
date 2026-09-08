@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -27,8 +28,10 @@ from agentscope_app.application.dto import (
     UploadInfo,
 )
 from agentscope_app.application.errors import LimitExceededError
+from agentscope_app.application.metric_queries import MetricQueryResult, TraceScope
 from agentscope_app.domain.jsonx import dumps_exact
 from agentscope_app.domain.mapping.parser import parse_mapping
+from agentscope_app.domain.metrics import Dimension, EntityGrain
 from agentscope_app.interfaces.api.container import Container
 from agentscope_app.interfaces.api.schemas import (
     AssistantRequestBody,
@@ -250,3 +253,47 @@ def list_import_diagnostics(
     return _c(request).list_import_diagnostics.execute(
         import_id, code, file_sha256, locator, limit, offset
     )
+@router.get("/metrics/definitions")
+def metric_definitions(request: Request) -> list[dict[str, Any]]:
+    return _c(request).list_metric_definitions.execute()
+
+
+@router.get("/metrics/query")
+def query_metric(
+    request: Request,
+    metric_id: str,
+    group_by: Annotated[list[Dimension] | None, Query()] = None,
+    source: str | None = None,
+    agent: str | None = None,
+    model: str | None = None,
+    tool: str | None = None,
+    started_from: datetime | None = None,
+    started_before: datetime | None = None,
+    import_id: str | None = None,
+    activity_grain: EntityGrain | None = None,
+    token_semantics: str | None = None,
+    model_is_unknown: bool = False,
+    agent_is_unknown: bool = False,
+    timestamp_missing: bool = False,
+    tool_is_unlinked: bool = False,
+    usage_missing: bool = False,
+    tool_is_linked: bool = False,
+) -> MetricQueryResult:
+    scope = TraceScope(
+        source=source,
+        agent=agent,
+        model=model,
+        tool=tool,
+        started_from=started_from,
+        started_before=started_before,
+        import_id=import_id,
+        activity_grain=activity_grain,
+        token_semantics=token_semantics,
+        model_is_unknown=model_is_unknown,
+        agent_is_unknown=agent_is_unknown,
+        timestamp_missing=timestamp_missing,
+        tool_is_unlinked=tool_is_unlinked,
+        usage_missing=usage_missing,
+        tool_is_linked=tool_is_linked,
+    )
+    return _c(request).query_metric.execute(metric_id, scope, tuple(group_by or ()))

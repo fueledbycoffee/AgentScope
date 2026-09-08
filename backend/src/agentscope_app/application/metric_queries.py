@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
+from agentscope_app.application.dto import Coverage, Metric, SemanticsPartition
 from agentscope_app.application.errors import InvalidInputError
 from agentscope_app.domain.metrics import (
     DIMENSIONS,
@@ -12,6 +13,7 @@ from agentscope_app.domain.metrics import (
     Dimension,
     EntityGrain,
     MetricDefinition,
+    evaluate,
 )
 
 
@@ -171,3 +173,131 @@ def drill_scope(
     if spec.definition.grain in (EntityGrain.MODEL_CALL, EntityGrain.TOOL_CALL):
         scope = replace(scope, activity_grain=spec.definition.grain)
     return scope
+
+
+@dataclass(frozen=True)
+class PartitionResult:
+    semantics: str
+    value_text: str | None
+    coverage: Coverage
+    drill_scope: TraceScope
+
+
+@dataclass(frozen=True)
+class MetricResult:
+    value_text: str | None
+    recorded_sum_text: str | None
+    coverage: Coverage
+    comparability: str
+    reason: str
+    semantics_partitions: tuple[PartitionResult, ...]
+
+
+@dataclass(frozen=True)
+class MetricBucket:
+    keys: tuple[str | bool | None, ...]
+    result: MetricResult
+    drill_scope: TraceScope
+
+
+@dataclass(frozen=True)
+class MetricQueryResult:
+    metric_id: str
+    definition: MetricDefinition
+    supported_dimensions: tuple[Dimension, ...]
+    scope: TraceScope
+    group_by: tuple[Dimension, ...]
+    overall: MetricResult
+    excluded_unknown_timestamps: int
+    buckets: tuple[MetricBucket, ...]
+
+
+def _text(value: int | None) -> str | None:
+    return None if value is None else str(value)
+
+
+def _combine_parts(rows: AggregateRows) -> tuple[AggregatePart, ...]:
+    grouped: dict[str | None, list[AggregatePart]] = {}
+    for row in rows.rows:
+        for part in row.parts:
+            grouped.setdefault(part.semantics, []).append(part)
+    return tuple(
+        AggregatePart(
+            sum(p.value for p in parts if p.value is not None)
+            if any(p.value is not None for p in parts)
+            else None,
+            sum(p.known for p in parts),
+            sum(p.total for p in parts),
+            semantics,
+        )
+        for semantics, parts in sorted(grouped.items(), key=lambda item: item[0] or "")
+    )
+
+
+def assemble_metric(definition: MetricDefinition, rows: AggregateRows) -> Metric:
+    """The sole compatibility assembler for summary and session metrics."""
+    parts = _combine_parts(rows)
+    result = evaluate(definition, parts)
+    return Metric(
+        value=result.recorded_sum,
+        definition=definition.description,
+        unit=definition.unit,
+        coverage=Coverage(result.known, result.total),
+        by_semantics={
+            p.semantics: p.value for p in parts if p.semantics is not None and p.value is not None
+        },
+        metric_id=definition.id,
+        version=definition.version,
+        value_text=_text(result.value),
+        recorded_sum_text=_text(result.recorded_sum),
+        comparability=result.comparability,
+        reason=result.reason,
+        semantics_partitions=tuple(
+            SemanticsPartition(p.semantics, _text(p.value), Coverage(p.known, p.total))
+            for p in parts
+            if p.semantics is not None
+        ),
+    )
+
+
+def _result(
+    spec: MetricQuerySpec, parts: tuple[AggregatePart, ...], scope: TraceScope
+) -> MetricResult:
+    result = evaluate(spec.definition, parts)
+    return MetricResult(
+        _text(result.value),
+        _text(result.recorded_sum),
+        Coverage(result.known, result.total),
+        result.comparability,
+        result.reason,
+        tuple(
+            PartitionResult(
+                p.semantics,
+                _text(p.value),
+                Coverage(p.known, p.total),
+                replace(scope, token_semantics=p.semantics, activity_grain=EntityGrain.MODEL_CALL),
+            )
+            for p in parts
+            if p.semantics is not None
+        ),
+    )
+
+
+def assemble_query(spec: MetricQuerySpec, rows: AggregateRows) -> MetricQueryResult:
+    buckets = []
+    source_rows = rows.rows
+    if not source_rows and not spec.group_by:
+        source_rows = (AggregateRow((), ()),)
+    for row in source_rows:
+        scope = drill_scope(spec, row.keys)
+        buckets.append(MetricBucket(row.keys, _result(spec, row.parts, scope), scope))
+    return MetricQueryResult(
+        spec.definition.id,
+        spec.definition,
+        spec.definition.supported_dimensions,
+        spec.scope,
+        spec.group_by,
+        _result(spec, _combine_parts(rows), spec.scope),
+        rows.excluded_unknown_timestamps,
+        tuple(buckets),
+    )

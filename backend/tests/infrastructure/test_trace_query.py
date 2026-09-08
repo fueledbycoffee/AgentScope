@@ -346,3 +346,48 @@ def test_metric_views_upgrade_downgrade_and_connection_reopen(tmp_path):
         raw.execute("SELECT exact_int_sum(1)")
     raw.close()
     engine.dispose()
+
+
+def test_session_metrics_match_summary_definition_and_partitions(database):
+    from sqlalchemy import event
+
+    from agentscope_app.application.metric_queries import assemble_metric
+    from agentscope_app.application.use_cases.queries import (
+        GetSession,
+        ListSessions,
+        MetricsSummary,
+    )
+
+    engine, _ = database
+    factory = make_uow_factory(engine)
+    with factory() as uow:
+        scope = TraceScope(source="alpha", model="m")
+        batch = uow.trace_query.session_metrics(scope)
+        assert set(batch) == {"s1"}
+        for metric_id in ("model_calls", "tool_calls", "input_tokens"):
+            definition = REGISTRY.get(metric_id)
+            scoped = assemble_metric(definition, batch["s1"][metric_id])
+            summary = assemble_metric(
+                definition, uow.trace_query.aggregate(MetricQuerySpec(definition, scope))
+            )
+            assert scoped == summary
+        assert assemble_metric(REGISTRY.get("model_calls"), batch["s1"]["model_calls"]).value == 1
+        assert assemble_metric(REGISTRY.get("tool_calls"), batch["s1"]["tool_calls"]).value == 2
+    statements = []
+
+    def record(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    rows = ListSessions(factory).execute(source=None, agent=None)
+    event.remove(engine, "before_cursor_execute", record)
+    assert len(statements) == 4  # session page plus three grouped metrics, independent of page size
+    # Fixture deliberately leaves cached counts at zero; repository uses actual scoped definitions.
+    assert sum(r.model_call_count for r in rows) == 6
+    assert sum(r.tool_call_count for r in rows) == 3
+    for row in rows:
+        summary = MetricsSummary(factory).execute(scope=TraceScope(session_ids=(row.id,)))
+        assert row.input_tokens == summary.input_tokens
+        assert row.model_call_count == summary.model_calls.value
+        assert row.tool_call_count == summary.tool_calls.value
+        assert GetSession(factory).execute(row.id).summary == row

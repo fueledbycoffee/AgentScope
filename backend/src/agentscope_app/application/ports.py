@@ -31,6 +31,7 @@ from agentscope_app.application.dto import (
     UploadInfo,
 )
 from agentscope_app.domain.claims import ClaimCandidate, ClaimCondition
+from agentscope_app.application.metric_queries import AggregateRows, MetricQuerySpec, TraceScope
 from agentscope_app.domain.mapping.interpreter import Emission
 from agentscope_app.domain.reducer import SessionAggregate
 
@@ -183,9 +184,15 @@ class TraceRepository(Protocol):
 
     def raw_record(self, file_sha256: str, locator: str) -> Any: ...
 
-    def metrics_summary(self, *, source: str | None, agent: str | None) -> dict[str, Any]:
-        """Aggregates for MetricsSummary: counts, token sums, coverage, by_semantics."""
-        ...
+
+class TraceQuery(Protocol):
+    """Grain-preserving aggregates and consistent session drills."""
+
+    def aggregate(self, spec: MetricQuerySpec) -> AggregateRows: ...
+
+    def session_ids(self, scope: TraceScope, *, limit: int, offset: int) -> Sequence[str]: ...
+
+    def session_metrics(self, scope: TraceScope) -> dict[str, dict[str, AggregateRows]]: ...
 
 
 class MappingAssistant(Protocol):
@@ -206,6 +213,7 @@ class UnitOfWork(Protocol):
     mappings: MappingRepository
     imports: ImportRepository
     traces: TraceRepository
+    trace_query: TraceQuery
 
     def __enter__(self) -> UnitOfWork: ...
 

@@ -55,3 +55,72 @@ def test_day_drill_is_aware_and_preserves_partial_day_range():
     spec = MetricQuerySpec(REGISTRY.get("input_tokens"), group_by=(Dimension.MODEL,))
     assert drill_scope(spec, (None,), "unknown").model_is_unknown
     assert drill_scope(spec, ("unknown",)).model == "unknown"
+
+
+def test_metric_use_cases_use_trace_query_and_reject_invalid_specs():
+    from agentscope_app.application.metric_queries import AggregateRow, AggregateRows
+    from agentscope_app.application.use_cases.queries import (
+        ListMetricDefinitions,
+        MetricsSummary,
+        QueryMetric,
+    )
+    from agentscope_app.domain.metrics import AggregatePart
+    from tests.application.fakes import FakeUnitOfWork
+
+    uow = FakeUnitOfWork()
+    uow.trace_query.results["input_tokens"] = AggregateRows(
+        (AggregateRow((), (AggregatePart(10, 2, 3, "a"), AggregatePart(None, 0, 1, "b"))),)
+    )
+    result = MetricsSummary(uow.factory).execute(source="a", agent=None)
+    assert [s.definition.id for s in uow.trace_query.specs] == [
+        "sessions",
+        "model_calls",
+        "tool_calls",
+        "input_tokens",
+        "output_tokens",
+    ]
+    assert all(s.scope.source == "a" for s in uow.trace_query.specs)
+    assert result.input_tokens.value_text == "10"
+    assert result.input_tokens.by_semantics == {"a": 10}
+    assert len(result.input_tokens.semantics_partitions) == 2
+    assert result.sessions.value_text == "0"
+    before = len(uow.trace_query.specs)
+    query = QueryMetric(uow.factory)
+    for metric_id, group_by in [
+        ("nope", ()),
+        ("sessions", (Dimension.MODEL,)),
+        ("model_calls", (Dimension.SESSION_ID,)),
+    ]:
+        with pytest.raises(InvalidInputError):
+            query.execute(metric_id, group_by=group_by)
+    assert len(uow.trace_query.specs) == before
+    assert {d["id"] for d in ListMetricDefinitions().execute()} == set(REGISTRY.definitions)
+    result = query.execute("input_tokens")
+    assert result.overall.value_text == "10"
+    assert result.buckets[0].result.semantics_partitions[1].value_text is None
+
+
+def test_query_overall_combines_repeated_semantics_across_buckets():
+    from agentscope_app.application.metric_queries import (
+        AggregateRow,
+        AggregateRows,
+        assemble_query,
+    )
+    from agentscope_app.domain.metrics import AggregatePart
+
+    spec = MetricQuerySpec(REGISTRY.get("input_tokens"), group_by=(Dimension.MODEL,))
+    result = assemble_query(
+        spec,
+        AggregateRows(
+            (
+                AggregateRow(("m",), (AggregatePart(10, 1, 1, "a"),)),
+                AggregateRow(
+                    (None,), (AggregatePart(5, 1, 2, "a"), AggregatePart(None, 0, 1, "b"))
+                ),
+            )
+        ),
+    )
+    assert result.overall.value_text == "15"
+    assert result.overall.coverage.known == 2 and result.overall.coverage.total == 4
+    assert result.overall.semantics_partitions[0].value_text == "15"
+    assert result.buckets[1].drill_scope.model_is_unknown

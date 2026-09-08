@@ -33,6 +33,7 @@ from agentscope_app.application.dto import (
 )
 from agentscope_app.application.errors import ConflictError, InvalidInputError, NotFoundError
 from agentscope_app.domain.claims import ClaimCandidate, ClaimCondition
+from agentscope_app.application.metric_queries import AggregateRows, MetricQuerySpec, TraceScope
 from agentscope_app.domain.mapping.interpreter import Emission
 from agentscope_app.domain.reducer import SessionAggregate
 
@@ -310,7 +311,20 @@ class FakeTraces:
     def raw_record(self, file_sha256: str, locator: str) -> Any:
         return None
 
-    def metrics_summary(self, *, source: str | None, agent: str | None) -> dict[str, Any]:
+
+class FakeTraceQuery:
+    def __init__(self) -> None:
+        self.specs: list[MetricQuerySpec] = []
+        self.results: dict[str, AggregateRows] = {}
+
+    def aggregate(self, spec: MetricQuerySpec) -> AggregateRows:
+        self.specs.append(spec)
+        return self.results.get(spec.definition.id, AggregateRows())
+
+    def session_ids(self, scope: TraceScope, *, limit: int, offset: int) -> Sequence[str]:
+        return []
+
+    def session_metrics(self, scope: TraceScope) -> dict[str, dict[str, AggregateRows]]:
         return {}
 
 
@@ -320,6 +334,7 @@ class FakeUnitOfWork:
         self.mappings = FakeMappings()
         self.imports = FakeImports()
         self.traces = traces or FakeTraces()
+        self.trace_query = FakeTraceQuery()
         self.commits = 0
         self.rollbacks = 0
         self._entered = 0

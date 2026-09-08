@@ -200,12 +200,26 @@ class Coverage:
 
 
 @dataclass(frozen=True)
+class SemanticsPartition:
+    semantics: str
+    value_text: str | None
+    coverage: Coverage
+
+
+@dataclass(frozen=True)
 class Metric:
     value: int | float | None
     definition: str
     unit: str | None = None
     coverage: Coverage | None = None
     by_semantics: dict[str, int] = field(default_factory=dict)
+    metric_id: str | None = None
+    version: int | None = None
+    value_text: str | None = None
+    recorded_sum_text: str | None = None
+    comparability: str = "not_applicable"
+    reason: str = ""
+    semantics_partitions: tuple[SemanticsPartition, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -286,6 +300,7 @@ class MetricsSummary:
     model_calls: Metric
     tool_calls: Metric
     input_tokens: Metric
+    output_tokens: Metric
 
 
 # --- mapping assistant (ADR-005) ---------------------------------------------------------

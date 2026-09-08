@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from agentscope_app.application.ports import (
     ImportRepository,
     MappingRepository,
+    TraceQuery,
     TraceRepository,
     UnitOfWorkFactory,
     UploadRepository,
@@ -20,6 +21,7 @@ from agentscope_app.infrastructure.db.repositories import (
     SqlAlchemyTraces,
     SqlAlchemyUploads,
 )
+from agentscope_app.infrastructure.db.trace_query import SqlAlchemyTraceQuery
 
 
 class SqlAlchemyUnitOfWork:
@@ -27,6 +29,7 @@ class SqlAlchemyUnitOfWork:
     mappings: MappingRepository
     imports: ImportRepository
     traces: TraceRepository
+    trace_query: TraceQuery
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
@@ -39,6 +42,7 @@ class SqlAlchemyUnitOfWork:
         self.mappings = SqlAlchemyMappings(self.session)
         self.imports = SqlAlchemyImports(self.session)
         self.traces = SqlAlchemyTraces(self.session)
+        self.trace_query = SqlAlchemyTraceQuery(self.session)
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
