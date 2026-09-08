@@ -23,7 +23,7 @@ COMMON_MISTAKES_REFERENCE: Final = (
     "A single scalar timestamp on a row is a start, never an end: map it to started_at and "
     "never copy it into ended_at. ended_at comes from a column that declares an end, or from "
     'the bounds of an event array (e.g. {"path": "$.timing_events[*].timestamp", '
-    '"bounds": "max"}); otherwise omit ended_at rather than invent an interval. 
+    '"bounds": "max"}); otherwise omit ended_at rather than invent an interval. '
     'notes must be a string, never an object or array; use "" when there are no notes. '
     'Every field mapping must be a JSON object, e.g. {"path": "$.session_id"}, '
     'never a bare string; use {"literal": value} for a constant. '
