@@ -134,6 +134,7 @@ class Import(Base):
     entities: Mapped[dict[str, Any]]
     warnings: Mapped[dict[str, Any]]
     reject_count: Mapped[int]
+    duplicate_detection_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str | None] = mapped_column(Text)
     __table_args__ = (Index("ix_imports_started_at", "started_at"),)
 
@@ -154,6 +155,7 @@ class ImportFile(Base):
     mapping_id: Mapped[str | None] = mapped_column(ForeignKey("mappings.id"))
     status: Mapped[str] = mapped_column(String(20), default="committed", server_default="committed")
     records: Mapped[dict[str, Any] | None]
+    warnings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
     __table_args__ = (
         Index("ix_import_files_sha256", "sha256"),
         # Exact-file idempotency is a database guarantee, not only a pre-check:
@@ -299,6 +301,7 @@ class EntityContribution(Base):
             name="ck_contribution_exactly_one_entity",
         ),
         Index("ix_contributions_session", "session_id"),
+        Index("ix_contributions_import_file", "import_id", "file_sha256", "locator"),
     )
 
 
@@ -311,3 +314,86 @@ class SessionDiagnostic(Base):
     field: Mapped[str | None] = mapped_column(String(100))
     message: Mapped[str] = mapped_column(Text)
     locator: Mapped[str] = mapped_column(String(64))
+
+
+class ClaimScope(Base):
+    __tablename__ = "claim_scopes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    version: Mapped[int]
+    scope_text: Mapped[str] = mapped_column(Text)
+    __table_args__ = (UniqueConstraint("version", "scope_text", name="uq_claim_scope"),)
+
+
+class ClaimProjection(Base):
+    __tablename__ = "claim_projections"
+    scope_id: Mapped[int] = mapped_column(ForeignKey("claim_scopes.id"), primary_key=True)
+    projection_sha256: Mapped[str] = mapped_column(String(64), primary_key=True)
+    projection_text: Mapped[str] = mapped_column(Text)
+
+
+class EntityClaim(Base):
+    __tablename__ = "entity_claims"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope_id: Mapped[int] = mapped_column(ForeignKey("claim_scopes.id"))
+    projection_sha256: Mapped[str] = mapped_column(String(64))
+    import_id: Mapped[str] = mapped_column(ForeignKey("imports.id"))
+    mapping_id: Mapped[str] = mapped_column(ForeignKey("mappings.id"))
+    file_sha256: Mapped[str] = mapped_column(ForeignKey("raw_files.sha256"))
+    locator: Mapped[str] = mapped_column(String(64))
+    locator_position: Mapped[int]
+    emission_path: Mapped[str] = mapped_column(String(200))
+    rule_id: Mapped[str] = mapped_column(String(100))
+    entity: Mapped[str] = mapped_column(String(20))
+    __table_args__ = (
+        UniqueConstraint(
+            "import_id",
+            "file_sha256",
+            "locator",
+            "emission_path",
+            "entity",
+            name="uq_entity_claim_occurrence",
+        ),
+        Index("ix_entity_claim_import", "import_id", "id"),
+        Index(
+            "ix_entity_claim_order",
+            "import_id",
+            "file_sha256",
+            "locator_position",
+            "locator",
+            "emission_path",
+            "entity",
+        ),
+    )
+
+
+class ClaimFileProjection(Base):
+    __tablename__ = "claim_file_projections"
+    scope_id: Mapped[int] = mapped_column(ForeignKey("claim_scopes.id"), primary_key=True)
+    projection_sha256: Mapped[str] = mapped_column(String(64), primary_key=True)
+    file_sha256: Mapped[str] = mapped_column(ForeignKey("raw_files.sha256"), primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("entity_claims.id"))
+    witness_sort: Mapped[str] = mapped_column(Text)
+    __table_args__ = (Index("ix_claim_file_scope", "scope_id", "file_sha256", "projection_sha256"),)
+
+
+class ImportDiagnostic(Base):
+    __tablename__ = "import_diagnostics"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    import_id: Mapped[str] = mapped_column(ForeignKey("imports.id"))
+    claim_id: Mapped[int] = mapped_column(ForeignKey("entity_claims.id"))
+    peer_claim_id: Mapped[int] = mapped_column(ForeignKey("entity_claims.id"))
+    code: Mapped[str] = mapped_column(String(60))
+    __table_args__ = (
+        UniqueConstraint("import_id", "claim_id", "code", name="uq_import_diagnostic"),
+        Index("ix_import_diagnostic_code", "import_id", "code"),
+    )
+
+
+class ImportClaimCondition(Base):
+    __tablename__ = "import_claim_conditions"
+    import_id: Mapped[str] = mapped_column(ForeignKey("imports.id"), primary_key=True)
+    file_sha256: Mapped[str] = mapped_column(ForeignKey("raw_files.sha256"), primary_key=True)
+    rule_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    code: Mapped[str] = mapped_column(String(60), primary_key=True)
+    affected_emissions: Mapped[int]
+    message: Mapped[str] = mapped_column(Text)

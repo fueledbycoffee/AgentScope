@@ -128,7 +128,7 @@ def test_trace_repository_enforces_occurrence_uniqueness_per_source(engine: Any)
             sessions=reduce_sessions(emissions),
         )
         uow.commit()
-    assert counts == {"session": 1, "model_call": 1}
+    assert counts.entity_counts == {"session": 1, "model_call": 1}
     from agentscope_app.application.errors import ConflictError
 
     with uow_factory() as uow:
@@ -153,7 +153,7 @@ def test_trace_repository_enforces_occurrence_uniqueness_per_source(engine: Any)
             sessions=reduce_sessions(emissions),
         )
         uow.commit()
-    assert counts == {"session": 1, "model_call": 1}
+    assert counts.entity_counts == {"session": 1, "model_call": 1}
 
 
 def _report(import_id: str, source: str) -> ImportReport:

@@ -255,6 +255,51 @@ Constraints not fully expressible in the diagram:
   entity contributions are not physical foreign keys. The diagram draws only
   enforced relationships.
 
+## Cross-file comparison (issue #33)
+
+`domain/claims.py` freezes schema-v1 projections and prepares scoped native claims
+from accepted emissions before reduction. Scope is source, harness, entity, session
+and typed native-key values with an extraction fingerprint. Harness resolution uses
+only original same-file session declarations, preferring an unambiguous declaration
+in the same record. This intentionally follows ADR-002 rather than widening scope
+to the reducer's current session storage key. Missing/ambiguous harness is one
+file/rule condition with an affected-emission count; child-only files still create
+implicit sessions. Scope/projection text above 64 KiB is similarly skipped.
+
+`ClaimIndex` stores individual provenance in `entity_claims`, interns exact scope
+text and exact projections, and indexes fixed SHA-256 projection digests. The
+`claim_file_projections` table holds one deterministic witness per distinct
+(scope, projection, file), with numeric-locator ordering inside a file. Exact
+projection text is stored once per scoped digest and kept out of indexes.
+
+All pending claims are staged before comparison. Each 128-row keyset page uses
+one detection SELECT with three correlated index probes: equal projection in
+another file and witnesses in lower/higher file-hash ranges. Equal probes skip
+at most one own-file row; file-range probes exclude all own-file rows without
+scanning them. A matching equal peer produces `matching_claim_equal_projection`;
+a scoped peer with no equal peer produces `suspected_duplicate`. Neither code
+changes observations, reduction, the five outcomes or entity insertion counts.
+
+`TraceStoreResult` separates inserted entity counts from typed diagnostics.
+`CommitImport` adds emission diagnostic counts to record warnings, sums records
+into each file and files into the report, and persists file/rule conditions
+separately. Claims, diagnostics, conditions, outcomes and final report commit
+atomically. Exact replay supplies no candidates; earlier reports remain immutable.
+GET report/history reconstructs the saved state; the diagnostics API supplies
+paginated incoming/peer provenance without recomputation. Dedicated UI evidence
+controls are deferred, and session detail has no new duplicate marker.
+
+Migration `0005` follows `0004`. Its adapter uses reflected migration tables and
+stored exact decoded records, with two paged interpreter passes per file: harness
+declarations then verified emission claims. It never reruns reduction or rewrites
+observations/metrics. Missing provenance or replay mismatch rolls back that file's
+backfill savepoint, records `claim_backfill_unavailable`, and allows startup.
+Historical warning snapshots stay unchanged and comparison version stays null;
+recovered historical claims may serve as peers for newly checked imports.
+Downgrade drops only the new comparison tables, supporting contribution index,
+file warnings and comparison-version columns. The frozen contract and replay parity
+tests must remain compatible with future interpreter changes.
+
 ## Current boundaries
 
 The supported inputs, limits and intentionally excluded v0.1 capabilities are
