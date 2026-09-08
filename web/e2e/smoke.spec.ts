@@ -62,7 +62,7 @@ test('day-1 path: guided import, deep links, report, re-import leaves totals unc
   const progress = page.getByRole('complementary', { name: 'Progress' })
   await expect(progress.getByRole('button', { name: 'File' })).toBeVisible()
   await expect(progress.getByRole('button', { name: 'Mapping' })).toBeVisible()
-  await expect(progress).toContainText('4,770 sampled · 0 rejected')
+  await expect(progress).toContainText('tracelab-v1 · rev 1') // facts sit under completed stops only
 
   // Responsive Passage rail becomes a strip above the stage without document overflow.
   await page.setViewportSize({ width: 900, height: 1000 })
@@ -91,6 +91,7 @@ test('day-1 path: guided import, deep links, report, re-import leaves totals unc
 
   await page.getByRole('button', { name: 'Looks right, continue' }).click()
   await expect(page.getByRole('heading', { name: 'Confirm and run' })).toBeFocused()
+  await expect(progress).toContainText('200 sampled · 0 rejected') // the Preview stop is complete now; the dry run samples 200 per file
   await page.screenshot({ path: `${SHOTS}/4-confirm.png`, fullPage: true })
   const reportShown = page.waitForURL(/\/imports\/imp_/, { timeout: 120_000 })
   await page.getByRole('button', { name: 'Import 4,770 records' }).click()
@@ -116,10 +117,15 @@ test('day-1 path: guided import, deep links, report, re-import leaves totals unc
   await expect(tokens).toContainText('exact 553,447,877')
   await expect(tokens).toContainText('coverage 4,770 / 4,770 calls')
 
-  // the same bytes again: the upload names the earlier import, the report is a duplicate
-  await uploadFixtureAndPreview(page)
+  // the same bytes again: the File stop names the earlier import, the report is a duplicate
+  await page.goto('/import')
+  await page.getByLabel(/Trace file|Add another trace file/).setInputFiles(FIXTURE)
+  await expect(page.getByRole('heading', { name: 'Uploaded file' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Already imported' })).toBeVisible()
   await expect(page.getByRole('link', { name: firstImportId })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue to mapping' }).click()
+  await page.getByRole('button', { name: 'Run a dry run' }).click()
+  await expect(page.getByRole('heading', { name: 'Dry run on up to 200 records per file' })).toBeVisible()
   await page.getByRole('button', { name: 'Looks right, continue' }).click()
   const duplicateShown = page.waitForURL(/\/imports\/imp_/, { timeout: 60_000 })
   await page.getByRole('button', { name: 'Import 4,770 records' }).click()
