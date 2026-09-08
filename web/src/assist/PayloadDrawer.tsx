@@ -1,5 +1,6 @@
 import type { PreparedContext } from '../api/types'
 import { Drawer, Icon, JsonText } from '../components'
+import { num } from '../format'
 
 export interface PayloadDrawerProps {
   prepared: PreparedContext
@@ -12,7 +13,7 @@ export interface PayloadDrawerProps {
 function counts(map: { [key: string]: number }, empty: string) {
   const entries = Object.entries(map)
   if (entries.length === 0) return empty
-  return entries.map(([k, v]) => `${k} ${v.toLocaleString('en-US')}`).join(' · ')
+  return entries.map(([k, v]) => `${k} ${num(v)}`).join(' · ')
 }
 
 /**
@@ -24,7 +25,7 @@ export function PayloadDrawer({ prepared, awaitingAck, onAcknowledge, onClose }:
     <Drawer title="What the assistant will see" onClose={onClose}>
       <dl className="kv">
         <dt>Digest</dt><dd className="mono">{prepared.context_sha256}</dd>
-        <dt>Size</dt><dd>{prepared.bytes.toLocaleString('en-US')} bytes</dd>
+        <dt>Size</dt><dd>{num(prepared.bytes)} bytes</dd>
         <dt>Sample</dt><dd>{prepared.sample_included ? `${prepared.sample_count} redacted record${prepared.sample_count === 1 ? '' : 's'} included` : 'not included (profile only)'}</dd>
         <dt>Redacted</dt><dd>{counts(prepared.redactions, 'nothing matched the redaction rules')}</dd>
         <dt>Trimmed</dt><dd>{counts(prepared.truncated, 'nothing; the whole context fits the budget')}</dd>

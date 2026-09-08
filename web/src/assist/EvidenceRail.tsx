@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import type { FieldProfile, FieldStat } from '../api/types'
 import { Icon, IconButton } from '../components'
+import { num } from '../format'
 
 function fmt(n: number) {
-  return n.toLocaleString('en-US')
+  return num(n)
 }
 
 function ExampleDisclosure({ stat }: { stat: FieldStat }) {

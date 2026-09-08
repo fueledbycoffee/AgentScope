@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Icon, IconButton } from '../components'
 import type { ImportStep } from './importRuntime'
+import { num } from '../format'
 
 const STOPS: { number: ImportStep; label: string }[] = [
   { number: 1, label: 'File' },
@@ -73,7 +74,7 @@ export function StatGroup({ title, items, note }: {
   return <section className="import-route-stat-section">
     {title && <div className="import-route-section-title"><h2>{title}</h2>{note && <span>{note}</span>}</div>}
     <dl className="import-route-stats">{items.map(item => <div key={item.label}>
-      <dt>{item.label}</dt><dd>{item.value.toLocaleString('en-US')}</dd>{item.detail && <span>{item.detail}</span>}
+      <dt>{item.label}</dt><dd>{num(item.value)}</dd>{item.detail && <span>{item.detail}</span>}
     </div>)}</dl>
   </section>
 }

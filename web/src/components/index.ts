@@ -13,3 +13,5 @@ export { Counts, ErrorNotice, JsonView, ResourceState, Table } from './compat'
 export { abbreviate } from '../format'
 // #46 additions, appended so #11's edits to this file cannot conflict.
 export { ThemeToggle } from './ThemeToggle'
+export { DateText, DurationText, SpanText } from './dates'
+export { ScopeCell, ScopeChips } from './scope/scopeLinks'

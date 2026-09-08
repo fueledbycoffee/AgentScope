@@ -2,9 +2,9 @@ import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getMetricsSummary, getSession } from '../api'
 import type { RawReference } from '../api'
-import { DataTable, IconButton, Notice, SourceRecordDialog, StateBlock } from '../components'
+import { DataTable, DateText, DurationText, IconButton, Notice, ScopeCell, SourceRecordDialog, SpanText, StateBlock } from '../components'
 import type { Column } from '../components'
-import { display } from '../format'
+import { display, num } from '../format'
 import { useScope } from '../scope'
 import { useScopeBar } from '../shellHooks'
 import { useResource } from '../useResource'
@@ -33,9 +33,9 @@ export default function SessionPage() {
   const modelColumns: Column<ModelCall>[] = [
     { key: 'id', header: 'ID', mono: true, render: call => call.id },
     { key: 'seq', header: 'Seq', align: 'num', render: call => display(call.sequence) },
-    { key: 'model', header: 'Model', render: call => display(call.model) },
-    { key: 'started', header: 'Started', mono: true, render: call => display(call.started_at) },
-    { key: 'ended', header: 'Ended', mono: true, render: call => display(call.ended_at) },
+    { key: 'model', header: 'Model', render: call => <ScopeCell dimension="model" value={call.model} target="/sessions" /> },
+    { key: 'started', header: 'Started', mono: true, render: call => <DateText value={call.started_at} offset /> },
+    { key: 'ended', header: 'Ended', mono: true, render: call => <DateText value={call.ended_at} offset /> },
     { key: 'in', header: 'Input tokens', align: 'num', render: call => display(call.input_tokens) },
     { key: 'out', header: 'Output tokens', align: 'num', render: call => display(call.output_tokens) },
     { key: 'sem', header: 'Semantics', render: call => display(call.token_semantics) },
@@ -45,9 +45,9 @@ export default function SessionPage() {
     { key: 'id', header: 'ID', mono: true, render: call => call.id },
     { key: 'call', header: 'Model call', mono: true, render: call => call.model_call_id ?? <span className="pill">unlinked</span> },
     { key: 'tool', header: 'Tool', render: call => display(call.tool_name) },
-    { key: 'started', header: 'Started', mono: true, render: call => display(call.started_at) },
-    { key: 'ended', header: 'Ended', mono: true, render: call => display(call.ended_at) },
-    { key: 'wall', header: 'Wall latency (ms)', align: 'num', render: call => display(call.wall_latency_ms) },
+    { key: 'started', header: 'Started', mono: true, render: call => <DateText value={call.started_at} offset /> },
+    { key: 'ended', header: 'Ended', mono: true, render: call => <DateText value={call.ended_at} offset /> },
+    { key: 'wall', header: 'Wall latency', align: 'num', render: call => <DurationText ms={call.wall_latency_ms} /> },
     { key: 'error', header: 'Error', render: call => call.is_error === null ? 'Unavailable' : call.is_error ? 'Yes' : 'No' },
     { key: 'src', header: 'Source', render: call => <IconButton name="braces" label={`Source record for tool call ${call.id}`} className="btn small icon-only" onClick={() => setSource({ sessionId: id, reference: call.raw_record })} /> },
   ]
@@ -60,25 +60,27 @@ export default function SessionPage() {
         <div className="grid panels">
           <section className="panel"><div className="panel-head"><h2>Identity</h2></div>
             <dl className="facts"><dt>Session ID</dt><dd className="mono">{session.id}</dd><dt>External ID</dt><dd className="mono">{session.external_id}</dd>
-              <dt>Source</dt><dd>{session.source}</dd><dt>Agent</dt><dd>{display(session.agent)}</dd><dt>Repository</dt><dd>{display(session.repo)}</dd><dt>User</dt><dd>{display(session.user)}</dd></dl></section>
+              <dt>Source</dt><dd><ScopeCell dimension="source" value={session.source} target="/sessions" /></dd><dt>Agent</dt><dd><ScopeCell dimension="agent" value={session.agent} target="/sessions" /></dd><dt>Repository</dt><dd>{display(session.repo)}</dd><dt>User</dt><dd>{display(session.user)}</dd></dl></section>
           <section className="panel"><div className="panel-head"><h2>Interval</h2></div>
-            <dl className="facts"><dt>Observed start</dt><dd className="mono">{display(session.observed_start_at)}</dd><dt>Observed end</dt><dd className="mono">{display(session.observed_end_at)}</dd>
-              <dt>Declared start</dt><dd className="mono">{display(session.declared_started_at)}</dd><dt>Declared end</dt><dd className="mono">{display(session.declared_ended_at)}</dd></dl>
+            <dl className="facts"><dt>Observed start</dt><dd className="mono"><DateText value={session.observed_start_at} offset /></dd><dt>Observed end</dt><dd className="mono"><DateText value={session.observed_end_at} offset /></dd>
+              <dt>Observed span</dt><dd className="mono"><SpanText start={session.observed_start_at} end={session.observed_end_at} /></dd>
+              <dt>Declared start</dt><dd className="mono"><DateText value={session.declared_started_at} offset /></dd><dt>Declared end</dt><dd className="mono"><DateText value={session.declared_ended_at} offset /></dd>
+              <dt>Declared span</dt><dd className="mono"><SpanText start={session.declared_started_at} end={session.declared_ended_at} /></dd></dl>
             <p style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)', marginTop: 8 }}>Observed timestamps describe the span in imported data, not active time.</p></section>
           <section className="panel"><div className="panel-head"><h2>Tokens</h2></div>
             <dl className="facts"><dt>Model calls</dt><dd>{display(session.model_call_count)}</dd><dt>Tool calls</dt><dd>{display(session.tool_call_count)}</dd>
-              <dt>Input tokens</dt><dd>{display(session.input_tokens.value)}</dd><dt>Input token coverage</dt><dd>{session.input_tokens.coverage.known} / {session.input_tokens.coverage.total} calls</dd></dl></section>
+              <dt>Input tokens</dt><dd>{display(session.input_tokens.value)}</dd><dt>Input token coverage</dt><dd>{num(session.input_tokens.coverage.known)} / {num(session.input_tokens.coverage.total)} calls</dd></dl></section>
         </div>
-        {session.diagnostics.length > 0 && <Notice kind="warn" title={`${session.diagnostics.length} diagnostic${session.diagnostics.length > 1 ? 's' : ''}`}>
+        {session.diagnostics.length > 0 && <Notice kind="warn" title={`${num(session.diagnostics.length)} diagnostic${session.diagnostics.length > 1 ? 's' : ''}`}>
           <DataTable caption="Session diagnostics" hideCaption columns={[
             { key: 'code', header: 'Code', mono: true, render: item => item.code },
             { key: 'field', header: 'Field', render: item => item.field ?? '—' },
             { key: 'message', header: 'Message', wrap: true, render: item => item.message },
           ]} rows={session.diagnostics} rowKey={(item) => `${item.code}:${item.field}:${item.message}`} empty="" />
         </Notice>}
-        <section className="panel"><div className="panel-head"><h2>Recorded model-call observations</h2><span className="count">{session.model_calls.length}</span></div>
+        <section className="panel"><div className="panel-head"><h2>Recorded model-call observations</h2><span className="count">{num(session.model_calls.length)}</span></div>
           <DataTable caption="Recorded model-call observations" hideCaption columns={modelColumns} rows={session.model_calls} rowKey={call => call.id} empty="No model calls recorded." /></section>
-        <section className="panel"><div className="panel-head"><h2>Recorded tool-call observations</h2><span className="count">{session.tool_calls.length}</span></div>
+        <section className="panel"><div className="panel-head"><h2>Recorded tool-call observations</h2><span className="count">{num(session.tool_calls.length)}</span></div>
           <DataTable caption="Recorded tool-call observations" hideCaption columns={toolColumns} rows={session.tool_calls} rowKey={call => call.id} empty="No tool calls recorded." /></section>
       </>}
     </StateBlock>

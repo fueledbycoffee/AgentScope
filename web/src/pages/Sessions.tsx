@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { getMetricsSummary, listSessions } from '../api'
-import { Pagination, StateBlock } from '../components'
+import { Pagination, ScopeChips, StateBlock } from '../components'
 import { PAGE_SIZE, num } from '../format'
 import { useScope } from '../scope'
 import { useScopeBar } from '../shellHooks'
@@ -20,6 +20,7 @@ export default function SessionsPage() {
   const empty = offset > 0 ? 'No sessions on this page.' : 'No sessions match this scope. Clear the scope or import traces.'
   return <>
     <div className="page-head"><h1>Sessions</h1>{metrics.data && <span className="sub">{num(metrics.data.sessions.value)} in scope</span>}</div>
+    <ScopeChips />
     <section className="panel">
       <StateBlock loading={sessions.loading} error={sessions.error} retry={sessions.retry} lines={6}>
         {sessions.data && <>

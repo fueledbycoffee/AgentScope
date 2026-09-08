@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError, commitImport, listMappings, previewImport, uploadFile } from '../api'
 import type { Upload } from '../api'
-import { Icon, IconButton, JsonView, ResourceState, Table } from '../components'
-import { entityCounts } from '../format'
+import { DateText, Icon, IconButton, JsonView, ResourceState, Table } from '../components'
+import { entityCounts, num } from '../format'
 import { ImportRoute, Receipt, StageBar, StageHeader, StatGroup } from '../import/components'
 import {
   EMPTY_IMPORT_STATE, aggregatePreview, clampStep, duplicateHashes, importReducer, mappingCandidates,
@@ -50,7 +50,7 @@ function RouteError({ error, filename }: { error: unknown; filename?: string }) 
 
 function formatFact(entries: ImportEntry[]): string | undefined {
   if (entries.length === 0) return undefined
-  const bytes = entries.reduce((total, entry) => total + entry.upload.size_bytes, 0).toLocaleString('en-US')
+  const bytes = entries.reduce((total, entry) => total + entry.upload.size_bytes, num(0))
   return entries.length === 1
     ? `${bytes} B · ${entries[0].upload.sha256.slice(0, 12)}…`
     : `${entries.length} files · ${bytes} B`
@@ -122,11 +122,11 @@ export default function ImportPage() {
   useFileBar('Import', state.entries.length === 0 ? [] : state.entries.length === 1 ? [
     { label: 'File', value: state.entries[0].upload.filename },
     { label: 'SHA-256', value: `${state.entries[0].upload.sha256.slice(0, 12)}…`, mono: true },
-    { label: 'Records', value: state.entries[0].upload.record_count.toLocaleString('en-US') },
+    { label: 'Records', value: num(state.entries[0].upload.record_count) },
     ...(resolvedMappings ? [{ label: 'Mapping', value: `${resolvedMappings[0].name} · revision ${resolvedMappings[0].revision}` }] : []),
   ] : [
     { label: 'Files', value: String(state.entries.length) },
-    { label: 'Records', value: records.toLocaleString('en-US') },
+    { label: 'Records', value: num(records) },
   ])
 
   const facts: Partial<Record<ImportStep, string>> = {
@@ -134,7 +134,7 @@ export default function ImportPage() {
     2: resolvedMappings ? (resolvedMappings.length === 1
       ? `${resolvedMappings[0].name} · rev ${resolvedMappings[0].revision}`
       : `${resolvedMappings.length} mappings · ${resolvedMappings[0].source}`) : undefined,
-    3: allPreviewed ? `${aggregate.records.sampled.toLocaleString('en-US')} sampled · ${aggregate.records.rejected.toLocaleString('en-US')} rejected · ${aggregate.records.ignored.toLocaleString('en-US')} ignored` : undefined,
+    3: allPreviewed ? `${num(aggregate.records.sampled)} sampled · ${num(aggregate.records.rejected)} rejected · ${num(aggregate.records.ignored)} ignored` : undefined,
   }
 
   function goTo(step: ImportStep, replace = false) {
@@ -240,7 +240,7 @@ export default function ImportPage() {
         <p>JSONL, JSONL.gz/gzip, or Parquet · up to 20 files per import</p>
       </div>
       {busy === 'upload' && <div className="notice" role="status"><div>
-        <p className="title">Uploading {uploadBytes.toLocaleString('en-US')} bytes</p>
+        <p className="title">Uploading {num(uploadBytes)} bytes</p>
         <p>Server work: storing → hashing → counting. No records have been imported.</p>
       </div></div>}
       {error?.stop === 1 && <RouteError error={error.cause} filename={error.filename} />}
@@ -252,16 +252,16 @@ export default function ImportPage() {
         </div>
         <Receipt items={[
           { label: 'Filename', value: single.upload.filename },
-          { label: 'Exact size', value: `${single.upload.size_bytes.toLocaleString('en-US')} bytes` },
+          { label: 'Exact size', value: `${num(single.upload.size_bytes)} bytes` },
           { label: 'SHA-256', value: single.upload.sha256, mono: true },
           { label: 'Format', value: formatName(single.upload.format) },
-          { label: 'Record count', value: single.upload.record_count.toLocaleString('en-US') },
+          { label: 'Record count', value: num(single.upload.record_count) },
           { label: 'Seen before', value: single.upload.already_imported.length ? 'Yes' : 'No' },
         ]} />
         {single.upload.already_imported.length > 0 && <aside className="notice import-route-seen">
           <div><h3>Already imported</h3><p>These bytes have been imported before. Re-importing for the same source inserts no observations.</p></div>
           <ul>{single.upload.already_imported.map(item => <li key={item.import_id}>
-            <Link to={`/imports/${encodeURIComponent(item.import_id)}`}>{item.import_id}</Link> · {item.imported_at}
+            <Link to={`/imports/${encodeURIComponent(item.import_id)}`}>{item.import_id}</Link> · <DateText value={item.imported_at} prefer="relative" />
           </li>)}</ul>
         </aside>}
         <details className="disclosure import-route-disclosure"><summary>Show the first 20 decoded records</summary>
@@ -275,8 +275,8 @@ export default function ImportPage() {
         <h2 id="uploaded-files-heading">Uploaded files</h2>
         <Table caption="Files ready for this import" headers={['Filename', 'Bytes', 'SHA-256', 'Format', 'Records', 'Seen before', '']}>
           {state.entries.map(entry => <tr key={entry.upload.upload_id}>
-            <td>{entry.upload.filename}</td><td>{entry.upload.size_bytes.toLocaleString('en-US')}</td><td className="hash">{entry.upload.sha256}</td>
-            <td>{entry.upload.format}</td><td>{entry.upload.record_count.toLocaleString('en-US')}</td>
+            <td>{entry.upload.filename}</td><td>{num(entry.upload.size_bytes)}</td><td className="hash">{entry.upload.sha256}</td>
+            <td>{entry.upload.format}</td><td>{num(entry.upload.record_count)}</td>
             <td>{entry.upload.already_imported.length ? <Link to={`/imports/${encodeURIComponent(entry.upload.already_imported[0].import_id)}`}>Yes</Link> : 'No'}</td>
             <td><IconButton name="trash" label={`Remove ${entry.upload.filename}`} className="btn small icon-only" disabled={busy !== null}
               onClick={() => dispatch({ type: 'remove', uploadId: entry.upload.upload_id })} /></td>
@@ -294,7 +294,7 @@ export default function ImportPage() {
         </div></div>}
       </section>}
       {hasDuplicates && <RouteError error={new Error('Two selected files have the same bytes. Remove one before continuing.')} />}
-      <StageBar status={state.entries.length ? `Stop 1 of 4 · ${records.toLocaleString('en-US')} records stored, nothing imported` : undefined}
+      <StageBar status={state.entries.length ? `Stop 1 of 4 · ${num(records)} records stored, nothing imported` : undefined}
         primary={<button type="button" className="btn primary" disabled={busy !== null || state.entries.length === 0 || hasDuplicates || mappings.loading}
           onClick={continueToMapping}>Continue to mapping</button>} />
     </>
@@ -354,7 +354,7 @@ export default function ImportPage() {
       {!busy && !previewError && allPreviewed && <>
         <StatGroup items={[
           { label: 'Records sampled', value: aggregate.records.sampled, detail: state.entries.length > 1 ? `across ${state.entries.length} files` : 'from this file' },
-          { label: 'Accepted', value: aggregate.records.accepted, detail: `${aggregate.records.partial.toLocaleString('en-US')} partial` },
+          { label: 'Accepted', value: aggregate.records.accepted, detail: `${num(aggregate.records.partial)} partial` },
           { label: 'Rejected', value: aggregate.records.rejected, detail: 'each with a reason' },
           { label: 'Ignored', value: aggregate.records.ignored, detail: 'no rule selected the record' },
         ]} />
@@ -400,26 +400,26 @@ export default function ImportPage() {
       <StageHeader title="Confirm and run">This is exactly what will be written. The file hashes and mapping revisions are stored with the import for audit.</StageHeader>
       <div className="import-route-stack"><h2>Import receipt</h2>
         {state.entries.map((entry, index) => <Receipt key={entry.upload.upload_id} items={[
-          { label: 'File', value: `${entry.upload.filename} · ${entry.upload.record_count.toLocaleString('en-US')} records` },
+          { label: 'File', value: `${entry.upload.filename} · ${num(entry.upload.record_count)} records` },
           { label: 'SHA-256', value: entry.upload.sha256, mono: true },
           { label: 'Mapping', value: selected[index] ? `${selected[index].name} revision ${selected[index].revision}` : 'Mapping not resolved' },
           { label: 'Mapping ID', value: selected[index]?.id ?? '', mono: true },
         ]} />)}
         <Receipt items={[
-          { label: 'Import', value: `${records.toLocaleString('en-US')} records into source ${selected[0]?.source ?? ''}` },
-          { label: 'Dry run', value: `${aggregate.records.sampled.toLocaleString('en-US')} sampled: ${aggregate.records.accepted.toLocaleString('en-US')} accepted, ${aggregate.records.partial.toLocaleString('en-US')} partial, ${aggregate.records.rejected.toLocaleString('en-US')} rejected, ${aggregate.records.ignored.toLocaleString('en-US')} ignored` },
-          { label: 'Warnings', value: warningCount.toLocaleString('en-US') },
+          { label: 'Import', value: `${num(records)} records into source ${selected[0]?.source ?? ''}` },
+          { label: 'Dry run', value: `${num(aggregate.records.sampled)} sampled: ${num(aggregate.records.accepted)} accepted, ${num(aggregate.records.partial)} partial, ${num(aggregate.records.rejected)} rejected, ${num(aggregate.records.ignored)} ignored` },
+          { label: 'Warnings', value: num(warningCount) },
           { label: 'Outcome', value: state.entries.some(entry => entry.upload.already_imported.length) ? 'Previously seen same-source bytes insert no observations; all other records remain subject to the atomic import.' : 'On failure nothing is kept and the report shows the reason.' },
         ]} />
       </div>
       {error?.stop === 4 && <RouteError error={error.cause} />}
       {busy === 'import' && <div className="notice"><div>
-        <p className="title">Importing {records.toLocaleString('en-US')} records in one transaction</p>
+        <p className="title">Importing {num(records)} records in one transaction</p>
         <p>If anything fails, nothing is kept.</p>
       </div></div>}
-      <StageBar onBack={() => goTo(3)} backDisabled={busy === 'import'} status={busy === 'import' ? `Importing exactly ${records.toLocaleString('en-US')} records` : undefined}
+      <StageBar onBack={() => goTo(3)} backDisabled={busy === 'import'} status={busy === 'import' ? `Importing exactly ${num(records)} records` : undefined}
         primary={<button type="button" className="btn primary" disabled={busy !== null || !allPreviewed || hasDuplicates || hasMixedSources}
-          onClick={() => void runImport()}><Icon name="upload" />Import {records.toLocaleString('en-US')} records</button>} />
+          onClick={() => void runImport()}><Icon name="upload" />Import {num(records)} records</button>} />
     </>
   }
 

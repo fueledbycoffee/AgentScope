@@ -42,6 +42,7 @@ import { DocumentEditor } from '../assist/DocumentEditor'
 import { EvidenceRail } from '../assist/EvidenceRail'
 import { PayloadDrawer } from '../assist/PayloadDrawer'
 import '../assist/assist.css'
+import { num } from '../format'
 
 /** The request snapshot for the pending message, rebuilt from the same state the runtime validated. */
 function pendingRequest(s: AssistState) {
@@ -92,8 +93,8 @@ export default function AssistPage() {
 
   useFileBar('Assistant', [
     { label: 'File', value: upload?.filename ?? uploadId },
-    ...(upload ? [{ label: 'SHA-256', value: `${upload.sha256.slice(0, 12)}…`, mono: true }, { label: 'Records', value: upload.record_count.toLocaleString('en-US') }] : []),
-    ...(profile ? [{ label: 'Paths', value: profile.fields.length.toLocaleString('en-US') }] : []),
+    ...(upload ? [{ label: 'SHA-256', value: `${upload.sha256.slice(0, 12)}…`, mono: true }, { label: 'Records', value: num(upload.record_count) }] : []),
+    ...(profile ? [{ label: 'Paths', value: num(profile.fields.length) }] : []),
   ])
 
   // effect: a prepare is pending for this generation

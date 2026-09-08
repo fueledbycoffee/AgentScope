@@ -2,14 +2,14 @@ import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getImport, getRejectSummary, listImports, listRecords, listRejects } from '../api'
 import type { ImportReport, ImportSummary, ImportedFile, ImportReject, RawReference, RecordRow, RejectSummary } from '../api'
-import { DataTable, Icon, IconButton, Notice, Pagination, SourceRecordDialog, StateBlock, StatusPill } from '../components'
+import { DataTable, DateText, Icon, IconButton, Notice, Pagination, ScopeCell, SourceRecordDialog, SpanText, StateBlock, StatusPill } from '../components'
 import type { Column } from '../components'
-import { display, entityCounts, PAGE_SIZE } from '../format'
+import { entityCounts, num, PAGE_SIZE } from '../format'
 import { useScope } from '../scope'
 import { useFileBar } from '../shellHooks'
 import { useResource } from '../useResource'
 
-const n = (value: number | null | undefined) => value == null ? 'Unavailable' : value.toLocaleString('en-US')
+const n = (value: number | null | undefined) => num(value)
 
 /* ------------------------------------------------------------------ history */
 
@@ -29,14 +29,14 @@ export function ImportsPage() {
   const columns: Column<ImportSummary>[] = [
     { key: 'id', header: 'Import', mono: true, render: r => <Link to={`/imports/${encodeURIComponent(r.import_id)}`}>{r.import_id}</Link> },
     { key: 'status', header: 'Status', render: r => <StatusPill status={r.status} /> },
-    { key: 'source', header: 'Source', render: r => r.source },
+    { key: 'source', header: 'Source', render: r => <ScopeCell dimension="source" value={r.source} target="/sessions" /> },
     { key: 'files', header: 'Files', wrap: true, render: r => r.files.map(f => f.filename).join(', ') },
     { key: 'mapping', header: 'Mapping', render: r => mappingLabel(r) },
     { key: 'records', header: 'Records', render: r => (['accepted', 'partial', 'duplicate', 'rejected', 'ignored'] as const).filter(k => k === 'accepted' || r.records[k]).map(k => `${n(r.records[k])} ${k}`).join(' · ') },
     { key: 'sessions', header: 'Sessions', align: 'num', render: r => r.status === 'committed' ? n(entityCounts(r.entities).session) : <span className="muted">—</span> },
     { key: 'calls', header: 'Model calls', align: 'num', render: r => r.status === 'committed' ? n(entityCounts(r.entities).model_call) : <span className="muted">—</span> },
     { key: 'rejected', header: 'Rejected records', align: 'num', render: r => <span style={r.records.rejected ? { color: 'var(--bad)' } : undefined}>{n(r.records.rejected)}</span> },
-    { key: 'started', header: 'Started', mono: true, render: r => r.started_at },
+    { key: 'started', header: 'Started', mono: true, render: r => <DateText value={r.started_at} prefer="relative" /> },
     { key: 'error', header: 'Error', wrap: true, render: r => r.error ?? <span className="muted">—</span> },
   ]
   return <>
@@ -56,16 +56,12 @@ export function ImportsPage() {
 
 /* ------------------------------------------------------------------- report */
 
-function seconds(report: ImportReport) {
-  const ms = Date.parse(report.finished_at) - Date.parse(report.started_at)
-  return Number.isFinite(ms) ? `${Math.max(ms, 0) / 1000 < 1 ? '<1' : Math.round(ms / 1000)} s` : ''
-}
-
 /** The status lead, in the product's voice. */
 function Lead({ report }: { report: ImportReport }) {
   const read = report.records.accepted + report.records.partial + report.records.rejected + report.records.ignored
-  if (report.status === 'committed') return <Notice kind="info" title={`Committed in ${seconds(report)}. ${n(report.records.accepted + report.records.partial)} of ${n(read)} records accepted, ${n(report.records.rejected)} rejected${report.records.duplicate ? `, ${n(report.records.duplicate)} skipped as duplicates` : ''}.`}>
-    <p><Link to="/overview">Open the overview</Link>{report.records.duplicate > 0 && <> · {report.files.filter(f => f.status === 'duplicate').length} file(s) were skipped as exact duplicates of {originals(report)}.</>}</p>
+  if (report.status === 'committed') return <Notice kind="info" title={`${n(report.records.accepted + report.records.partial)} of ${n(read)} records accepted, ${n(report.records.rejected)} rejected${report.records.duplicate ? `, ${n(report.records.duplicate)} skipped as duplicates` : ''}.`}>
+    <p>Committed in <SpanText start={report.started_at} end={report.finished_at} />, started <DateText value={report.started_at} prefer="relative" />.</p>
+    <p><Link to="/overview">Open the overview</Link>{report.records.duplicate > 0 && <> · {n(report.files.filter(f => f.status === 'duplicate').length)} file(s) were skipped as exact duplicates of {originals(report)}.</>}</p>
   </Notice>
   if (report.status === 'duplicate') return <Notice kind="warn" title="These bytes were already imported for this source. No observations were inserted.">
     <p>{report.files.length === 1 ? 'The file' : 'Every file'} matched an earlier committed import byte for byte: {originals(report)}. Record details live on that import.</p>
@@ -192,7 +188,7 @@ export function ReportPage() {
     { label: 'Import', value: report.import_id, mono: true },
     { label: 'Source', value: report.source },
     { label: mappings.length > 1 ? 'Mappings' : 'Mapping', value: mappings.length > 1 ? `${mappings.length} mappings` : mappings[0] ?? `${report.mapping.name} · revision ${report.mapping.revision}` },
-    { label: 'Started', value: report.started_at, mono: true },
+    { label: 'Started', value: <DateText value={report.started_at} />, mono: true },
   ] : [])
   const fileColumns: Column<ImportedFile>[] = [
     { key: 'name', header: 'Filename', render: f => f.filename },
@@ -213,14 +209,15 @@ export function ReportPage() {
         <Lead report={report} />
         <dl className="facts"><dt>Import ID</dt><dd className="mono">{report.import_id}</dd><dt>Source</dt><dd>{report.source}</dd>
           <dt>{mappings.length > 1 ? 'Mappings' : 'Mapping'}</dt><dd>{mappings.length > 1 ? mappings.join(' · ') : <>{report.mapping.name} · revision {report.mapping.revision} · <span className="mono">{report.mapping.id}</span></>}</dd>
-          <dt>Started</dt><dd className="mono">{report.started_at}</dd><dt>Finished</dt><dd className="mono">{display(report.finished_at)}</dd></dl>
+          <dt>Started</dt><dd className="mono"><DateText value={report.started_at} /></dd><dt>Finished</dt><dd className="mono"><DateText value={report.finished_at} /></dd>
+          <dt>Took</dt><dd className="mono"><SpanText start={report.started_at} end={report.finished_at} /></dd></dl>
         <p style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>Records count source records; entities count emitted observations. One record can emit several entities.</p>
         <div className="grid panels">
           <CountPanel title="Source records" counts={report.records} order={['accepted', 'partial', 'duplicate', 'rejected', 'ignored']} />
           <CountPanel title="Entity observations" counts={entityCounts(report.entities)} order={['session', 'model_call', 'tool_call']} />
           <CountPanel title="Warnings" counts={report.warnings} hint="absent: no such field · null: field present, value null" />
         </div>
-        <section className="panel" aria-label="Imported files"><div className="panel-head"><h2>Imported files</h2><span className="count">{report.files.length}</span></div>
+        <section className="panel" aria-label="Imported files"><div className="panel-head"><h2>Imported files</h2><span className="count">{n(report.files.length)}</span></div>
           <DataTable caption="Imported files" hideCaption columns={fileColumns} rows={report.files} rowKey={f => f.sha256} empty="No files." /></section>
         <div className="actions"><a className="btn small" href="#rejects"><Icon name="alert" />View rejects ({n(report.reject_count)})</a><a className="btn small" href="#records"><Icon name="sessions" />Browse records</a><Link className="btn small" to={link('/overview')}><Icon name="overview" />Open dashboard</Link><Link className="btn small" to="/imports"><Icon name="imports" />Imports history</Link></div>
         {report.status !== 'failed' && <Records key={`records-${id}`} id={id} files={report.files} summary={summary} />}

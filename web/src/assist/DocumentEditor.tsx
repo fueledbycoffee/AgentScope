@@ -2,6 +2,7 @@ import { useId, useRef } from 'react'
 import type { MappingIssue } from '../api/types'
 import { IconButton } from '../components'
 import { lineFor } from './jsonText'
+import { num } from '../format'
 
 export interface DocumentEditorProps {
   text: string
@@ -40,7 +41,7 @@ export function DocumentEditor({ text, onChange, issues, current, disabled, canU
     <section className="assist-editor" aria-labelledby={`${id}-title`}>
       <div className="panel-head">
         <h2 id={`${id}-title`}>Mapping document</h2>
-        <span className="muted">{lines.toLocaleString('en-US')} lines</span>
+        <span className="muted">{num(lines)} lines</span>
         <IconButton name="refresh" label="Undo the last proposal" className="btn small icon-only" disabled={!canUndo || disabled} onClick={onUndo} />
       </div>
       <textarea

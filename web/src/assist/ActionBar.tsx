@@ -1,5 +1,5 @@
 import type { ImportPreview, SavedMapping } from '../api/types'
-import { entityCounts } from '../format'
+import { entityCounts, num } from '../format'
 import { Counts, Icon } from '../components'
 
 export interface ActionBarProps {
@@ -66,7 +66,7 @@ export function ActionBar(props: ActionBarProps) {
           <Counts title="Source records sampled" counts={preview.records} />
           <Counts title="Entity observations" counts={entityCounts(preview.entities)} />
           <Counts title="Warnings" counts={preview.warnings} />
-          <p className="muted">{preview.rejects.length} reject{preview.rejects.length === 1 ? '' : 's'} in the sample of {preview.records.sampled}. The full import can differ.</p>
+          <p className="muted">{num(preview.rejects.length)} reject{preview.rejects.length === 1 ? '' : 's'} in the sample of {num(preview.records.sampled)}. The full import can differ.</p>
           <ul className="emissions" aria-label="First emission of each entity">
             {['session', 'model_call', 'tool_call'].map(entity => {
               const first = preview.emissions.find(e => e.entity === entity)
@@ -75,7 +75,7 @@ export function ActionBar(props: ActionBarProps) {
           </ul>
           {props.importReason === null && (
             <p>
-              Import all {props.recordCount?.toLocaleString('en-US') ?? '?'} records of <strong>{props.filename}</strong>
+              Import all {props.recordCount == null ? '?' : num(props.recordCount)} records of <strong>{props.filename}</strong>
               {props.sha256 && <> (SHA-256 <span className="mono">{props.sha256.slice(0, 12)}…</span>)</>} into source <strong>{props.source}</strong> with {saved.name} revision {saved.revision}.
             </p>
           )}
