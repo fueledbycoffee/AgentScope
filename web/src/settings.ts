@@ -160,13 +160,17 @@ function notify() {
 }
 
 export function setSettings(patch: Partial<Settings>) {
-  const next = validate({ ...readSettings(), ...patch }).settings
+  const result = validate({ ...readSettings(), ...patch })
+  const next = result.settings
   memory = next
   cache = next
+  // Diagnostics describe what is stored. A write replaces the stored document
+  // with validated values, so a warning about a corrected — or simply
+  // superseded — value must go with it, and one about this patch must appear.
+  diagnostics = result.diagnostics
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
     persisted = true
-    if (diagnostics.storage) diagnostics = { ...diagnostics, storage: undefined }
   } catch {
     persisted = false // private mode: the in-memory choice still applies to this tab
     diagnostics = { ...diagnostics, storage: 'unavailable' }

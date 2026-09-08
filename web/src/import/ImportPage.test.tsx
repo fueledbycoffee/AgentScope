@@ -113,6 +113,18 @@ describe('guided import route', () => {
     expect(within(uploaded).getByText('sample.jsonl.gz')).toBeInTheDocument()
   })
 
+  it('adds file sizes instead of pasting them together', async () => {
+    start()
+    await uploadOne() // 1,024 bytes
+    fetchMock.mockResolvedValueOnce(json({ ...upload, upload_id: 'upl_2', sha256: 'b'.repeat(64), filename: 'second.jsonl', size_bytes: 2048 }))
+    fireEvent.change(screen.getByLabelText('Add another trace file'), { target: { files: [new File(['{}'], 'second.jsonl')] } })
+    await screen.findByText('second.jsonl')
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to mapping' }))
+    const progress = await screen.findByRole('complementary', { name: 'Progress' })
+    expect(progress).toHaveTextContent('2 files · 3,072 B')
+    expect(progress).not.toHaveTextContent('010242048')
+  })
+
   it('blocks a batch whose selected mappings declare different sources', async () => {
     const otherMapping = { ...mapping, id: 'map_other', name: 'other-v1', source: 'other', created_by: 'user' }
     fetchMock.mockImplementation((input, options) => {

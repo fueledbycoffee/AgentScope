@@ -88,6 +88,38 @@ describe('validation degrades one field, never a page', () => {
     expect(readDiagnostics().numberLocale).toEqual({ stored: 'not a locale', reason: 'unsupported-locale' })
   })
 
+  it('clears a warning as soon as the choice is corrected', () => {
+    seed({ timeZone: 'Mars/Olympus' })
+    expect(readDiagnostics().timeZone).toBeDefined()
+    setSettings({ timeZone: 'Europe/Paris' })
+    // The warning described the stored value; the stored value has changed.
+    expect(readDiagnostics().timeZone).toBeUndefined()
+    expect(readSettings().timeZone).toBe('Europe/Paris')
+  })
+
+  it('clears an unsupported-locale warning the same way', () => {
+    seed({ numberLocale: 'not a locale' })
+    expect(readDiagnostics().numberLocale).toBeDefined()
+    setSettings({ numberLocale: 'de-DE' })
+    expect(readDiagnostics().numberLocale).toBeUndefined()
+  })
+
+  it('drops a warning about a stored value once the write has normalised storage', () => {
+    seed({ timeZone: 'Mars/Olympus' })
+    expect(readDiagnostics().timeZone).toBeDefined()
+    setSettings({ dateFormat: 'dmy' })
+    // Any write replaces the stored document with validated values, so the
+    // unknown zone is no longer stored and warning about it would be a lie.
+    expect(readDiagnostics().timeZone).toBeUndefined()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).timeZone).toBe('viewer')
+  })
+
+  it('records a diagnostic when the patch itself carries something unusable', () => {
+    setSettings({ timeZone: 'Mars/Olympus' })
+    expect(readDiagnostics().timeZone).toEqual({ stored: 'Mars/Olympus', reason: 'unknown-zone' })
+    expect(readSettings().timeZone).toBe(DEFAULTS.timeZone)
+  })
+
   it('reports no diagnostics for a clean store', () => {
     seed({ dateFormat: 'dmy', timeZone: 'UTC' })
     expect(readDiagnostics()).toEqual({})

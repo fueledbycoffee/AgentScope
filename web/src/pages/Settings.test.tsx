@@ -130,6 +130,16 @@ describe('the settings page', () => {
     expect(screen.getByRole('radio', { name: /ISO 8601/ })).toBeChecked()
   })
 
+  it('takes the warning down as soon as the zone is corrected, without a reload', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ timeZone: 'Mars/Olympus' }))
+    invalidateSettings()
+    start()
+    expect(screen.getByText(/The saved time zone Mars\/Olympus is not one this browser knows/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Time zone'), { target: { value: 'Europe/Paris' } })
+    expect(screen.queryByText(/is not one this browser knows/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Time zone')).toHaveValue('Europe/Paris')
+  })
+
   it('resets every displayed choice, the theme included', () => {
     start()
     fireEvent.click(screen.getByRole('radio', { name: /US/ }))

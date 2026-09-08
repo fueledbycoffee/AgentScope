@@ -96,6 +96,22 @@ describe('the accepted timestamp grammar is the API\'s and nothing else', () => 
     expect(formatDate(value as never, at()).unavailable).toBe(true)
   })
 
+  it.each([
+    ['an out-of-range offset', '2026-09-08T14:05:00+99:99'],
+    ['a 24-hour offset', '2026-09-08T14:05:00+24:00'],
+    ['out-of-range offset minutes', '2026-09-08T14:05:00+02:60'],
+    ['a negative out-of-range offset', '2026-09-08T14:05:00-24:00'],
+  ])('refuses %s rather than inferring an instant', (_label, value) => {
+    expect(parseInstant(value)).toBeUndefined()
+    expect(formatDate(value, at()).unavailable).toBe(true)
+  })
+
+  it('accepts the extremes RFC 3339 allows', () => {
+    expect(parseInstant('2026-09-08T14:05:00+23:59')).toBeDefined()
+    expect(parseInstant('2026-09-08T14:05:00-23:59')).toBeDefined()
+    expect(parseInstant('2026-09-08T14:05:00+05:45')).toBe(parseInstant('2026-09-08T08:20:00Z'))
+  })
+
   it('proves the reason for the seven-digit rule: microseconds are the arithmetic', () => {
     const a = parseInstant('2026-09-08T14:05:00.123456Z')!
     const b = parseInstant('2026-09-08T14:05:00.123455Z')!
@@ -169,6 +185,10 @@ describe('relative rendering', () => {
   it('walks the bands below, at and above each boundary', () => {
     expect(ago(30_000).relative).toBe('just now')
     expect(ago(44_000).relative).toBe('just now')
+    // The promotion rule applies at this boundary too: 44.6 s rounds to 45 s,
+    // which reaches the next band, so it is a minute rather than "just now".
+    expect(ago(44_400).relative).toBe('just now')
+    expect(ago(44_600).relative).toBe('1 min ago')
     expect(ago(45_000).relative).toBe('1 min ago') // never "0 min ago"
     expect(ago(2 * 60_000).relative).toBe('2 min ago')
     expect(ago(89 * 60_000).relative).toBe('89 min ago')
@@ -194,6 +214,8 @@ describe('relative rendering', () => {
     expect(ago(-3 * 3_600_000).relative).toBe('in 3 h')
     expect(ago(-2 * 60_000).relative).toBe('in 2 min')
     expect(ago(-30_000).relative).toBe('just now')
+    expect(ago(-44_400).relative).toBe('just now')
+    expect(ago(-44_600).relative).toBe('in 1 min') // the same boundary, ahead of now
   })
 
   it('gives no relative rendering when the viewer turned them off', () => {

@@ -145,8 +145,14 @@ export function parseInstant(value: unknown): bigint | undefined {
   if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return undefined
   const micros = BigInt(utc) * 1000n + BigInt((fraction ?? '').padEnd(6, '0') || '0')
   if (zone === 'Z') return micros
+  const offsetHours = Number(zone.slice(1, 3))
+  const offsetMinutes = Number(zone.slice(4, 6))
+  // RFC 3339 allows -23:59 to +23:59. An unchecked offset would silently move
+  // the instant instead of being refused: +99:99 is not four days earlier, it
+  // is not a timestamp.
+  if (offsetHours > 23 || offsetMinutes > 59) return undefined
   const sign = zone.startsWith('-') ? 1n : -1n
-  const offset = BigInt(Number(zone.slice(1, 3)) * 60 + Number(zone.slice(4, 6))) * 60_000_000n
+  const offset = BigInt(offsetHours * 60 + offsetMinutes) * 60_000_000n
   return micros + sign * offset
 }
 
@@ -229,7 +235,9 @@ function relativeText(deltaMs: number, settings: Settings): string | null {
   if (magnitude >= 7 * DAY) return null
   const say = (count: number, unit: string) =>
     ahead ? `in ${num(count, settings)} ${unit}` : `${num(count, settings)} ${unit} ago`
-  if (magnitude < 45 * SECOND) return 'just now'
+  // Promotion applies here too: 44.6 s rounds to 45 s, which reaches the next
+  // band, so it reads as a minute rather than "just now".
+  if (Math.round(magnitude / SECOND) < 45) return 'just now'
   const minutes = Math.round(magnitude / MINUTE)
   if (magnitude < 90 * MINUTE && minutes < 90) return say(Math.max(1, minutes), 'min')
   const hours = Math.round(magnitude / HOUR)

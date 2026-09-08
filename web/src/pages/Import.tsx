@@ -50,7 +50,9 @@ function RouteError({ error, filename }: { error: unknown; filename?: string }) 
 
 function formatFact(entries: ImportEntry[]): string | undefined {
   if (entries.length === 0) return undefined
-  const bytes = entries.reduce((total, entry) => total + entry.upload.size_bytes, num(0))
+  // Sum the numbers, then format once: a formatted value is a string, and
+  // seeding the reducer with one turns every addition into concatenation.
+  const bytes = num(entries.reduce((total, entry) => total + entry.upload.size_bytes, 0))
   return entries.length === 1
     ? `${bytes} B · ${entries[0].upload.sha256.slice(0, 12)}…`
     : `${entries.length} files · ${bytes} B`
