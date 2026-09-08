@@ -74,7 +74,8 @@ async function uploadAndOpenAssistant(page, file) {
   await page.goto(`${base}/import`)
   await page.getByLabel(/Trace file|Add another trace file/).setInputFiles(file)
   await page.getByRole('heading', { name: 'Uploaded file' }).waitFor()
-  await page.getByRole('button', { name: 'Draft a mapping with the assistant' }).click()
+  await page.getByRole('button', { name: 'Continue to mapping' }).click() // the guided route: the assistant is a link on the Mapping stop
+  await page.getByRole('link', { name: 'Set up a new mapping with the assistant' }).click()
   await page.getByRole('heading', { name: 'Mapping assistant' }).waitFor()
   return new URL(page.url()).pathname.split('/').pop()
 }

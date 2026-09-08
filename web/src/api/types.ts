@@ -50,7 +50,7 @@ export interface RecordRow { file_sha256: string; locator: string; outcome: Reco
 export interface RejectSummary { codes: Record<string, number>; rules: Record<string, number>; files: Record<string, number>; outcomes: Partial<Record<RecordOutcome, number>> }
 export type EntityCounts = Partial<Record<'session' | 'model_call' | 'tool_call', number>>
 export interface ImportPreview {
-  records: { accepted: number; partial: number; rejected: number; sampled: number }
+  records: { accepted: number; partial: number; rejected: number; ignored: number; sampled: number }
   entities: EntityCounts
   rejects: Reject[]
   warnings: Record<string, number>

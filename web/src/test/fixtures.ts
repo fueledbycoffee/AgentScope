@@ -27,7 +27,7 @@ export const reject = {
   field: 'wall_latency_ms', message: 'Expected an integer',
 }
 export const preview: ImportPreview = {
-  records: { accepted: 2, partial: 0, rejected: 1, sampled: 3 },
+  records: { accepted: 2, partial: 0, rejected: 1, ignored: 0, sampled: 3 },
   entities: { session: 1, model_call: 2, tool_call: 4 }, warnings: { absent: 2 },
   rejects: [reject], emissions: [{ entity: 'model_call', path: 'model_call', locator: 'line:1', fields: { model: 'claude', input_tokens: 17 } }],
 }
