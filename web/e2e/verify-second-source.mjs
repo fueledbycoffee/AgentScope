@@ -156,7 +156,9 @@ async function live() {
       corrections.push({ from, to, applied: true, base_sha256: base, target_sha256: target })
       log('correction applied', from, '=>', to)
     }
-    for (const spec of [].concat(args['delete-field'] ?? [])) {
+    const hasDraft = documentText.trim().startsWith('{')
+    if (!hasDraft && (args['delete-field'] || args['set-where'] || args['set-notes'] || args['fix-bare-paths'])) log('no draft to correct: the assistant returned no document')
+    for (const spec of hasDraft ? [].concat(args['delete-field'] ?? []) : []) {
       const [ruleId, field] = spec.split('.')
       const parsed = JSON.parse(documentText)
       const rule = (parsed.rules ?? []).find(r => r.id === ruleId)
@@ -167,7 +169,7 @@ async function live() {
       corrections.push({ delete: spec, applied: true, reserialised: true, base_sha256: base, target_sha256: createHash('sha256').update(documentText).digest('hex') })
       log('field removed', spec)
     }
-    for (const spec of [].concat(args['set-where'] ?? [])) {
+    for (const spec of hasDraft ? [].concat(args['set-where'] ?? []) : []) {
       const eq = spec.indexOf('=')
       const ruleId = spec.slice(0, eq)
       const where = JSON.parse(spec.slice(eq + 1))
@@ -180,7 +182,7 @@ async function live() {
       corrections.push({ set_where: spec, applied: true, reserialised: true, base_sha256: base, target_sha256: createHash('sha256').update(documentText).digest('hex') })
       log('where replaced on', rule.id)
     }
-    if (args['fix-bare-paths']) {
+    if (hasDraft && args['fix-bare-paths']) {
       // a reviewer's systematic fix: paths written as bare column names get the '$.' prefix, and a
       // bare Parquet timestamp column gets its '.iso' accessor (recorded as one correction)
       const parsed = JSON.parse(documentText)
@@ -204,7 +206,7 @@ async function live() {
         log('bare paths prefixed:', changed)
       } else corrections.push({ fix_bare_paths: 0, applied: false })
     }
-    if (args['set-notes'] !== undefined) {
+    if (hasDraft && args['set-notes'] !== undefined) {
       const parsed = JSON.parse(documentText)
       const base = createHash('sha256').update(documentText).digest('hex')
       parsed.notes = String(args['set-notes'])
@@ -215,6 +217,13 @@ async function live() {
     if (corrections.some(c => c.applied)) {
       await page.getByLabel('Mapping document (JSON)').fill(documentText)
       writeFileSync(join(runDir, 'document.corrected.json'), documentText)
+    }
+    if (!hasDraft) {
+      log('no draft: nothing to validate, save or import')
+      writeFileSync(join(runDir, 'outcome.json'), JSON.stringify({ runId, model: args.model, file: args.file, uploadId, name: args.name, source: args.source, sample: !!args.sample, message: args.message, revisions, notices, corrections, executable: false, saved: null, imported: false, prepared, outcomes }, null, 2))
+      writeFileSync(join(runDir, 'requests.json'), JSON.stringify(counters, null, 2))
+      log('done', runId, 'no draft')
+      return
     }
     log('validate')
     // executability is the server's verdict (warnings leave a document executable), not the UI's "no issues" line
