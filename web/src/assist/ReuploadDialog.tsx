@@ -52,7 +52,16 @@ export function ReuploadDialog({ target, onClose, onResolved }: ReuploadDialogPr
 
   useEffect(() => {
     dialog.current?.showModal?.()
+    // leaving the dialog cancels whatever it started: a hash that has not finished, an upload in
+    // flight, and above all a completion that would navigate away from wherever the user now is
+    return () => { selection.current += 1 }
   }, [])
+
+  /** Closing is a cancellation, not just a hide. */
+  const close = () => {
+    selection.current += 1
+    onClose()
+  }
 
   async function choose(file: File | undefined) {
     if (file === undefined) return
@@ -76,7 +85,7 @@ export function ReuploadDialog({ target, onClose, onResolved }: ReuploadDialogPr
       }
       setBusy(`Uploading ${file.name}…`)
       const upload = await uploadFile(file)
-      if (mine !== selection.current) return
+      if (mine !== selection.current) return // closed, unmounted or replaced while it was uploading
       if (upload.sha256 !== target.sha256) {
         setBusy(null)
         setProblem(`The server hashed those bytes as ${upload.sha256}, which is not the file this report names.`)
@@ -95,10 +104,10 @@ export function ReuploadDialog({ target, onClose, onResolved }: ReuploadDialogPr
   const revision = target.mappingName === null ? 'no mapping binding' : `${target.mappingName} · revision ${target.mappingRevision}`
 
   return (
-    <dialog ref={dialog} className="drawer" aria-label="Correct this file's mapping" onCancel={onClose} onClose={onClose}>
+    <dialog ref={dialog} className="drawer" aria-label="Correct this file's mapping" onCancel={close} onClose={close}>
       <div className="panel-head">
         <h2>Correct the mapping of {target.filename}</h2>
-        <button type="button" className="btn small icon-only has-tip" aria-label="Close" data-tip="Close" onClick={onClose}>
+        <button type="button" className="btn small icon-only has-tip" aria-label="Close" data-tip="Close" onClick={close}>
           <Icon name="x" />
         </button>
       </div>

@@ -121,6 +121,57 @@ describe('reopening a file from its report', () => {
     expect(onResolved).not.toHaveBeenCalled()
   })
 
+  it('cancels a pending completion when the dialog is closed', async () => {
+    let release: (() => void) | undefined
+    const held = new Promise<void>(resolve => { release = resolve })
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      await held
+      return {
+        ok: true, status: 201,
+        json: async () => ({ upload_id: 'upl_9', filename: 'trace.jsonl', sha256: digest, size_bytes: 1, format: 'jsonl', record_count: 1, preview: [], already_imported: [] }),
+      } as unknown as Response
+    }))
+    const { onResolved, onClose } = show()
+    fireEvent.change(screen.getByLabelText('Trace file'), { target: { files: [file(CONTENT)] } })
+    await screen.findByText(/Uploading/)
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalled()
+    release!()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    // a response that arrives after the dialog is gone must not navigate anywhere
+    expect(onResolved).not.toHaveBeenCalled()
+  })
+
+  it('cancels a pending completion when the dialog is unmounted', async () => {
+    let release: (() => void) | undefined
+    const held = new Promise<void>(resolve => { release = resolve })
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      await held
+      return {
+        ok: true, status: 201,
+        json: async () => ({ upload_id: 'upl_9', filename: 'trace.jsonl', sha256: digest, size_bytes: 1, format: 'jsonl', record_count: 1, preview: [], already_imported: [] }),
+      } as unknown as Response
+    }))
+    const onResolved = vi.fn()
+    const { unmount } = render(<ReuploadDialog target={target()} onClose={vi.fn()} onResolved={onResolved} />)
+    fireEvent.change(screen.getByLabelText('Trace file'), { target: { files: [file(CONTENT)] } })
+    await screen.findByText(/Uploading/)
+    unmount()
+    release!()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(onResolved).not.toHaveBeenCalled()
+  })
+
+  it('does not start an upload for a file picked before the dialog closed', async () => {
+    const { onResolved } = show()
+    fireEvent.change(screen.getByLabelText('Trace file'), { target: { files: [file(CONTENT)] } })
+    // closed while the bytes are still being hashed
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(uploads).toHaveLength(0)
+    expect(onResolved).not.toHaveBeenCalled()
+  })
+
   it('disables the entry when the browser cannot hash, instead of uploading first', () => {
     const subtle = crypto.subtle
     Object.defineProperty(globalThis.crypto, 'subtle', { value: undefined, configurable: true })
