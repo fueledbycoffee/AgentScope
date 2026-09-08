@@ -90,3 +90,20 @@ validation and reduction belong to fixed domain behavior. See
 - Whole-record hashes for nested entities: unrelated parent changes would distort tool comparison.
 - Fuzzy cross-export deduplication: uncertain and outside the v0.1.0 guarantee.
 - DSL grouping and aggregation for sessions: moves fixed identity and time semantics into user mappings.
+
+## Amendment — cross-file diagnostic precedence (2026-09-08, issue #33)
+
+Comparison version 1 treats equal peer projections as the stronger evidence:
+flag an incoming observation as `suspected_duplicate` only when another file
+holds its scoped native claim **and no peer file holds an equal projection**.
+Otherwise count an equal peer as `matching_claim_equal_projection`. This avoids
+suspected warnings when two byte-different exports both repeat the same native
+key with projections `{P1, P2}`. Classification retains every observation and
+changes neither the five record outcomes nor metric totals.
+
+Comparison scopes retain source namespace and harness; unresolved file-local
+harnesses are counted as file/rule conditions outside emission warning counts.
+The current reducer still reuses sessions by `(source, external_id)`; this
+amendment does not migrate session storage identity. Projection digests use the
+same SHA-256 collision-resistance assumption as raw-file identity. Canonical
+scope/projection values above 64 KiB are skipped with a counted condition.

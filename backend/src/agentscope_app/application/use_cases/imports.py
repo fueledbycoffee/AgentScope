@@ -38,6 +38,7 @@ from agentscope_app.application.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
+from agentscope_app.domain.claims import COMPARISON_VERSION, prepare_claims
 from agentscope_app.domain.identity import SourceOccurrence
 from agentscope_app.domain.mapping.contract import MappingSpec
 from agentscope_app.domain.mapping.interpreter import (
@@ -289,6 +290,7 @@ class CommitImport:
                         )
                         rejects.extend(_reject_rows(result, record.payload, sha))
                         emissions.extend(result.emissions)
+            prepared = prepare_claims(source, emissions, {g.info.sha256: g.spec for g in pending})
             with self._uow_factory() as uow:
                 # Sessions known from earlier attempts seed the reducer, so merging
                 # across files and attempts follows the same domain rules.
@@ -309,18 +311,53 @@ class CommitImport:
                     bindings={g.info.sha256: g.mapping.id for g in pending},
                     emissions=emissions,
                     sessions=sessions,
+                    claims=prepared.claims,
                 )
+                diagnostic_counts: dict[tuple[str, str], Counter[str]] = {}
+                for diagnostic in stored.diagnostics:
+                    key = (diagnostic.file_sha256, diagnostic.locator)
+                    diagnostic_counts.setdefault(key, Counter())[diagnostic.code] += 1
+                outcomes = [
+                    replace(
+                        o,
+                        warning_counts=dict(
+                            Counter(o.warning_counts)
+                            + diagnostic_counts.get((o.file_sha256, o.locator), Counter())
+                        ),
+                    )
+                    for o in outcomes
+                ]
+                file_warnings: dict[str, Counter[str]] = {}
+                warnings.clear()
+                for result_row in outcomes:
+                    file_warnings.setdefault(result_row.file_sha256, Counter()).update(
+                        result_row.warning_counts
+                    )
+                    warnings.update(result_row.warning_counts)
+                uow.imports.add_claim_conditions(import_id, prepared.conditions)
                 final = tuple(
                     duplicate_info(g)
                     if g.duplicate
-                    else file_info(g, "committed", _counts(**per_file[g.info.sha256]))
+                    else replace(
+                        file_info(g, "committed", _counts(**per_file[g.info.sha256])),
+                        warnings=dict(file_warnings.get(g.info.sha256, {})),
+                        claim_conditions=tuple(
+                            c for c in prepared.conditions if c.file_sha256 == g.info.sha256
+                        ),
+                    )
                     for g in groups.values()
                 )
                 all_records = _counts(**records)
                 all_records["duplicate"] += duplicate_records
                 report = build(
-                    "committed", all_records, dict(stored), dict(warnings), len(rejects), final
+                    "committed",
+                    all_records,
+                    stored.entity_counts,
+                    dict(warnings),
+                    len(rejects),
+                    final,
                 )
+                report = replace(report, duplicate_detection_version=COMPARISON_VERSION)
                 uow.imports.update_report(report)
                 uow.imports.add_results(import_id, outcomes, rejects)
                 uow.commit()

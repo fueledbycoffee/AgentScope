@@ -11,6 +11,7 @@ every component or release verification has already been delivered.
 | [ADR-003: Nulls and units](ADR-003-nulls-and-units.md) | Preserve missingness and measurement semantics; report coverage. |
 | [ADR-004: Mapping DSL v1](ADR-004-mapping-dsl-v1.md) | Replay a bounded declarative contract through four validation stages. |
 | [ADR-005: LLM access](ADR-005-llm-access.md) | One application port, compatible adapter first, fake in CI. |
+| [ADR-006: UI design direction](ADR-006-ui-design-direction.md) | Use the Console variant as the design of record, with accessible trust surfaces and explicit unavailable values. |
 
 Use sequential, zero-padded numbers and descriptive filenames:
 `ADR-NNN-short-topic.md`. Never reuse or renumber an accepted record.

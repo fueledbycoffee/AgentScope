@@ -1,8 +1,8 @@
 # AgentScope web
 
-React UI for the day-1 trace import and inspection slice. The hand-written DTOs
-and API client in `src/api/` follow `../docs/api/v0.1.md`. That reference contract
-is carried by the backend PR for issues #5 and #6.
+React UI for importing, inspecting and exploring normalised agent traces. The
+hand-written DTOs and API client in `src/api/` follow
+[`docs/api/v0.1.md`](../docs/api/v0.1.md).
 
 From the repository root:
 
@@ -24,20 +24,24 @@ Pages:
 - `/imports`: paginated history; `/imports/:id`: full report and paginated,
   code-filtered rejects. Duplicate and failed imports explain that nothing was
   inserted.
-- `/dashboard`: four KPI tiles with expandable definitions, input-token coverage
+- `/overview`: four KPI tiles with expandable definitions, input-token coverage
   and semantics, source/agent filters shared by metrics and the sessions table,
   and session pagination. Missing values render as `Unavailable`; real zeroes
-  remain zeroes.
+  remain zeroes. `/dashboard` redirects here and preserves its query string.
 - `/sessions/:id`: session fields, model calls, tool calls, diagnostics, and a
   source-record drawer with formatted, inert JSON fetched on demand. The native
   dialog supports Escape, focus containment, and returning focus to its opener.
+- `/mappings`: saved mapping revisions; `/definitions`: the metric definitions
+  returned by the live summary API.
+- `/import/assist/:uploadId`: the profile, exact assistant payload, editable
+  mapping, and explicit validate, save, preview and import gates.
 
 Changing the file or mapping invalidates the preview. Controls lock during
 mutations to prevent repeated submissions. Read errors offer a retry; obsolete
 filter/page responses are ignored. List pages use 50 rows (the API does not
 provide a total; a full final page can lead to an empty next page).
 
-Validation, without a live backend:
+Validation without a live backend, from the repository root:
 
 ```sh
 pnpm --dir web test
@@ -52,5 +56,5 @@ duplicate/failed reports, errors and commit conflicts, KPI null/zero/known-value
 rendering, shared filters and stale responses, history, rejects pagination,
 session source records, and every API endpoint's method/body/query/error shape.
 The actual server restart, persistence, and exact-file re-import gate require
-the backend PR and a live TraceLab excerpt; these frontend tests do not claim
-that integration evidence.
+the built backend and the committed TraceLab fixture; these frontend tests do
+not claim that integration evidence. Follow the root README for that path.

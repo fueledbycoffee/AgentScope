@@ -6,6 +6,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
+from typing import cast as typing_cast
 
 from sqlalchemy import Integer, cast, func, insert, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -13,10 +14,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from agentscope_app.application.dto import (
+    DIAGNOSTIC_MESSAGES,
     CachedProfile,
     Coverage,
+    DiagnosticCode,
+    DiagnosticPeer,
     DiagnosticRow,
     FileInfo,
+    ImportDiagnostic,
+    ImportDiagnosticsPage,
     ImportRef,
     ImportReport,
     MappingRecord,
@@ -31,15 +37,18 @@ from agentscope_app.application.dto import (
     SessionDetail,
     SessionSummary,
     ToolCallRow,
+    TraceStoreResult,
     UploadInfo,
 )
 from agentscope_app.application.dto import (
     RawRecord as RawRecordDTO,
 )
 from agentscope_app.application.errors import ConflictError, NotFoundError
+from agentscope_app.domain.claims import ClaimCandidate, ClaimCondition, ConditionCode
 from agentscope_app.domain.mapping.interpreter import Emission
 from agentscope_app.domain.reducer import SessionAggregate
 from agentscope_app.infrastructure.db import models as m
+from agentscope_app.infrastructure.db.claims import ClaimIndex
 
 _SESSION_TOKENS_DEFINITION = (
     "Sum of input_tokens over this session's model calls with a known value; "
@@ -214,6 +223,7 @@ class SqlAlchemyImports:
                 warnings=dict(report.warnings),
                 reject_count=report.reject_count,
                 error=report.error,
+                duplicate_detection_version=report.duplicate_detection_version,
             )
         )
         self._s.flush()  # parents before children: no relationships declare the order
@@ -239,6 +249,7 @@ class SqlAlchemyImports:
                     mapping_id=f.mapping.id if f.mapping else report.mapping.id,
                     status=f.status,
                     records=dict(f.records),
+                    warnings=dict(f.warnings),
                 )
             )
         try:
@@ -259,6 +270,7 @@ class SqlAlchemyImports:
         row.warnings = dict(report.warnings)
         row.reject_count = report.reject_count
         row.error = report.error
+        row.duplicate_detection_version = report.duplicate_detection_version
         by_sha = {f.sha256: f for f in report.files}
         for f in self._s.scalars(
             select(m.ImportFile).where(m.ImportFile.import_id == report.import_id)
@@ -269,6 +281,7 @@ class SqlAlchemyImports:
             f.status = info.status
             f.committed = info.status == "committed"
             f.records = dict(info.records)
+            f.warnings = dict(info.warnings)
         try:
             self._s.flush()
         except IntegrityError as exc:
@@ -325,6 +338,7 @@ class SqlAlchemyImports:
 
     def _to_dto(self, row: m.Import) -> ImportReport:
         files = self._s.scalars(select(m.ImportFile).where(m.ImportFile.import_id == row.id))
+        conditions = self._conditions(row.id)
         return ImportReport(
             import_id=row.id,
             status=row.status,
@@ -343,6 +357,8 @@ class SqlAlchemyImports:
                     status=f.status,
                     records={k: int(v) for k, v in (f.records or {}).items()},
                     duplicate_of=self._original_of(f) if f.status == "duplicate" else None,
+                    warnings=dict(f.warnings),
+                    claim_conditions=tuple(c for c in conditions if c.file_sha256 == f.sha256),
                 )
                 for f in files
             ),
@@ -351,6 +367,87 @@ class SqlAlchemyImports:
             warnings={k: int(v) for k, v in row.warnings.items()},
             reject_count=row.reject_count,
             error=row.error,
+            duplicate_detection_version=row.duplicate_detection_version,
+        )
+
+    def add_claim_conditions(self, import_id: str, conditions: Sequence[ClaimCondition]) -> None:
+        ClaimIndex(self._s.connection(), m.Base.metadata.tables).conditions(import_id, conditions)
+
+    def _conditions(self, import_id: str) -> tuple[ClaimCondition, ...]:
+        return tuple(
+            ClaimCondition(
+                r.file_sha256,
+                r.rule_id,
+                typing_cast(ConditionCode, r.code),
+                r.affected_emissions,
+                r.message,
+            )
+            for r in self._s.scalars(
+                select(m.ImportClaimCondition)
+                .where(m.ImportClaimCondition.import_id == import_id)
+                .order_by(
+                    m.ImportClaimCondition.file_sha256,
+                    m.ImportClaimCondition.rule_id,
+                    m.ImportClaimCondition.code,
+                )
+            )
+        )
+
+    def diagnostics(
+        self,
+        import_id: str,
+        code: str | None,
+        file_sha256: str | None,
+        locator: str | None,
+        limit: int,
+        offset: int,
+    ) -> ImportDiagnosticsPage:
+        claim, peer, diagnostic = (
+            m.EntityClaim.__table__,
+            m.EntityClaim.__table__.alias("peer"),
+            m.ImportDiagnostic.__table__,
+        )
+        joined = diagnostic.join(claim, claim.c.id == diagnostic.c.claim_id).join(
+            peer, peer.c.id == diagnostic.c.peer_claim_id
+        )
+        filters = [diagnostic.c.import_id == import_id]
+        if code is not None:
+            filters.append(diagnostic.c.code == code)
+        if file_sha256 is not None:
+            filters.append(claim.c.file_sha256 == file_sha256)
+        if locator is not None:
+            filters.append(claim.c.locator == locator)
+        total = self._s.scalar(select(func.count()).select_from(joined).where(*filters)) or 0
+        stmt = (
+            select(
+                claim,
+                diagnostic.c.code,
+                *[
+                    peer.c[key].label("peer_" + key)
+                    for key in ("import_id", "file_sha256", "locator", "emission_path", "entity")
+                ],
+            )
+            .select_from(joined)
+            .where(*filters)
+            .order_by(
+                claim.c.file_sha256,
+                claim.c.locator_position,
+                claim.c.locator,
+                claim.c.emission_path,
+                claim.c.entity,
+                diagnostic.c.code,
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        return ImportDiagnosticsPage(
+            tuple(_claim_diagnostic(dict(r)) for r in self._s.execute(stmt).mappings()),
+            total,
+            tuple(
+                c
+                for c in self._conditions(import_id)
+                if file_sha256 is None or c.file_sha256 == file_sha256
+            ),
         )
 
     def _original_of(self, f: m.ImportFile) -> str | None:
@@ -501,15 +598,25 @@ class SqlAlchemyTraces:
         bindings: Mapping[str, str],
         emissions: Sequence[Emission],
         sessions: dict[str, SessionAggregate],
-    ) -> dict[str, int]:
+        claims: Sequence[ClaimCandidate] = (),
+    ) -> TraceStoreResult:
         try:
-            return self._store(import_id, source, bindings, emissions, sessions)
+            counts = self._store(import_id, source, bindings, emissions, sessions)
         except IntegrityError as exc:
-            # The pre-check passed, so an occurrence-key collision means another import
-            # of the same bytes for this source is racing us.
+            message = str(exc.orig)
+            occurrence_constraints = (
+                "UNIQUE constraint failed: model_calls.source, model_calls.occurrence_key",
+                "UNIQUE constraint failed: tool_calls.source, tool_calls.occurrence_key",
+            )
+            if not any(message == constraint for constraint in occurrence_constraints):
+                raise
             raise ConflictError(
                 "Another import of the same bytes for this source is already committed"
             ) from exc
+        index = ClaimIndex(self._s.connection(), m.Base.metadata.tables)
+        index.stage(import_id, bindings, claims)
+        diagnostics = tuple(_claim_diagnostic(r) for r in index.detect(import_id)) if claims else ()
+        return TraceStoreResult(counts, diagnostics)
 
     def _store(
         self,
@@ -867,3 +974,22 @@ def _chunks(rows: Sequence[Any]) -> list[Sequence[Any]]:
 
 def _bind_dt(value: Any) -> datetime | None:
     return value if isinstance(value, datetime) else None
+
+
+def _claim_diagnostic(row: Mapping[str, Any]) -> ImportDiagnostic:
+    return ImportDiagnostic(
+        row["file_sha256"],
+        row["locator"],
+        row["emission_path"],
+        row["rule_id"],
+        row["entity"],
+        typing_cast(DiagnosticCode, row["code"]),
+        DIAGNOSTIC_MESSAGES[row["code"]],
+        DiagnosticPeer(
+            row["peer_import_id"],
+            row["peer_file_sha256"],
+            row["peer_locator"],
+            row["peer_emission_path"],
+            row["peer_entity"],
+        ),
+    )

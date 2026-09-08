@@ -1,9 +1,9 @@
 # Configuring the mapping assistant
 
-The assistant talks to one chat-completions endpoint, chosen by four variables
-in `backend/.env` (never committed; copy `.env.example`). No model id lives in
-the code. Switching model or provider is: change the variables, restart the
-backend, nothing else.
+The assistant talks to one chat-completions endpoint, chosen by settings in
+`backend/.env` (never committed; copy `.env.example`). No model id lives in
+the code. Switching model or provider requires a backend restart because the
+settings and adapter are constructed at application startup.
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
@@ -14,11 +14,44 @@ backend, nothing else.
 | `AGENTSCOPE_LLM_TIMEOUT_S` | Deadline of one generation call (positive seconds). A run with a repair takes at most twice this. Kept as text and parsed by the adapter: a typo disables the assistant, not the application | `60` |
 | `AGENTSCOPE_LLM_JSON_MODE` | `auto`, `on`, `off`: whether `response_format: {"type": "json_object"}` is sent (see below) | `auto` |
 | `AGENTSCOPE_LLM_MAX_TOKENS` | Upper bound on a reply (positive integer). A cut-off reply gets one repair, then fails clearly | `8192` |
+| `AGENTSCOPE_LLM_CONTEXT_BYTES` | Budget of the prepared context in UTF-8 bytes (at least 4096). Trimming order: sample records, examples 5→2, history, examples→0, then nested fields (deepest and rarest first, reported as `truncated.fields_omitted` and `profile.omitted` per parent path). `$` and top-level fields are never omitted; a context that cannot hold them answers `413 context_too_large` naming this variable's role | `65536` |
 
 An invalid or missing assistant configuration never stops the application:
 uploads, previews, imports, saved-mapping replay and the dashboards work, and
 only assistant runs answer `503 assistant_unavailable` with the variable to
 fix in the message.
+
+## Switch, verify and roll back a model
+
+1. **Configure.** Edit `backend/.env`. For `openai_compatible`, set the complete
+   endpoint root, exact model id and key policy as well as timeout, JSON mode
+   and reply budget. Hosted endpoints normally need a key; an empty key is only
+   appropriate for a local endpoint that accepts unauthenticated requests. For
+   a reasoning model, set `AGENTSCOPE_LLM_MAX_TOKENS` to at least `32768` and
+   `AGENTSCOPE_LLM_TIMEOUT_S` to a deadline measured in minutes (for example
+   `240` seconds). Keep `AGENTSCOPE_LLM_JSON_MODE=auto` unless the endpoint's
+   contract says otherwise; an endpoint that rejects structured output should
+   produce the diagnostic `json_mode_off_after_rejection` after negotiation.
+2. **Restart.** Stop and restart the backend. Changing the file cannot replace
+   the adapter in an already-running process. `/api/health` can confirm only
+   that the application is up; it says nothing about assistant reachability,
+   authentication or the selected model.
+3. **Exercise the adapter.** From the repository root run:
+
+   ```sh
+   uv --directory backend run python ../scripts/llm_smoke.py
+   ```
+
+   The smoke performs profile, prepare and run against the TraceLab fixture and
+   prints the adapter model, attempt count, executable state, issue codes,
+   ambiguities and questions. A successful transport with a non-executable
+   draft is not a mapping approval: review the proposal and use the UI's
+   validate and preview gates before importing.
+4. **Roll back.** Restore the previous variables and restart, or set
+   `AGENTSCOPE_LLM_PROVIDER=none` to disable assistance. Existing uploads,
+   saved mappings, imports and dashboards do not depend on the selected
+   assistant. Never paste a key into a command, screenshot or verification
+   record.
 
 ## Endpoints
 
@@ -176,7 +209,9 @@ called tested):
 | pending | LM Studio | | |
 | pending | Ollama | | |
 
-The two-distinct-model verification report is issue #16.
+The [two-model verification
+report](../verification/2026-09-08-second-source-two-models.md) records the
+separate provider runs and the human review applied to their documents.
 
 ## Troubleshooting
 

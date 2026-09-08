@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
+
+from agentscope_app.domain.claims import ClaimCondition
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_RECORDS_PER_FILE = 100_000
@@ -170,6 +172,8 @@ class FileInfo:
     status: str = "committed"  # pending | committed | duplicate | failed
     records: dict[str, int] = field(default_factory=dict)
     duplicate_of: str | None = None  # the committed import these bytes were skipped in favour of
+    warnings: dict[str, int] = field(default_factory=dict)
+    claim_conditions: tuple[ClaimCondition, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -186,6 +190,7 @@ class ImportReport:
     warnings: dict[str, int]
     reject_count: int
     error: str | None = None
+    duplicate_detection_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -380,3 +385,46 @@ class ProfileReport:
     upload_id: str
     profile: dict[str, Any]
     cached: bool
+
+
+DiagnosticCode = Literal["suspected_duplicate", "matching_claim_equal_projection"]
+DIAGNOSTIC_MESSAGES: dict[str, str] = {
+    "suspected_duplicate": "Another file holds this scoped native claim, but no peer file "
+    "holds equal canonical values. All observations were retained.",
+    "matching_claim_equal_projection": "Another file holds this scoped native claim with "
+    "equal canonical values. All observations were retained.",
+}
+
+
+@dataclass(frozen=True)
+class DiagnosticPeer:
+    import_id: str
+    file_sha256: str
+    locator: str
+    emission_path: str
+    entity: str
+
+
+@dataclass(frozen=True)
+class ImportDiagnostic:
+    file_sha256: str
+    locator: str
+    emission_path: str
+    rule_id: str
+    entity: str
+    code: DiagnosticCode
+    message: str
+    peer: DiagnosticPeer
+
+
+@dataclass(frozen=True)
+class ImportDiagnosticsPage:
+    items: tuple[ImportDiagnostic, ...]
+    total: int
+    conditions: tuple[ClaimCondition, ...] = ()
+
+
+@dataclass(frozen=True)
+class TraceStoreResult:
+    entity_counts: dict[str, int]
+    diagnostics: tuple[ImportDiagnostic, ...] = ()
