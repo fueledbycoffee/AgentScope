@@ -1,132 +1,263 @@
-# Import pipeline: components and dependencies
+# System architecture and import pipeline
 
-This describes what is running after issues #4, #5 and #6: from an uploaded
-file to persisted sessions, model calls and tool calls, and back out through
-the HTTP API. Later issues add Parquet, the metric layer, the mapping
-assistant and the second source without changing these boundaries.
+This page describes the implementation frozen at
+`2a351e90bd67dc7fd51aa5a16b8cf27cbddb0dc2` on 2026-09-08. It follows the
+running composition root, SQLAlchemy models and Alembic head rather than future
+work in the release plan.
 
-## Components
+## Components and dependencies
 
 ```mermaid
-flowchart LR
-    subgraph interfaces["interfaces (FastAPI)"]
-        R[routers] --> C[container / composition root]
+flowchart TB
+    Browser[Browser]
+    Provider[Optional chat-completions endpoint]
+    Bytes[(Content-addressed uploaded bytes)]
+    SQLite[(SQLite)]
+
+    subgraph Web[React SPA]
+        Pages[Import, reports, overview, sessions, mappings, definitions]
+        AssistUI[Assistant review and explicit gates]
     end
-    subgraph application["application"]
-        UC_U[StoreUpload]
-        UC_P[PreviewImport]
-        UC_C[CommitImport]
-        UC_Q[queries: mappings, imports, rejects, sessions, raw record, metrics]
-        P[(ports: RawFileStore, RecordReader, UnitOfWork + repositories, Clock, IdGenerator)]
+
+    subgraph Interfaces[Interfaces]
+        Static[FastAPI static SPA serving]
+        Routers[FastAPI API routers]
+        Container[Composition root]
     end
-    subgraph domain["domain (stdlib only)"]
-        PM[parse_mapping]
-        AM[apply_mapping]
-        RS[reduce_sessions]
-        TS[target schema, units, identities]
+
+    subgraph Application[Application]
+        ImportUC[Upload, preview and commit use cases]
+        AssistantUC[Profile, prepare and run assistant use cases]
+        QueryUC[Import, session and metric queries]
+        MappingUC[Save mapping revision]
+        Ports[Application-owned ports]
+        Definitions[Metric definition strings]
     end
-    subgraph infrastructure["infrastructure"]
-        FS[FilesystemRawFileStore]
-        JR[FormatRouter: JSONL + Parquet readers]
-        DB[(SQLite via SQLAlchemy + Alembic)]
-        UOW[SqlAlchemyUnitOfWork + repositories]
-        BM[bundled mappings loader]
-        ST[Settings]
+
+    subgraph Domain[Framework-free domain]
+        Mapping[Mapping parser and interpreter]
+        Profile[Profiler and redactor]
+        Reducer[Session reducer]
+        Schema[Target schema, units and identities]
     end
-    R --> UC_U & UC_P & UC_C & UC_Q
-    UC_U & UC_P & UC_C & UC_Q --> P
-    UC_P & UC_C --> PM & AM
-    UC_C --> RS
-    PM & AM & RS --> TS
-    FS & JR & UOW -. implement .-> P
-    UOW --> DB
-    C --> FS & JR & UOW & BM & ST
+
+    subgraph Infrastructure[Infrastructure adapters]
+        RawStore[Filesystem raw-file store]
+        Readers[Format router: JSONL, gzip and Parquet]
+        Database[SQLAlchemy repositories and Alembic]
+        Bundled[Bundled mapping loader]
+        AssistAdapters[Fake, unavailable and OpenAI-compatible assistants]
+        Settings[Environment settings]
+    end
+
+    Browser --> Pages
+    Browser --> AssistUI
+    Pages -->|same-origin HTTP| Routers
+    AssistUI -->|prepare, run, validate, save, preview, import| Routers
+    Static -->|serves web/dist| Browser
+    Routers --> ImportUC
+    Routers --> AssistantUC
+    Routers --> QueryUC
+    Routers --> MappingUC
+    QueryUC --> Definitions
+    ImportUC --> Mapping
+    ImportUC --> Reducer
+    AssistantUC --> Profile
+    MappingUC --> Mapping
+    Mapping --> Schema
+    Reducer --> Schema
+    ImportUC --> Ports
+    AssistantUC --> Ports
+    QueryUC --> Ports
+    MappingUC --> Ports
+    RawStore -. implements .-> Ports
+    Readers -. implements .-> Ports
+    Database -. implements .-> Ports
+    AssistAdapters -. implements .-> Ports
+    Container --> RawStore
+    Container --> Readers
+    Container --> Database
+    Container --> Bundled
+    Container --> AssistAdapters
+    Container --> Settings
+    Container --> ImportUC
+    Container --> AssistantUC
+    Container --> QueryUC
+    Container --> MappingUC
+    RawStore --> Bytes
+    Database --> SQLite
+    Bundled --> MappingUC
+    AssistAdapters --> Provider
 ```
 
-Dependencies point inward. `import-linter` fails CI if `domain` imports
-anything outside the standard library, if `application` imports an
-infrastructure library, or if `infrastructure` imports `interfaces`.
+The arrows show runtime calls or adapter wiring; the dotted arrows show port
+implementation. Source dependencies still point inward: `domain` imports only
+the standard library, `application` does not import infrastructure, and
+`infrastructure` does not import interfaces. Import-linter checks those rules.
+FastAPI mounts the built `web/dist` only when it exists and preserves `/api`
+responses while falling back to `index.html` for client-side routes.
 
-## The commit path
+The assistant is optional. The fake adapter is deterministic and offline, the
+OpenAI-compatible adapter can call a configured chat-completions endpoint, and
+an unavailable adapter isolates missing or invalid configuration from uploads,
+saved mappings, imports and dashboards.
 
-1. `POST /api/uploads` stores the bytes content-addressed (`raw_files`), sniffs
-   the format, counts records, keeps a 20-record preview and reports earlier
+## The import path
+
+1. `POST /api/uploads` stores immutable bytes by SHA-256, sniffs JSONL, gzip or
+   Parquet, counts records, retains a 20-record preview and reports earlier
    committed imports of the same bytes.
-2. `POST /api/imports/preview` runs the mapping (parsed by the domain,
-   refused with located issues if not executable) over the first N records
-   without writing anything.
-3. `POST /api/imports` takes one file or a batch of up to 20, each bound to
-   its own mapping revision. Bindings are grouped by bytes; a file already
-   committed for the source is skipped as `duplicate` (its records counted as
-   such) and an all-duplicate batch is a `duplicate` attempt that inserts
-   nothing but stays in the ledger. The remaining files are read with their
-   own mappings, all session contributions are folded once by the domain
-   reducer (seeded from the database), and one transaction writes the import
-   row with every file row (`running`, duplicates never marked committed),
-   the entities with their occurrence keys, the entity contributions carrying
-   each file's mapping, then finalises the pending files as `committed` with
-   their counts, and writes the per-record outcomes, raw payloads and rejects
-   (all keyed by file hash and locator). Any failure rolls the transaction
-   back and records a `failed` attempt with every file `failed`; a race lost
-   to a concurrent import is recorded as `failed` (no file claimed) and
-   answered `409`.
-4. Reads go through the same unit of work: sessions with per-session token
-   coverage, the session detail with links to raw records, the import
-   history and rejects, and the day-1 metrics summary.
+2. `POST /api/imports/preview` parses the selected mapping and runs the domain
+   interpreter over up to the requested sample size without persisting output.
+3. `POST /api/imports` accepts one file or a batch of at most 20, with a mapping
+   revision bound to each file. Exact bytes already committed under the same
+   source are recorded as duplicates. Remaining records are interpreted,
+   session contributions are reduced once against existing state, and the
+   attempt, file outcomes, observations, raw records, rejects, provenance and
+   diagnostics are written in one transaction. A failure rolls that transaction
+   back and retains a failed attempt report.
+4. Query use cases read import outcomes, rejects, sessions, exact raw payload
+   text and the four current summary metrics through the same unit-of-work
+   boundary.
 
-## Identity and idempotency in the tables
+The assistant path is separate from canonicalisation. It profiles and redacts a
+stored upload, shows the exact bounded context and digest, and passes that text
+through the `MappingAssistant` port. The application parses and validates the
+reply and can make one repair call. A proposal becomes executable data only
+after an explicit validate and save; preview and import still use the same
+deterministic mapping interpreter as any bundled revision.
 
-- `model_calls` and `tool_calls` are unique on `(source, occurrence_key)`,
-  where the occurrence key is `sha256:locator:emission_path` (ADR-002).
-- `sessions` are unique on `(source, external_id)` and are updated, not
-  duplicated, when a later file contributes to the same session. The stored
-  state seeds the domain reducer for the new file, so cross-file merging
-  follows exactly the rules that apply within one file (first declared value
-  wins, reversed intervals are refused, counts accumulate).
-- A race between two imports of the same bytes for one source is caught by the
-  occurrence-key uniqueness inside the transaction and reported as `409`, not
-  as a `failed` import.
-- `raw_records` are unique on `(file_sha256, locator)` and written once;
-  `record_results` are keyed by `(import_id, file_sha256, locator)` so two
-  files of one attempt may both have a `line:1`.
-- `import_files` rows carry the file's mapping, status and counts; the
-  partial unique index on `(sha256, source) WHERE committed = 1` is the race
-  guard and only rows finalised as `committed` claim it.
-- `entity_contributions` link every accepted emission back to its record,
-  mapping revision and rule; exactly one entity foreign key is set.
+## Persisted entities
 
-## The assistant path (ADR-005, #13)
+The table set below matches `EXPECTED_TABLES` in
+`backend/tests/infrastructure/test_database.py` and Alembic revision `0003`.
+Attributes are intentionally bounded to primary keys, physical foreign keys and
+uniqueness that carries identity or idempotency.
 
-The mapping assistant never touches canonical records and never reads the
-file itself. `ProfileFile` (application) runs the domain profiler over the
-stored upload through the same reader as an import and caches the sanitised
-result on `uploads.profile` with a version. `PrepareContext` builds the
-complete document the model will see as data (identity, upload format, the
-target contract, the profile, an optional deterministic sample, the current
-mapping, message and history), passes all of it through the domain redactor,
-trims it to the 64 KiB budget and freezes it with a SHA-256 over the final
-text. `RunAssistant` prepares the same context again, refuses a stale digest,
-calls the `MappingAssistant` port (`infrastructure/llm/`: the deterministic
-fake, or the unavailable adapter until #14) and owns parsing, identity
-stamping, validation through `parse_mapping` and the single repair call. The
-only write on this path is the profile cache; a proposal becomes a mapping
-revision only through `SaveMappingRevision`, the same use case the bundled
-loader uses, and then imports through the commit path above.
+```mermaid
+erDiagram
+    SOURCES {
+        string namespace PK
+    }
+    RAW_FILES {
+        string sha256 PK
+    }
+    UPLOADS {
+        string id PK
+        string sha256 FK
+    }
+    MAPPINGS {
+        string id PK
+        string name UK "with revision"
+        int revision UK "with name"
+        string content_hash UK
+    }
+    IMPORTS {
+        string id PK
+        string mapping_id FK
+    }
+    IMPORT_FILES {
+        string id PK
+        string import_id FK
+        string sha256 FK
+        string mapping_id FK "nullable"
+        string source UK "with sha256 when committed"
+    }
+    RAW_RECORDS {
+        int id PK
+        string file_sha256 FK, UK "with locator"
+        string locator UK "with file_sha256"
+    }
+    RECORD_RESULTS {
+        string import_id PK, FK
+        string file_sha256 PK, FK
+        string locator PK
+    }
+    REJECTS {
+        int id PK
+        string import_id FK
+    }
+    SESSIONS {
+        string id PK
+        string source UK "with external_id"
+        string external_id UK "with source"
+    }
+    MODEL_CALLS {
+        string id PK
+        string session_id FK
+        string import_id FK
+        string source UK "with occurrence_key"
+        string occurrence_key UK "with source"
+    }
+    TOOL_CALLS {
+        string id PK
+        string session_id FK
+        string model_call_id FK "nullable"
+        string import_id FK
+        string source UK "with occurrence_key"
+        string occurrence_key UK "with source"
+    }
+    ENTITY_CONTRIBUTIONS {
+        int id PK
+        string import_id FK
+        string mapping_id FK
+        string session_id FK "nullable"
+        string model_call_id FK "nullable"
+        string tool_call_id FK "nullable"
+    }
+    SESSION_DIAGNOSTICS {
+        int id PK
+        string session_id FK
+        string import_id FK
+    }
 
-In the browser (#15) the same boundary holds: `web/src/assist/assistRuntime.ts`
-is a pure state machine that owns the conversation turns, the prepared context
-and the gates. Every context change bumps a generation and drops the prepared
-digest; a run sends only the exact request that was prepared; with a sample
-included, nothing is sent until the user acknowledged the payload text of
-that very digest in the drawer; results for an older generation are ignored.
-The document is edited as text and sent as-is (validate, save), so what is on
-screen is what the server receives. Save needs a current executable
-validation, preview needs the saved text on screen, import needs a preview of
-that revision; the chat can trigger none of them. The field table, the lossless
-numeric codec and the report entry point are issue #39.
+    RAW_FILES ||--o{ UPLOADS : stores
+    MAPPINGS ||--o{ IMPORTS : primary_mapping
+    IMPORTS ||--o{ IMPORT_FILES : contains
+    RAW_FILES ||--o{ IMPORT_FILES : binds
+    MAPPINGS o|--o{ IMPORT_FILES : binds
+    RAW_FILES ||--o{ RAW_RECORDS : decodes
+    IMPORTS ||--o{ RECORD_RESULTS : records
+    RAW_FILES ||--o{ RECORD_RESULTS : locates
+    IMPORTS ||--o{ REJECTS : explains
+    SESSIONS ||--o{ MODEL_CALLS : contains
+    IMPORTS ||--o{ MODEL_CALLS : creates
+    SESSIONS ||--o{ TOOL_CALLS : contains
+    MODEL_CALLS o|--o{ TOOL_CALLS : parents
+    IMPORTS ||--o{ TOOL_CALLS : creates
+    IMPORTS ||--o{ ENTITY_CONTRIBUTIONS : records
+    MAPPINGS ||--o{ ENTITY_CONTRIBUTIONS : attributes
+    SESSIONS o|--o{ ENTITY_CONTRIBUTIONS : receives
+    MODEL_CALLS o|--o{ ENTITY_CONTRIBUTIONS : receives
+    TOOL_CALLS o|--o{ ENTITY_CONTRIBUTIONS : receives
+    SESSIONS ||--o{ SESSION_DIAGNOSTICS : has
+    IMPORTS ||--o{ SESSION_DIAGNOSTICS : records
+```
 
-## Not yet
+Constraints not fully expressible in the diagram:
 
-Record and entity outcome browsing in the UI (#9), the
-metric definition module (#10), the dashboard (#11), the assistant field table
-and report entry point (#39).
+- `mappings` is unique on `(name, revision)` and independently on
+  `content_hash`.
+- `sessions`, `model_calls`, `tool_calls` and `raw_records` are unique on
+  `(source, external_id)`, `(source, occurrence_key)`,
+  `(source, occurrence_key)` and `(file_sha256, locator)` respectively.
+- `record_results` uses the composite primary key
+  `(import_id, file_sha256, locator)`.
+- The partial unique index on `import_files (sha256, source) WHERE committed =
+  1` is the exact-file race guard. A nullable per-file `mapping_id` supports
+  rows migrated from earlier schema states; current writes bind a mapping.
+- Exactly one of `entity_contributions.session_id`, `model_call_id` and
+  `tool_call_id` must be non-null. A tool call's `model_call_id` is optional.
+- `source` columns are logical namespaces, not foreign keys to `sources`.
+  Although the `sources` table exists, no repository currently reads or writes
+  it; it is not a live source registry.
+- The provenance `file_sha256` columns on rejects, model calls, tool calls and
+  entity contributions are not physical foreign keys. The diagram draws only
+  enforced relationships.
+
+## Current boundaries
+
+The supported inputs, limits and intentionally excluded v0.1 capabilities are
+kept in the [draft release notes](../releases/v0.1.0.md). Metric formulas and
+comparability rules live in the [metric reference](../metrics/README.md); the
+mapping contract lives in the [DSL reference](../mapping/README.md).
