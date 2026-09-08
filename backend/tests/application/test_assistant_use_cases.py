@@ -250,6 +250,19 @@ def test_a_wide_file_fits_by_omitting_nested_fields_and_says_so() -> None:
     assert prepared.sha256 != full.sha256  # a different context has a different digest
 
 
+def test_removed_examples_do_not_leave_redaction_counts_behind() -> None:
+    # second adversarial pass of #48: the payload drawer reported an e-mail replacement in
+    # content that had been discarded with the examples
+    h = Harness()
+    rows = [{**row, "contact": "sean@example.com"} for row in _wide_rows(300)]
+    upload_id = h.upload(rows)
+    prepared = h.prepare.execute(h.request(upload_id))
+    assert prepared.truncated["examples_removed"] == 1
+    assert "<email>" not in prepared.text and "example.com" not in prepared.text
+    assert prepared.redactions.get("email", 0) == 0
+    assert prepared.document["profile"]["redactions"] == {}
+
+
 def test_omission_order_is_deepest_then_rarest_and_spares_top_level() -> None:
     from agentscope_app.application.use_cases.assistant import _omission_order
 

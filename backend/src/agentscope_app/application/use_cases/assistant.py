@@ -177,6 +177,8 @@ class PrepareContext:
             if omitted:
                 document["profile"] = _omit_fields(document["profile"], omitted)
                 truncated["fields_omitted"] = len(omitted)
+            if examples < 5:  # trim before counting: counts describe retained content only
+                document["profile"] = _reduce_examples(document["profile"], examples)
             document["truncated"] = dict(sorted(truncated.items()))
             document["redaction"]["counts"] = _counts(
                 request,
@@ -185,8 +187,6 @@ class PrepareContext:
                 [] if message is None else [request.message or ""],
                 extra=[document["profile"].get("redactions", {}), redact_text(info.filename)[1]],
             )
-            if examples < 5:
-                document["profile"] = _reduce_examples(document["profile"], examples)
             text = dumps_exact(document, sort_keys=True)
             size = len(text.encode("utf-8"))
             if size <= self._budget:
@@ -561,6 +561,9 @@ def _parent_path(path: str) -> str:
 def _reduce_examples(profile: dict[str, Any], keep: int) -> dict[str, Any]:
     reduced = dict(profile)
     reduced["fields"] = [{**f, "examples": f["examples"][:keep]} for f in profile["fields"]]
+    if keep == 0:
+        # the profile's redaction counts came from its examples; none of that content remains
+        reduced["redactions"] = {}
     return reduced
 
 
