@@ -218,6 +218,13 @@ async function live() {
       await page.getByLabel('Mapping document (JSON)').fill(documentText)
       writeFileSync(join(runDir, 'document.corrected.json'), documentText)
     }
+    if (!hasDraft) {
+      log('no draft: nothing to validate, save or import')
+      writeFileSync(join(runDir, 'outcome.json'), JSON.stringify({ runId, model: args.model, file: args.file, uploadId, name: args.name, source: args.source, sample: !!args.sample, message: args.message, revisions, notices, corrections, executable: false, saved: null, imported: false, prepared, outcomes }, null, 2))
+      writeFileSync(join(runDir, 'requests.json'), JSON.stringify(counters, null, 2))
+      log('done', runId, 'no draft')
+      return
+    }
     log('validate')
     // executability is the server's verdict (warnings leave a document executable), not the UI's "no issues" line
     const validationResponse = page.waitForResponse(r => r.url().includes('/api/mappings/validate'), { timeout: 60_000 })
