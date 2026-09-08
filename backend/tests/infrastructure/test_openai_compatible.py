@@ -649,7 +649,7 @@ def test_row_timestamp_mistake_is_named_in_contract_and_repair_guidance() -> Non
     # Exercise the repair request explicitly without inventing a validator error.
     h.adapter.complete(context, repair=RepairRequest(candidate, "[]"))
     rule = (
-        "One timestamp per row is a start, never an end: map it to started_at; "
+        "A single scalar timestamp on a row is a start, never an end: map it to started_at and "
         "never copy it into ended_at"
     )
     assert rule in context.document["target"]["dsl_reference"]
