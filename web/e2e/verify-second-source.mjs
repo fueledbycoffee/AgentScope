@@ -96,14 +96,14 @@ async function sendAndWait(page, message, sample) {
 /** A reply bubble, or an error/warning notice (502, 503, 409 twice, refusal): whichever comes first. */
 async function waitForReplyOrNotice(page, nth, notices) {
   const bubble = page.getByRole('log', { name: 'Conversation' }).getByText(/proposal applied|did not return a proposal/).nth(nth)
-  const notice = page.locator('.notice.bad, .notice.warn').last()
+  // every warning/error notice counts except the unsent-draft recovery panel, which is a notice too
+  // and sits last (the first rehearsal run waited 600 s on a 413 that was on screen)
+  const noticeTexts = async () => (await page.locator('.notice.bad, .notice.warn').allInnerTexts()).filter(t => !/^Not sent/.test(t))
   const deadline = Date.now() + 600_000
   while (Date.now() < deadline) {
     if (await bubble.count() > 0) return 'reply'
-    if (await notice.count() > 0) {
-      const text = await notice.innerText()
-      if (!/Not sent/.test(text)) { notices.push(text); return 'notice' }
-    }
+    const texts = await noticeTexts()
+    if (texts.length > 0) { notices.push(texts.at(-1)); return 'notice' }
     await page.waitForTimeout(1000)
   }
   throw new Error('no reply and no notice within 600 s')
@@ -128,7 +128,7 @@ async function live() {
     log('upload', args.file)
     const uploadId = await uploadAndOpenAssistant(page, resolve(args.file))
     await page.getByLabel('Mapping name').fill(args.name)
-    await page.getByLabel('Source').fill(args.source)
+    await page.getByRole('textbox', { name: 'Source', exact: true }).fill(args.source)
     if (args.sample) await page.getByLabel(/Include a redacted sample/).check()
     log('send', args.message)
     await sendAndWait(page, args.message ?? 'Propose a mapping for this file', !!args.sample)
