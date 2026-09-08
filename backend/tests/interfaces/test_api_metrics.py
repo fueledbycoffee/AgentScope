@@ -154,3 +154,77 @@ def test_http_offset_bounds_and_day_drill(client):
     scope = body["buckets"][0]["drill_scope"]
     assert datetime.fromisoformat(scope["started_from"]).hour == 6
     assert scope["activity_grain"] == "model_call"
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        [("metric_id", "sessions"), ("session_ids", "s")],
+        [("metric_id", "sessions"), ("source", "a"), ("source", "b")],
+        [("metric_id", "sessions"), ("started_form", "2026-01-01T00:00:00Z")],
+    ],
+)
+def test_unknown_or_repeated_scope_parameters_return_400(client, params):
+    response = client.get("/api/metrics/query", params=params)
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_input"
+    assert set(response.json()["error"]["details"][0]) == {"path", "message"}
+
+
+def test_day_drill_round_trip_preserves_original_tool_witness(client):
+    import json
+
+    container = client.app.state.container
+    mapping_id = container.list_mappings.execute()[0].id
+    record = json.loads(_tracelab_line("drill"))
+    record["tools"] = [{"tool_name": "shell", "emitted_at": "2026-05-10T12:00:00Z"}]
+    info = container.store_upload.execute("drill.jsonl", (json.dumps(record) + "\n").encode())
+    container.commit_import.execute("tracelab", [FileBinding(info.upload_id, mapping_id)])
+    response = client.get(
+        "/api/metrics/query",
+        params={"metric_id": "model_calls", "group_by": "started_day", "tool": "shell"},
+    )
+    assert response.status_code == 200, response.text
+    bucket = response.json()["buckets"][0]
+    assert bucket["keys"] == ["2026-05-11"] and bucket["result"]["value_text"] == "1"
+    scope = bucket["drill_scope"]
+    assert scope["witness_time_override"] is True
+    assert scope["witness_started_from"] is None
+    params = {key: value for key, value in scope.items() if value is not None}
+    params["metric_id"] = "sessions"
+    drilled = client.get("/api/metrics/query", params=params)
+    assert drilled.status_code == 200, drilled.text
+    assert drilled.json()["overall"]["value_text"] == "1"
+    # An independently requested same-day tool filter still correctly requires that day's tool.
+    params["witness_time_override"] = False
+    assert client.get("/api/metrics/query", params=params).json()["overall"]["value_text"] == "0"
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"witness_time_override": True},
+        {"witness_started_from": "2026-01-01T00:00:00Z"},
+        {
+            "witness_time_override": True,
+            "activity_grain": "model_call",
+            "witness_started_from": "2026-01-01T00:00:00",
+        },
+        {
+            "witness_time_override": True,
+            "activity_grain": "model_call",
+            "witness_started_from": "2026-01-02T00:00:00Z",
+            "witness_started_before": "2026-01-01T00:00:00Z",
+        },
+        {
+            "witness_time_override": True,
+            "activity_grain": "model_call",
+            "witness_started_from": "2026-01-01T00:00:00Z",
+            "witness_timestamp_missing": True,
+        },
+    ],
+)
+def test_invalid_witness_time_overrides_use_400(client, params):
+    response = client.get("/api/metrics/query", params={"metric_id": "sessions", **params})
+    assert response.status_code == 400, response.text
+    assert response.json()["error"]["code"] == "invalid_input"

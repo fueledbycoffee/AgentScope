@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
@@ -98,7 +98,10 @@ class MetricDefinition:
         return tuple(d for d in DIMENSIONS[self.grain] if d != Dimension.SESSION_ID)
 
 
+@dataclass(frozen=True, init=False)
 class MetricRegistry:
+    definitions: Mapping[str, MetricDefinition]
+
     def __init__(self, definitions: Sequence[MetricDefinition]) -> None:
         items: dict[str, MetricDefinition] = {}
         for definition in definitions:
@@ -106,7 +109,7 @@ class MetricRegistry:
             if definition.id in items:
                 raise ValueError(f"Duplicate metric ID: {definition.id}")
             items[definition.id] = definition
-        self.definitions = MappingProxyType(items)
+        object.__setattr__(self, "definitions", MappingProxyType(items))
 
     def get(self, metric_id: str) -> MetricDefinition:
         try:
@@ -138,6 +141,8 @@ class MetricRegistry:
                 raise ValueError("Measure type or canonical unit mismatch")
             if d.coverage_field != d.field:
                 raise ValueError("Sum coverage must count the same measure")
+        if d.comparability_rule not in tuple(ComparabilityRule):
+            raise ValueError("Unsupported comparability rule")
         tokens = d.unit == "tokens"
         if tokens != (d.comparability_rule == ComparabilityRule.TOKEN_SEMANTICS):
             raise ValueError("Token measures require accounting partitions")

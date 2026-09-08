@@ -90,8 +90,15 @@ known usage; do not collapse mixed/full-coverage and absent-usage states into on
 | Rejects | Existing import report/reject-summary API; pre-canonical rejects have no fabricated session drill |
 
 Query responses carry effective scope and each bucket/partition's drill scope. Drills
-include all eligible rows, including null-measure coverage rows. Null labels are distinct
-from literal `unknown` labels. The session-ID port paginates deterministically by ID;
+include all eligible rows, including null-measure coverage rows. Day drills carry an
+explicit witness-time override, preserving the original time bounds/missing-time predicate
+for other-grain sibling witnesses while narrowing the activity grain to the bucket day.
+Without it, a model-day drill under an existing tool filter could silently lose sessions
+whose tool happened on a different day. #11 must forward `witness_time_override`,
+`witness_started_from`, `witness_started_before`, and `witness_timestamp_missing` from the
+returned scope. Ordinary filters retain the same-row time rule for all required witnesses.
+An independent original-population oracle and an HTTP round-trip test guard this case.
+Null labels are distinct from literal `unknown` labels. The session-ID port paginates deterministically by ID;
 `session_metrics(scope)` accepts richer scope for #11's session-list wiring. This issue
 keeps existing summary/session HTTP filters at source/agent; #11 owns richer wiring and
 all Overview/definitions UI changes.

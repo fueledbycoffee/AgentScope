@@ -96,7 +96,7 @@ SCOPES = [
 ]
 
 
-@pytest.mark.parametrize("metric_id", [k for k in REGISTRY.definitions if k != "imports_in_scope"])
+@pytest.mark.parametrize("metric_id", list(REGISTRY.definitions))
 def test_sql_matches_reference_for_every_definition_and_scope(database, metric_id):
     engine, data = database
     definition = REGISTRY.get(metric_id)
@@ -267,7 +267,18 @@ def test_join_multiplication_import_scope_and_reimport(tmp_path):
     assert report.status == "committed" and report.reject_count > 0
     with Session(engine) as session:
         query = SqlAlchemyTraceQuery(session)
-        assert len(list(session.scalars(select(m.EntityContribution)))) > 1
+        assert (
+            len(
+                list(
+                    session.scalars(
+                        select(m.EntityContribution).where(
+                            m.EntityContribution.session_id.is_not(None)
+                        )
+                    )
+                )
+            )
+            == 2
+        )
         for metric_id, literal in [
             ("sessions", 1),
             ("model_calls", 2),
@@ -278,6 +289,15 @@ def test_join_multiplication_import_scope_and_reimport(tmp_path):
             assert value(query, metric_id).value == literal
             assert value(query, metric_id, TraceScope(import_id=report.import_id)).value == literal
         assert value(query, "input_tokens").known == 2
+        assert_ingested_oracle(
+            session,
+            [
+                TraceScope(),
+                TraceScope(import_id=report.import_id),
+                TraceScope(tool="shell"),
+                TraceScope(model="absent"),
+            ],
+        )
         for cls in (m.ModelCall, m.ToolCall):
             assert all(
                 c.source == session.get(m.Session, c.session_id).source
@@ -301,6 +321,16 @@ def test_join_multiplication_import_scope_and_reimport(tmp_path):
         assert value(query, "imports_in_scope", TraceScope(tool="shell")).value == 2
         tool_scope = TraceScope(tool="shell", activity_grain=EntityGrain.TOOL_CALL)
         assert value(query, "imports_in_scope", tool_scope).value == 1
+        assert_ingested_oracle(
+            session,
+            [
+                TraceScope(),
+                tool_scope,
+                TraceScope(import_id=duplicate.import_id),
+                TraceScope(import_id=report2.import_id),
+                TraceScope(source="tracelab", agent="claude-code", model="m", tool="shell"),
+            ],
+        )
     engine.dispose()
 
 
@@ -391,3 +421,162 @@ def test_session_metrics_match_summary_definition_and_partitions(database):
         assert row.model_call_count == summary.model_calls.value
         assert row.tool_call_count == summary.tool_calls.value
         assert GetSession(factory).execute(row.id).summary == row
+
+
+def test_missing_time_applies_to_current_grain_and_all_required_witnesses(database):
+    engine, _ = database
+    with Session(engine) as session:
+        query = SqlAlchemyTraceQuery(session)
+        scope = TraceScope(timestamp_missing=True, activity_grain=EntityGrain.MODEL_CALL)
+        assert value(query, "tool_calls", scope).value == 1
+        assert value(query, "model_calls", scope).value == 2
+        assert query.session_ids(replace(scope, tool="read"), limit=100, offset=0) == []
+
+
+def test_view_timestamp_binding_normalizes_offsets_without_scope_preprocessing(database):
+    from agentscope_app.infrastructure.db.trace_query import MODEL_VIEW
+
+    engine, _ = database
+    with Session(engine) as session:
+        at = datetime.fromisoformat("2026-01-01T02:00:00+02:00")
+        assert list(
+            session.scalars(select(MODEL_VIEW.c.id).where(MODEL_VIEW.c.started_at == at))
+        ) == ["c0"]
+
+
+def test_non_sqlite_is_rejected_before_importing_a_driver():
+    with pytest.raises(ValueError, match="require SQLite"):
+        create_engine_for("postgresql://localhost/unsupported")
+
+
+def assert_ingested_oracle(session, scopes):
+    """Read canonical rows only; the oracle never consumes metric views or aggregates."""
+    data = {}
+    for grain, cls in (
+        ("session", m.Session),
+        ("model_call", m.ModelCall),
+        ("tool_call", m.ToolCall),
+    ):
+        data[grain] = [
+            {c.name: getattr(row, c.name) for c in cls.__table__.columns}
+            for row in session.scalars(select(cls))
+        ]
+    data["session_contributions"] = [
+        {"session_id": row.session_id, "import_id": row.import_id}
+        for row in session.scalars(select(m.EntityContribution))
+        if row.session_id is not None
+    ]
+    query = SqlAlchemyTraceQuery(session)
+    for scope in scopes:
+        assert list(query.session_ids(scope, limit=100, offset=0)) == sorted(
+            r["id"] for r in population(data, "session", scope)
+        )
+        for definition in REGISTRY.definitions.values():
+            spec = MetricQuerySpec(definition, scope)
+            assert sql_parts(query, spec) == oracle(data, definition, spec.scope)
+
+
+def test_imports_in_scope_includes_session_only_contributions_from_real_import(tmp_path):
+    import hashlib
+    import json
+
+    engine = create_engine_for(f"sqlite:///{tmp_path / 'session-only.sqlite3'}")
+    run_migrations(engine)
+    factory, upload, commit, _, _ = _pipeline(engine, tmp_path)
+    record = mapping_record()
+    document = {**record.document, "name": "session-only", "rules": [record.document["rules"][0]]}
+    record = replace(
+        record,
+        id="map_session_only",
+        name="session-only",
+        document=document,
+        content_hash=hashlib.sha256(json.dumps(document).encode()).hexdigest(),
+    )
+    with factory() as uow:
+        uow.mappings.add(record)
+        uow.commit()
+    info = upload.execute("sessions.jsonl", _tracelab_line("only") + _tracelab_line("only"))
+    report = commit.execute("tracelab", [FileBinding(info.upload_id, record.id)])
+    assert report.status == "committed", report.error
+    duplicate = commit.execute("tracelab", [FileBinding(info.upload_id, record.id)])
+    with Session(engine) as session:
+        query = SqlAlchemyTraceQuery(session)
+        assert value(query, "sessions").value == 1
+        assert value(query, "model_calls").value == 0
+        assert value(query, "tool_calls").value == 0
+        assert value(query, "imports_in_scope").value == 1
+        assert value(query, "imports_in_scope", TraceScope(import_id=report.import_id)).value == 1
+        assert value(query, "imports_in_scope", TraceScope(model="m")).value == 0
+        assert (
+            value(query, "imports_in_scope", TraceScope(import_id=duplicate.import_id)).value == 0
+        )
+        assert_ingested_oracle(
+            session,
+            [
+                TraceScope(),
+                TraceScope(import_id=report.import_id),
+                TraceScope(import_id=duplicate.import_id),
+                TraceScope(model="m"),
+                TraceScope(agent="claude-code"),
+                TraceScope(source="absent"),
+            ],
+        )
+    engine.dispose()
+
+
+def test_emitted_drills_recover_original_bucket_populations_across_scopes(database):
+    from tests.metric_reference import oracle_bucket_sessions
+
+    engine, data = database
+    with Session(engine) as session:
+        query = SqlAlchemyTraceQuery(session)
+        for metric_id, dimensions in [
+            ("model_calls", (Dimension.STARTED_DAY,)),
+            ("input_tokens", (Dimension.MODEL, Dimension.AGENT)),
+            ("tool_calls", (Dimension.TOOL_NAME, Dimension.LINKED)),
+            ("unlinked_tools", (Dimension.STARTED_DAY,)),
+        ]:
+            for scope in SCOPES:
+                spec = MetricQuerySpec(REGISTRY.get(metric_id), scope, dimensions)
+                expected = oracle_bucket_sessions(data, spec.definition, spec.scope, dimensions)
+                for row in query.aggregate(spec).rows:
+                    for part in row.parts:
+                        drill = drill_scope(spec, row.keys, part.semantics)
+                        assert (
+                            set(query.session_ids(drill, limit=100, offset=0))
+                            == expected[(row.keys, part.semantics)]
+                        ), (metric_id, scope.tool, scope.model, row.keys, part.semantics)
+
+
+def test_model_day_drill_cannot_use_a_tool_timestamp_as_its_witness(database):
+    engine, _ = database
+    with Session(engine) as session:
+        session.get(m.ToolCall, "t1").started_at = datetime(2026, 1, 3, tzinfo=UTC)
+        session.flush()
+        query = SqlAlchemyTraceQuery(session)
+        spec = MetricQuerySpec(REGISTRY.get("model_calls"), group_by=(Dimension.STARTED_DAY,))
+        drill = drill_scope(spec, ("2026-01-03",))
+        assert query.session_ids(drill, limit=100, offset=0) == []
+        assert query.session_ids(
+            replace(drill, activity_grain=EntityGrain.TOOL_CALL), limit=100, offset=0
+        ) == ["s1"]
+
+
+def test_projected_exit_code_sum_is_a_registry_only_extension(database):
+    engine, data = database
+    definition = replace(
+        REGISTRY.get("tool_wall_latency_ms"),
+        id="test_exit_codes",
+        field="exit_code",
+        coverage_field="exit_code",
+        unit="count",
+    )
+    registry = MetricRegistry([definition])
+    spec = MetricQuerySpec(registry.get("test_exit_codes"))
+    with Session(engine) as session:
+        query = SqlAlchemyTraceQuery(session)
+        assert (
+            sql_parts(query, spec)
+            == oracle(data, definition, spec.scope)
+            == {(): {None: (0, 1, 3)}}
+        )

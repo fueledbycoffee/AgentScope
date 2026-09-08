@@ -1,4 +1,4 @@
-"""Read-side use cases: thin, but they own the metric definitions' wording."""
+"""Read-side use cases, including registry-backed metric queries."""
 
 from __future__ import annotations
 

@@ -83,3 +83,12 @@ def test_semantics_partitions_interpret_known_contributors_only():
     parts.append(AggregatePart(0, 1, 1, "unknown"))
     result = evaluate(definition, parts)
     assert result.comparability == "unknown" and "Multiple" in result.reason
+
+
+def test_registry_itself_is_immutable_and_rejects_unknown_comparability():
+    from dataclasses import FrozenInstanceError
+
+    with pytest.raises(FrozenInstanceError):
+        REGISTRY.definitions = {}
+    with pytest.raises(ValueError, match="comparability"):
+        MetricRegistry([replace(REGISTRY.get("sessions"), comparability_rule="unrecognized")])

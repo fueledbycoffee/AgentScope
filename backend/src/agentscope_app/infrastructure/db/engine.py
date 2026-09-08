@@ -8,6 +8,7 @@ from typing import Any
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.engine import make_url
 
 from agentscope_app.domain.jsonx import dumps_exact, loads_exact
 from agentscope_app.infrastructure.db.metric_sql import register_metric_functions
@@ -16,11 +17,11 @@ ALEMBIC_DIR = Path(__file__).resolve().parent / "alembic"
 
 
 def create_engine_for(url: str) -> Engine:
+    if make_url(url).get_backend_name() != "sqlite":
+        raise ValueError("Metric queries require SQLite")
     engine = create_engine(
         url, future=True, json_serializer=dumps_exact, json_deserializer=loads_exact
     )
-    if engine.dialect.name != "sqlite":
-        raise ValueError("Metric queries require SQLite")
     if engine.dialect.name == "sqlite":
 
         @event.listens_for(engine, "connect")

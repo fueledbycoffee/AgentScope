@@ -99,7 +99,7 @@ def _child_predicates(table: Any, grain: EntityGrain, scope: TraceScope) -> list
         clauses.append(table.c.started_at >= scope.started_from)
     if scope.started_before is not None:
         clauses.append(table.c.started_at < scope.started_before)
-    if scope.timestamp_missing and scope.activity_grain == grain:
+    if scope.timestamp_missing:
         clauses.append(table.c.started_at.is_(None))
     if grain == EntityGrain.MODEL_CALL:
         if scope.model is not None:
@@ -122,6 +122,13 @@ def _child_predicates(table: Any, grain: EntityGrain, scope: TraceScope) -> list
 
 def _witness(session_id: Any, grain: EntityGrain, scope: TraceScope) -> ColumnElement[bool]:
     table = VIEWS[grain].alias()
+    if scope.witness_time_override and scope.activity_grain != grain:
+        scope = replace(
+            scope,
+            started_from=scope.witness_started_from,
+            started_before=scope.witness_started_before,
+            timestamp_missing=scope.witness_timestamp_missing,
+        )
     return exists(
         select(1)
         .select_from(table)

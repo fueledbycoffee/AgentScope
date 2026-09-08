@@ -39,9 +39,19 @@ class TraceScope:
     tool_is_unlinked: bool = False
     usage_missing: bool = False
     tool_is_linked: bool = False  # inverse null-link bucket drill
+    # A day drill narrows its activity grain, preserving the original sibling witnesses.
+    witness_time_override: bool = False
+    witness_started_from: datetime | None = None
+    witness_started_before: datetime | None = None
+    witness_timestamp_missing: bool = False
 
     def __post_init__(self) -> None:
-        for name in ("started_from", "started_before"):
+        for name in (
+            "started_from",
+            "started_before",
+            "witness_started_from",
+            "witness_started_before",
+        ):
             value = getattr(self, name)
             if value is not None:
                 if value.tzinfo is None or value.utcoffset() is None:
@@ -58,6 +68,21 @@ class TraceScope:
             raise invalid("tool_is_unlinked", "Linked and unlinked are mutually exclusive")
         if self.timestamp_missing and (self.has_time_bounds or self.activity_grain is None):
             raise invalid("timestamp_missing", "Missing time needs a grain and no time bounds")
+        witness_bounds = (
+            self.witness_started_from is not None or self.witness_started_before is not None
+        )
+        if self.witness_time_override and self.activity_grain is None:
+            raise invalid("witness_time_override", "Witness time override needs an activity grain")
+        if (witness_bounds or self.witness_timestamp_missing) and not self.witness_time_override:
+            raise invalid("witness_time_override", "Witness time fields need an explicit override")
+        if self.witness_timestamp_missing and witness_bounds:
+            raise invalid("witness_timestamp_missing", "Missing witness time excludes date bounds")
+        if (
+            self.witness_started_from
+            and self.witness_started_before
+            and self.witness_started_from >= self.witness_started_before
+        ):
+            raise invalid("witness_started_before", "Witness date range must be increasing")
 
     @property
     def has_time_bounds(self) -> bool:
@@ -129,10 +154,25 @@ class AggregateRows:
     excluded_unknown_timestamps: int = 0
 
 
+def _activity_scope(scope: TraceScope, grain: EntityGrain) -> TraceScope:
+    if scope.witness_time_override and scope.activity_grain != grain:
+        # Switching chart grains makes the previous activity grain the sibling witness.
+        return replace(
+            scope,
+            activity_grain=grain,
+            witness_started_from=scope.started_from,
+            witness_started_before=scope.started_before,
+            witness_timestamp_missing=scope.timestamp_missing,
+        )
+    return replace(scope, activity_grain=grain)
+
+
 def drill_scope(
     spec: MetricQuerySpec, keys: tuple[str | bool | None, ...], semantics: str | None = None
 ) -> TraceScope:
     scope = spec.scope
+    if spec.definition.grain in (EntityGrain.MODEL_CALL, EntityGrain.TOOL_CALL):
+        scope = _activity_scope(scope, spec.definition.grain)
     for dimension, key in zip(spec.group_by, keys, strict=True):
         match dimension:
             case Dimension.SOURCE:
@@ -154,6 +194,15 @@ def drill_scope(
                 scope = replace(scope, session_ids=(key,))
             case Dimension.STARTED_DAY:
                 assert isinstance(key, str) or key is None
+                if not scope.witness_time_override:
+                    scope = replace(
+                        scope,
+                        witness_time_override=True,
+                        witness_started_from=scope.started_from,
+                        witness_started_before=scope.started_before,
+                        witness_timestamp_missing=scope.timestamp_missing,
+                        activity_grain=spec.definition.grain,
+                    )
                 if key is None:
                     scope = replace(
                         scope, timestamp_missing=True, activity_grain=spec.definition.grain
@@ -169,9 +218,6 @@ def drill_scope(
                     )
     if semantics is not None:
         scope = replace(scope, token_semantics=semantics)
-    # Even an ungrouped/model bucket needs the chart's eligible child population.
-    if spec.definition.grain in (EntityGrain.MODEL_CALL, EntityGrain.TOOL_CALL):
-        scope = replace(scope, activity_grain=spec.definition.grain)
     return scope
 
 

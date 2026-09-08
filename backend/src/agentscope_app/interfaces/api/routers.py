@@ -28,7 +28,7 @@ from agentscope_app.application.dto import (
     UploadInfo,
 )
 from agentscope_app.application.errors import LimitExceededError
-from agentscope_app.application.metric_queries import MetricQueryResult, TraceScope
+from agentscope_app.application.metric_queries import MetricQueryResult, TraceScope, invalid
 from agentscope_app.domain.jsonx import dumps_exact
 from agentscope_app.domain.mapping.parser import parse_mapping
 from agentscope_app.domain.metrics import Dimension, EntityGrain
@@ -278,7 +278,39 @@ def query_metric(
     tool_is_unlinked: bool = False,
     usage_missing: bool = False,
     tool_is_linked: bool = False,
+    witness_time_override: bool = False,
+    witness_started_from: datetime | None = None,
+    witness_started_before: datetime | None = None,
+    witness_timestamp_missing: bool = False,
 ) -> MetricQueryResult:
+    allowed = {
+        "metric_id",
+        "group_by",
+        "source",
+        "agent",
+        "model",
+        "tool",
+        "started_from",
+        "started_before",
+        "import_id",
+        "activity_grain",
+        "token_semantics",
+        "model_is_unknown",
+        "agent_is_unknown",
+        "timestamp_missing",
+        "tool_is_unlinked",
+        "usage_missing",
+        "tool_is_linked",
+        "witness_time_override",
+        "witness_started_from",
+        "witness_started_before",
+        "witness_timestamp_missing",
+    }
+    for name in request.query_params:
+        if name not in allowed:
+            raise invalid(f"query.{name}", "Unknown metric query parameter")
+        if name != "group_by" and len(request.query_params.getlist(name)) > 1:
+            raise invalid(f"query.{name}", "Only group_by can be repeated")
     scope = TraceScope(
         source=source,
         agent=agent,
@@ -295,5 +327,9 @@ def query_metric(
         tool_is_unlinked=tool_is_unlinked,
         usage_missing=usage_missing,
         tool_is_linked=tool_is_linked,
+        witness_time_override=witness_time_override,
+        witness_started_from=witness_started_from,
+        witness_started_before=witness_started_before,
+        witness_timestamp_missing=witness_timestamp_missing,
     )
     return _c(request).query_metric.execute(metric_id, scope, tuple(group_by or ()))

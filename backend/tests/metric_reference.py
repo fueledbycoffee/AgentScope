@@ -83,7 +83,7 @@ def population(data, grain, scope):
             return False
         if scope.started_before is not None and (stamp is None or stamp >= scope.started_before):
             return False
-        if scope.timestamp_missing and scope.activity_grain == kind and stamp is not None:
+        if scope.timestamp_missing and stamp is not None:
             return False
         if kind == "model_call":
             if scope.model is not None and row.get("model") != scope.model:
@@ -137,11 +137,18 @@ def population(data, grain, scope):
             if scope.activity_grain and not matches[scope.activity_grain]:
                 continue
             if (
-                (scope.started_from or scope.started_before or scope.import_id)
+                (scope.started_from or scope.started_before)
                 and not matches["model_call"]
                 and not matches["tool_call"]
             ):
                 continue
+            if scope.import_id and not matches["model_call"] and not matches["tool_call"]:
+                contributed = any(
+                    c["session_id"] == sid and c["import_id"] == scope.import_id
+                    for c in data.get("session_contributions", [])
+                )
+                if not contributed:
+                    continue
             selected.append(session)
         else:
             for row in matches[grain]:
@@ -150,6 +157,34 @@ def population(data, grain, scope):
 
 
 def oracle(data, definition, scope, group_by=()):
+    if definition.grain == "import":
+        ids = set()
+        for grain in ("model_call", "tool_call"):
+            if scope.activity_grain is None or scope.activity_grain == grain:
+                ids.update(r["import_id"] for r in population(data, grain, scope))
+        child_filtered = any(
+            (
+                scope.model is not None,
+                scope.tool is not None,
+                scope.started_from,
+                scope.started_before,
+                scope.activity_grain,
+                scope.token_semantics is not None,
+                scope.model_is_unknown,
+                scope.timestamp_missing,
+                scope.tool_is_unlinked,
+                scope.usage_missing,
+                scope.tool_is_linked,
+            )
+        )
+        if not child_filtered:
+            sessions = {r["id"] for r in population(data, "session", scope)}
+            for contribution in data.get("session_contributions", []):
+                if contribution["session_id"] in sessions and (
+                    scope.import_id is None or contribution["import_id"] == scope.import_id
+                ):
+                    ids.add(contribution["import_id"])
+        return {(): {None: (len(ids), len(ids), len(ids))}}
     rows = population(data, definition.grain, scope)
     grouped = defaultdict(lambda: defaultdict(list))
     for row in rows:
@@ -202,3 +237,21 @@ def oracle_evaluation(partitions, tokens):
         )
     canonical = recorded if status in ("comparable", "not_applicable") else None
     return canonical, recorded, known, total, status
+
+
+def oracle_bucket_sessions(data, definition, scope, dimensions):
+    """Eligible original populations, before any production drill scope is constructed."""
+    result = defaultdict(set)
+    for row in population(data, definition.grain, scope):
+        keys = []
+        for dimension in dimensions:
+            if dimension == "started_day":
+                stamp = row.get("started_at")
+                keys.append(stamp.astimezone(UTC).date().isoformat() if stamp else None)
+            elif dimension == "linked":
+                keys.append(row.get("model_call_id") is not None)
+            else:
+                keys.append(row.get(dimension))
+        tag = (row.get("token_semantics") or "unknown") if definition.semantics_field else None
+        result[(tuple(keys), tag)].add(row["session_id"])
+    return result

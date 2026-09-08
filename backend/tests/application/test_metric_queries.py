@@ -124,3 +124,15 @@ def test_query_overall_combines_repeated_semantics_across_buckets():
     assert result.overall.coverage.known == 2 and result.overall.coverage.total == 4
     assert result.overall.semantics_partitions[0].value_text == "15"
     assert result.buckets[1].drill_scope.model_is_unknown
+
+
+def test_switching_chart_grains_preserves_the_previous_activity_time_as_witness():
+    original = TraceScope(tool="shell")
+    model_spec = MetricQuerySpec(REGISTRY.get("model_calls"), original, (Dimension.STARTED_DAY,))
+    model_drill = drill_scope(model_spec, ("2026-01-02",))
+    assert model_drill.witness_time_override and model_drill.witness_started_from is None
+    tool_spec = MetricQuerySpec(REGISTRY.get("tool_calls"), model_drill, (Dimension.TOOL_NAME,))
+    tool_drill = drill_scope(tool_spec, ("shell",))
+    assert tool_drill.activity_grain == EntityGrain.TOOL_CALL
+    assert tool_drill.witness_started_from == datetime(2026, 1, 2, tzinfo=UTC)
+    assert tool_drill.witness_started_before == datetime(2026, 1, 3, tzinfo=UTC)
