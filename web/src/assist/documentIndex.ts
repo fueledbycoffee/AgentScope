@@ -1,0 +1,256 @@
+/**
+ * The mapping document read as rows: an *indexed view* over the canonical text.
+ *
+ * Nothing here rebuilds a document. Structure comes from the span tree, and every value a cell
+ * shows is the exact source text at its path, so `9007199254740993` and `1.0` are displayed as
+ * they were written. Four states are distinguished everywhere and never collapsed: absent
+ * (`raw === null`), `null`, `false` and empty. Keys the DSL does not name are kept as `extras`
+ * with their paths — the parser only warns about them and saved documents keep them — and a
+ * section the table cannot represent carries a `malformed` reason instead of being rewritten.
+ */
+import { nodeAt, rawAt, scanDocument, type DocPath, type DocTree } from './document'
+
+export const FIELD_OPTIONS = [
+  'type',
+  'timestamp_format',
+  'unit',
+  'bounds',
+  'empty_as_missing',
+  'on_missing',
+  'default',
+  'on_invalid',
+] as const
+export type FieldOption = (typeof FIELD_OPTIONS)[number]
+
+const SOURCE_KINDS = ['path', 'paths', 'literal'] as const
+export type SourceKind = (typeof SOURCE_KINDS)[number]
+
+const HEAD_KEYS = ['dsl_version', 'target_schema_version', 'name', 'source', 'input_format'] as const
+export type HeadKey = (typeof HEAD_KEYS)[number]
+
+const DOC_KEYS = new Set<string>([...HEAD_KEYS, 'rules', 'unmapped', 'notes'])
+const RULE_KEYS = new Set(['id', 'entity', 'select', 'where', 'parent', 'native_key', 'fields'])
+const FIELD_KEYS = new Set<string>([...SOURCE_KINDS, 'transforms', ...FIELD_OPTIONS])
+
+/** One addressable member: `raw` is its source text, or null when the member is absent. */
+export interface Member {
+  path: DocPath
+  raw: string | null
+}
+
+export interface TransformView {
+  index: number
+  path: DocPath
+  raw: string
+  /** `"trim"` and `{"trim": {}}` are both legal and neither is converted into the other. */
+  form: 'short' | 'object' | 'malformed'
+  name: string | null
+}
+
+export interface FieldView {
+  name: string
+  path: DocPath
+  /** Several present kinds is a conflict the parser refuses; it is shown, never silently fixed. */
+  source: { present: SourceKind[]; members: Record<SourceKind, Member> }
+  transforms: TransformView[] | null
+  options: Record<FieldOption, Member>
+  extras: Member[]
+  malformed: string | null
+}
+
+export interface RuleView {
+  index: number
+  path: DocPath
+  id: Member
+  entity: Member
+  select: Member
+  parent: Member
+  where: Member[] | null
+  /** `native_key` absent and `native_key: []` are different declarations. */
+  nativeKey: { present: boolean; items: Member[] }
+  fields: FieldView[]
+  extras: Member[]
+  malformed: string | null
+}
+
+export interface UnmappedView {
+  index: number
+  path: DocPath
+  pathMember: Member
+  reason: Member
+}
+
+export interface DocIndex {
+  ok: boolean
+  /** Why the document cannot be indexed at all; the repair view is then the only view. */
+  problem: string | null
+  offset: number | null
+  duplicates: DocPath[]
+  head: Record<HeadKey, Member>
+  rules: RuleView[]
+  unmapped: UnmappedView[]
+  notes: Member
+  extras: Member[]
+  malformed: { path: DocPath; reason: string }[]
+}
+
+const member = (tree: DocTree, path: DocPath): Member => ({ path, raw: rawAt(tree, path) })
+
+function keysOf(tree: DocTree, path: DocPath): string[] | null {
+  const node = nodeAt(tree, path)
+  return node !== null && node.kind === 'object' ? node.members.map(m => m.key) : null
+}
+
+function lengthOf(tree: DocTree, path: DocPath): number | null {
+  const node = nodeAt(tree, path)
+  return node !== null && node.kind === 'array' ? node.elements.length : null
+}
+
+const extrasOf = (tree: DocTree, path: DocPath, known: Set<string>): Member[] =>
+  (keysOf(tree, path) ?? []).filter(key => !known.has(key)).map(key => member(tree, [...path, key]))
+
+function indexTransforms(tree: DocTree, path: DocPath): TransformView[] | null {
+  if (rawAt(tree, path) === null) return null
+  const count = lengthOf(tree, path)
+  if (count === null) return null
+  return Array.from({ length: count }, (_unused, index) => {
+    const at: DocPath = [...path, index]
+    const node = nodeAt(tree, at)
+    const raw = rawAt(tree, at) ?? ''
+    if (node?.kind === 'string') return { index, path: at, raw, form: 'short' as const, name: JSON.parse(raw) as string }
+    if (node?.kind === 'object') {
+      const keys = keysOf(tree, at) ?? []
+      return { index, path: at, raw, form: 'object' as const, name: keys.length === 1 ? keys[0] : null }
+    }
+    return { index, path: at, raw, form: 'malformed' as const, name: null }
+  })
+}
+
+function indexField(tree: DocTree, path: DocPath, name: string): FieldView {
+  const node = nodeAt(tree, path)
+  const empty = {
+    name,
+    path,
+    source: {
+      present: [] as SourceKind[],
+      members: Object.fromEntries(SOURCE_KINDS.map(kind => [kind, { path: [...path, kind], raw: null }])) as Record<SourceKind, Member>,
+    },
+    transforms: null,
+    options: Object.fromEntries(FIELD_OPTIONS.map(option => [option, { path: [...path, option], raw: null }])) as Record<FieldOption, Member>,
+    extras: [],
+  }
+  if (node === null) return { ...empty, malformed: 'this field is inside a section with duplicate keys' }
+  if (node.kind !== 'object') return { ...empty, malformed: 'a field must be a JSON object' }
+  const members = Object.fromEntries(SOURCE_KINDS.map(kind => [kind, member(tree, [...path, kind])])) as Record<SourceKind, Member>
+  return {
+    name,
+    path,
+    source: { present: SOURCE_KINDS.filter(kind => members[kind].raw !== null), members },
+    transforms: indexTransforms(tree, [...path, 'transforms']),
+    options: Object.fromEntries(FIELD_OPTIONS.map(option => [option, member(tree, [...path, option])])) as Record<FieldOption, Member>,
+    extras: extrasOf(tree, path, FIELD_KEYS),
+    malformed: null,
+  }
+}
+
+function indexRule(tree: DocTree, index: number, malformed: { path: DocPath; reason: string }[]): RuleView {
+  const path: DocPath = ['rules', index]
+  const node = nodeAt(tree, path)
+  const base = {
+    index,
+    path,
+    id: member(tree, [...path, 'id']),
+    entity: member(tree, [...path, 'entity']),
+    select: member(tree, [...path, 'select']),
+    parent: member(tree, [...path, 'parent']),
+    where: null,
+    nativeKey: { present: false, items: [] },
+    fields: [],
+    extras: [],
+  }
+  if (node === null || node.kind !== 'object') {
+    const reason = node === null ? 'this rule is inside a section with duplicate keys' : 'a rule must be a JSON object'
+    malformed.push({ path, reason })
+    return { ...base, malformed: reason }
+  }
+  const fieldsPath: DocPath = [...path, 'fields']
+  const fieldNames = keysOf(tree, fieldsPath)
+  let ruleProblem: string | null = null
+  if (rawAt(tree, fieldsPath) !== null && fieldNames === null) {
+    ruleProblem = 'fields must be a JSON object'
+    malformed.push({ path: fieldsPath, reason: ruleProblem })
+  }
+  const whereLength = lengthOf(tree, [...path, 'where'])
+  const nativeLength = lengthOf(tree, [...path, 'native_key'])
+  return {
+    ...base,
+    where:
+      rawAt(tree, [...path, 'where']) === null || whereLength === null
+        ? null
+        : Array.from({ length: whereLength }, (_unused, i) => member(tree, [...path, 'where', i])),
+    nativeKey: {
+      present: rawAt(tree, [...path, 'native_key']) !== null,
+      items: Array.from({ length: nativeLength ?? 0 }, (_unused, i) => member(tree, [...path, 'native_key', i])),
+    },
+    fields: (fieldNames ?? []).map(name => indexField(tree, [...fieldsPath, name], name)),
+    extras: extrasOf(tree, path, RULE_KEYS),
+    malformed: ruleProblem,
+  }
+}
+
+/** Index a document; never throws, and says why when a section cannot be shown as rows. */
+export function indexDocument(text: string): DocIndex {
+  const empty: DocIndex = {
+    ok: false,
+    problem: null,
+    offset: null,
+    duplicates: [],
+    head: Object.fromEntries(HEAD_KEYS.map(key => [key, { path: [key], raw: null }])) as Record<HeadKey, Member>,
+    rules: [],
+    unmapped: [],
+    notes: { path: ['notes'], raw: null },
+    extras: [],
+    malformed: [],
+  }
+  if (text.trim() === '') return { ...empty, problem: 'The mapping document is empty' }
+  const tree = scanDocument(text)
+  if ('problem' in tree) return { ...empty, problem: tree.problem, offset: tree.offset }
+  if (tree.root.kind !== 'object') return { ...empty, problem: 'The mapping document must be a JSON object' }
+
+  const malformed: { path: DocPath; reason: string }[] = []
+  const ruleCount = lengthOf(tree, ['rules'])
+  if (rawAt(tree, ['rules']) !== null && ruleCount === null) {
+    malformed.push({ path: ['rules'], reason: 'rules must be a JSON array' })
+  }
+  const unmappedCount = lengthOf(tree, ['unmapped'])
+  if (rawAt(tree, ['unmapped']) !== null && unmappedCount === null) {
+    malformed.push({ path: ['unmapped'], reason: 'unmapped must be a JSON array' })
+  }
+  return {
+    ok: true,
+    problem: null,
+    offset: null,
+    duplicates: tree.duplicates,
+    head: Object.fromEntries(HEAD_KEYS.map(key => [key, member(tree, [key])])) as Record<HeadKey, Member>,
+    rules: Array.from({ length: ruleCount ?? 0 }, (_unused, index) => indexRule(tree, index, malformed)),
+    unmapped: Array.from({ length: unmappedCount ?? 0 }, (_unused, index) => ({
+      index,
+      path: ['unmapped', index],
+      pathMember: member(tree, ['unmapped', index, 'path']),
+      reason: member(tree, ['unmapped', index, 'reason']),
+    })),
+    notes: member(tree, ['notes']),
+    extras: extrasOf(tree, [], DOC_KEYS),
+    malformed,
+  }
+}
+
+/** The unquoted text of a JSON string member, for a label; null for anything else. */
+export function asString(value: Member): string | null {
+  if (value.raw === null || !value.raw.startsWith('"')) return null
+  try {
+    return JSON.parse(value.raw) as string
+  } catch {
+    return null
+  }
+}

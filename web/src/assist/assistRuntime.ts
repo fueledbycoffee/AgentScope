@@ -22,6 +22,7 @@ import type {
 } from '../api/types'
 import type { AssistantRequestText as AssistantRequest } from '../api'
 import type { ChatTurn } from './Conversation'
+import { planEdits, type DocEdit } from './document'
 import { isJsonObjectText } from './jsonGrammar'
 import { extractMappingText, prettyJson } from './jsonText'
 
@@ -110,6 +111,20 @@ export function setIncludeSample(state: AssistState, on: boolean): AssistState {
 
 export function setDocumentText(state: AssistState, text: string): AssistState {
   return editDocument(state, text, null)
+}
+
+/**
+ * Apply an edit batch from the field table: one version bump, one undo entry, the gates
+ * invalidated once. A batch the planner refuses changes nothing at all — text, version, undo and
+ * every gate stay as they were and the reason is shown.
+ */
+export function applyDocumentEdits(state: AssistState, edits: DocEdit[]): AssistState {
+  const planned = planEdits(state.documentText, edits)
+  if ('problem' in planned) {
+    return { ...state, notices: [...state.notices, { kind: 'warn', text: `That change was not applied: ${planned.problem}.` }] }
+  }
+  if (planned.text === state.documentText) return state
+  return editDocument(state, planned.text, state.documentText)
 }
 
 export function undoDocument(state: AssistState): AssistState {

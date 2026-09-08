@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AssistantOutcome, PreparedContext, SavedMapping } from '../api/types'
 import {
   acknowledge,
+  applyDocumentEdits,
   buildRequest,
   canImport,
   canPreview,
@@ -173,6 +174,48 @@ describe('prepare, acknowledge, run', () => {
     const refused = outcomeArrived(running, started.generation, outcome(null, { diagnostics: { finish: 'refusal', model: 'm', raw_text: '', failure: 'refusal', context_sha256: 'd9', sample_included: false } }))
     expect(refused.documentText).toBe(state.documentText)
     expect(refused.turns.at(-1)?.content).toMatch(/did not return a proposal \(refusal\)/)
+  })
+})
+
+describe('table edits', () => {
+  const DOC = '{\n  "name": "assisted",\n  "source": "tracelab",\n  "big": 9007199254740993,\n  "rules": [{"id": "r", "fields": {"x": {"path": "$.a", "timestamp_format": "epoch_ms"}}}]\n}'
+
+  it('applies a batch as one version, one undo entry and one gate invalidation', () => {
+    let state = setDocumentText(ready(), DOC)
+    state = validationArrived(state, state.documentVersion, [], true)
+    state = savedArrived(state, state.documentText, saved('map_1'))
+    const version = state.documentVersion
+    const next = applyDocumentEdits(state, [
+      { op: 'set', path: ['rules', 0, 'fields', 'x', 'timestamp_format'], raw: '"epoch_s"' },
+      { op: 'set', path: ['rules', 0, 'fields', 'x', 'on_missing'], raw: '"reject"' },
+    ])
+    expect(next.documentVersion).toBe(version + 1) // one bump for the whole batch
+    expect(next.undo).toBe(DOC)
+    expect(next.validation).toBeNull()
+    expect(next.saved).toBeNull()
+    expect(next.documentText).toContain('"epoch_s"')
+    expect(next.documentText).toContain('"on_missing": "reject"')
+    expect(next.documentText).toContain('9007199254740993') // untouched lexemes survive
+    expect(undoDocument(next).documentText).toBe(DOC)
+  })
+
+  it('changes nothing at all when the planner refuses the batch', () => {
+    let state = setDocumentText(ready(), DOC)
+    state = validationArrived(state, state.documentVersion, [], true)
+    const next = applyDocumentEdits(state, [
+      { op: 'set', path: ['rules', 0, 'fields', 'x'], raw: '{}' },
+      { op: 'set', path: ['rules', 0, 'fields', 'x', 'type'], raw: '"string"' },
+    ])
+    expect(next.documentText).toBe(state.documentText)
+    expect(next.documentVersion).toBe(state.documentVersion)
+    expect(next.undo).toBe(state.undo)
+    expect(next.validation).toBe(state.validation)
+    expect(next.notices.at(-1)?.text).toMatch(/was not applied/)
+  })
+
+  it('is a no-op when the batch would not change the text', () => {
+    const state = setDocumentText(ready(), DOC)
+    expect(applyDocumentEdits(state, [])).toBe(state)
   })
 })
 
