@@ -16,6 +16,7 @@ from agentscope_app.domain.claims import ClaimCandidate, prepare_claims
 from agentscope_app.domain.identity import SourceOccurrence
 from agentscope_app.domain.mapping.interpreter import apply_mapping
 from agentscope_app.domain.mapping.parser import parse_mapping
+from agentscope_app.domain.schema import TARGET_SCHEMA, FieldType
 from agentscope_app.infrastructure.db import claims as claims_module
 from agentscope_app.infrastructure.db.claims import DETECTION_SQL, ClaimIndex
 from agentscope_app.infrastructure.db.engine import alembic_config, run_migrations
@@ -146,6 +147,110 @@ def test_0005_numeric_mapping_reexport_matches_historical_claim(env: Env, field,
         diagnostics = uow.imports.diagnostics(report.import_id, None, None, None, 50, 0)
     assert diagnostics.total == 1
     assert diagnostics.items[0].peer.file_sha256 == original.sha256
+
+
+@pytest.mark.parametrize(
+    "kind,field",
+    [
+        (kind, field)
+        for kind, entity in TARGET_SCHEMA.items()
+        for field, target in entity.fields.items()
+        if target.type is FieldType.STRING
+    ],
+)
+@pytest.mark.parametrize("number", ["1e20", "1e2", "-0.0", "1.0"])
+def test_0005_raw_numeric_text_projection_is_unrecoverable(env: Env, kind, field, number):
+    original = mapping_record()
+    document = original.document
+    document["rules"] = [
+        {
+            "id": entity,
+            "entity": entity,
+            "select": "$",
+            "native_key": ["external_id"],
+            "fields": fields,
+        }
+        for entity, fields in (
+            ("session", {"external_id": {"literal": "s"}, "agent": {"literal": "h"}}),
+            (
+                "model_call",
+                {"external_id": {"literal": "m"}, "session_external_id": {"literal": "s"}},
+            ),
+            (
+                "tool_call",
+                {
+                    "external_id": {"literal": "t"},
+                    "session_external_id": {"literal": "s"},
+                    "tool_name": {"literal": "read"},
+                },
+            ),
+        )
+    ]
+    rule = next(r for r in document["rules"] if r["entity"] == kind)
+    rule["fields"][field] = {"path": "$.value"}
+    mapping = replace(
+        original, id="raw-number", name="raw-number", content_hash="raw-number", document=document
+    )
+    with env.uow_factory() as uow:
+        uow.mappings.add(mapping)
+        uow.commit()
+    data = ('{"value":' + number + "}\n").encode()
+    _, report = commit_data(env, data, mapping=mapping.id)
+    assert report.records["accepted"] == 1
+    if kind == "session" and field == "repo" and number == "1e20":
+        assert env.sql("SELECT repo FROM sessions WHERE external_id='s'") == [("1E+20",)]
+        assert env.sql("SELECT payload FROM raw_records") == [('{"value":100000000000000000000}',)]
+    before = snapshots(env)
+    migrate(env, "downgrade", "0004")
+    run_migrations(env.engine)
+    assert snapshots(env) == before
+    assert env.sql("SELECT code FROM import_claim_conditions") == [("claim_backfill_unavailable",)]
+    assert env.sql("SELECT COUNT(*) FROM entity_claims") == [(0,)]
+    _, reexport = commit_data(env, b" " + data, mapping=mapping.id)
+    assert "suspected_duplicate" not in reexport.warnings
+    assert "matching_claim_equal_projection" not in reexport.warnings
+
+
+def test_0005_raw_numeric_enum_timestamp_is_unrecoverable(env: Env):
+    original = mapping_record()
+    document = original.document
+    document["rules"] = [
+        {
+            "id": "session",
+            "entity": "session",
+            "select": "$",
+            "fields": {
+                "external_id": {"literal": "s"},
+                "agent": {"literal": "h"},
+                "started_at": {
+                    "path": "$.value",
+                    "timestamp_format": "iso8601",
+                    "transforms": [
+                        {
+                            "enum_map": {
+                                "mapping": {
+                                    "1E+20": "2026-01-01T00:00:00Z",
+                                    "100000000000000000000": "2026-02-01T00:00:00Z",
+                                }
+                            }
+                        }
+                    ],
+                },
+            },
+        }
+    ]
+    mapping = replace(original, id="enum", name="enum", content_hash="enum", document=document)
+    with env.uow_factory() as uow:
+        uow.mappings.add(mapping)
+        uow.commit()
+    _, report = commit_data(env, b'{"value":1e20}\n', mapping=mapping.id)
+    assert report.records["accepted"] == 1
+    before = snapshots(env)
+    migrate(env, "downgrade", "0004")
+    run_migrations(env.engine)
+    assert snapshots(env) == before
+    assert env.sql("SELECT code FROM import_claim_conditions") == [("claim_backfill_unavailable",)]
+    assert env.sql("SELECT COUNT(*) FROM entity_claims") == [(0,)]
 
 
 @pytest.mark.parametrize("damage", ["raw_records", "entity_contributions", "record_results"])

@@ -10,6 +10,7 @@ import json
 from collections import Counter
 from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import Connection, MetaData, Table, Text, and_, cast, select, update
@@ -23,11 +24,57 @@ from agentscope_app.domain.claims import (
 from agentscope_app.domain.mapping.contract import MappingSpec
 from agentscope_app.domain.mapping.interpreter import Emission, apply_mapping
 from agentscope_app.domain.mapping.parser import parse_mapping
+from agentscope_app.domain.mapping.paths import MISSING, resolve_many, resolve_one
+from agentscope_app.domain.schema import FieldType
 from agentscope_app.infrastructure.db.claims import PAGE_SIZE, ClaimIndex
 
 
 class UnrecoverableError(ValueError):
     """Historical provenance does not justify rebuilding claims for this file."""
+
+
+def _contains_number(value: Any) -> bool:
+    if isinstance(value, dict):
+        return any(_contains_number(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_contains_number(v) for v in value)
+    return not isinstance(value, bool) and isinstance(value, int | float | Decimal)
+
+
+def _verify_coercion_provenance(spec: MappingSpec, payload: Any, locator: str) -> None:
+    """Reject representation-sensitive reads whose original spelling was lost.
+
+    Raw JSON preserves numeric *values*, not their original types or spelling:
+    Decimal('1E+20') reloads as an int, and Parquet floats reload as Decimal.
+    String coercion and transforms (including enum_map for non-string targets)
+    can observe that loss. Even an integer may originally have had an exponent;
+    neither replay nor a reconciled session row proves its original text.
+    Literal/default values use the separately preserved mapping document.
+    """
+    for rule in spec.rules:
+        sensitive = [
+            fm
+            for fm in rule.fields.values()
+            if not fm.has_literal and (fm.type is FieldType.STRING or fm.transforms)
+        ]
+        if not sensitive:
+            continue
+        for item in resolve_many(rule.select, payload, payload, limit=10_000):
+            for fm in sensitive:
+                for path in fm.paths:
+                    value = (
+                        resolve_many(path, item, payload, limit=10_000)
+                        if fm.bounds
+                        else resolve_one(path, item, payload)
+                    )
+                    if value is MISSING:
+                        continue
+                    if _contains_number(value):
+                        raise UnrecoverableError(
+                            f"Original numeric coercion provenance unavailable at {locator}: "
+                            f"{rule.id}.{fm.target}"
+                        )
+                    break  # only the first present fallback path is evaluated
 
 
 def _records(c: Connection, t: Mapping[str, Table], f: Mapping[str, Any]) -> Iterator[list[Any]]:
@@ -66,6 +113,7 @@ def _replay(spec: MappingSpec, row: Mapping[str, Any], sha: str) -> tuple[Emissi
     if row["payload"] is None:
         emissions: tuple[Emission, ...] = ()
     else:
+        _verify_coercion_provenance(spec, row["payload"], row["locator"])
         emissions = apply_mapping(
             spec, row["payload"], file_sha256=sha, locator=row["locator"]
         ).emissions
