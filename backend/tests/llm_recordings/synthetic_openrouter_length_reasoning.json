@@ -1,0 +1,26 @@
+{
+ "id": "gen-recorded",
+ "object": "chat.completion",
+ "created": 1789000000,
+ "model": "vendor/reasoning-model:free",
+ "choices": [
+  {
+   "index": 0,
+   "finish_reason": "length",
+   "message": {
+    "role": "assistant",
+    "content": "",
+    "reasoning": "…(hidden reasoning, 7913 tokens)…",
+    "refusal": null
+   }
+  }
+ ],
+ "usage": {
+  "prompt_tokens": 9310,
+  "completion_tokens": 8192,
+  "total_tokens": 17502,
+  "completion_tokens_details": {
+   "reasoning_tokens": 7913
+  }
+ }
+}

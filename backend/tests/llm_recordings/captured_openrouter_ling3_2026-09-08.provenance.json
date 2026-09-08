@@ -1,0 +1,14 @@
+{
+ "kind": "captured",
+ "date": "2026-09-08",
+ "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+ "model": "inclusionai/ling-3.0-flash-fin:free",
+ "prompt_version": 1,
+ "context": "TraceLab fixture, profile only (24,946 bytes, sha256 1bb8cdf0b5f1…), second (repair) call of the run; AGENTSCOPE_LLM_MAX_TOKENS=32768, AGENTSCOPE_LLM_TIMEOUT_S=240, JSON mode auto (negotiated off after the provider rejected structured outputs)",
+ "stripped": [
+  "request",
+  "headers",
+  "credentials"
+ ],
+ "note": "Executable proposal in 75.5 s over two generation calls. usage: 4,764 completion tokens of which 2,571 reasoning; the reply carries the model's hidden reasoning under message.reasoning. With the default 8,192-token budget the same prompt was cut off twice with 7,913 of 8,192 tokens spent on reasoning and no content."
+}

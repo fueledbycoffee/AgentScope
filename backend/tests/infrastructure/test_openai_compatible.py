@@ -183,6 +183,81 @@ def test_auto_mode_falls_back_once_on_an_explicit_rejection_and_remembers_it() -
     assert client.json_mode_negotiated_off
 
 
+def test_auto_mode_reads_the_rejection_relayed_under_openrouter_metadata_raw() -> None:
+    # OpenRouter's own message is "Provider returned error"; the upstream reason ("does not
+    # support feature: structured-outputs") is a JSON string under error.metadata.raw
+    server = Server(
+        httpx2.Response(400, json=recording("synthetic_openrouter_400_structured_outputs")),
+        ok(recording("synthetic_openrouter_ok")),
+    )
+    client = adapter(server)
+    reply = client.complete(prepared())
+    assert reply.notes == ("json_mode_off_after_rejection",)
+    assert "response_format" in server.body(0) and "response_format" not in server.body(1)
+
+
+def test_a_provider_error_names_the_relayed_upstream_reason() -> None:
+    server = Server(
+        httpx2.Response(400, json=recording("synthetic_openrouter_400_structured_outputs"))
+    )
+    with pytest.raises(AssistantError) as caught:
+        adapter(server, json_mode="on").complete(prepared())
+    assert caught.value.kind == "provider"
+    assert "does not support feature: structured-outputs" in str(caught.value)
+    assert "Provider returned error" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "model x does not support feature: structured-outputs",
+        "Structured Outputs are not supported by this model",
+        "json mode is unsupported",
+        "invalid parameter: json_schema",
+        "'response_format.type' must be 'json_schema' or 'text'",
+    ],
+)
+def test_rejection_wording_variants_are_recognised(message: str) -> None:
+    server = Server(
+        httpx2.Response(400, json={"error": {"message": message}}),
+        ok(recording("synthetic_openrouter_ok")),
+    )
+    assert adapter(server).complete(prepared()).notes == ("json_mode_off_after_rejection",)
+
+
+def test_unrelated_400s_do_not_switch_json_mode_off() -> None:
+    server = Server(
+        httpx2.Response(
+            400,
+            json={
+                "error": {
+                    "message": "Provider returned error",
+                    "metadata": {"raw": "context length exceeded"},
+                }
+            },
+        )
+    )
+    with pytest.raises(AssistantError) as caught:
+        adapter(server).complete(prepared())
+    assert caught.value.kind == "provider" and len(server.requests) == 1
+    assert "context length exceeded" in str(caught.value)
+
+
+def test_a_length_cut_spent_on_hidden_reasoning_is_explained() -> None:
+    # seen live 2026-09-08 (inclusionai/ling-3.0-flash-fin:free): 7913 of 8192 completion tokens
+    # were reasoning, content empty; "truncated" alone sends a person looking at the wrong knob
+    reply = adapter(Server(ok(recording("synthetic_openrouter_length_reasoning")))).complete(
+        prepared()
+    )
+    assert reply.finish == "length" and reply.text == ""
+    assert len(reply.notes) == 1
+    assert "hidden reasoning (7913 of 8192 tokens, limit 8192)" in reply.notes[0]
+    assert "AGENTSCOPE_LLM_MAX_TOKENS" in reply.notes[0]
+    # a cut whose budget went to the visible reply gets no such note
+    plain = adapter(Server(ok(recording("synthetic_openrouter_length")))).complete(prepared())
+    assert plain.finish == "length" and plain.notes == ()
+
+
 def test_on_mode_never_falls_back_and_off_mode_never_sends_it() -> None:
     server = Server(httpx2.Response(400, json=recording("synthetic_lmstudio_400_response_format")))
     with pytest.raises(AssistantError) as caught:

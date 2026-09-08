@@ -1,0 +1,11 @@
+{
+ "error": {
+  "message": "Provider returned error",
+  "code": 400,
+  "metadata": {
+   "raw": "{\"code\": 400, \"reason\": \"INVALID_REQUEST_BODY\", \"message\": \"model: vendor/model does not support feature: structured-outputs\", \"metadata\": {}}",
+   "provider_name": "ExampleProvider",
+   "is_byok": false
+  }
+ }
+}

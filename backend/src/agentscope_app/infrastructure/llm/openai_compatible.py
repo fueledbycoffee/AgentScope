@@ -81,11 +81,13 @@ REPAIR_INSTRUCTION: Final = (
 REPAIR_INSTRUCTION_END: Final = "\nvalidation-issues>>>"
 
 JSON_MODES: Final = ("auto", "on", "off")
+# the feature has several names: the parameter (response_format), OpenAI's "structured outputs",
+# "json mode", the json_object type; a rejection names one of them near a refusal word
 _UNSUPPORTED_PARAMETER: Final = re.compile(
-    r"(?i)response_format.{0,120}?(not supported|unsupported|does not support|unknown|"
-    r"unrecognized|invalid|must be)|"
+    r"(?i)(response_format|structured[ _-]?outputs?|json[ _-]?mode|json_object|json_schema)"
+    r".{0,120}?(not supported|unsupported|does not support|unknown|unrecognized|invalid|must be)|"
     r"(not supported|unsupported|does not support|unknown|unrecognized|invalid).{0,120}?"
-    r"response_format"
+    r"(response_format|structured[ _-]?outputs?|json[ _-]?mode|json_object|json_schema)"
 )
 _ERROR_QUOTE_CHARS: Final = 200
 _MAX_RESPONSE_BYTES: Final = 4 * 1024 * 1024
@@ -374,6 +376,9 @@ class OpenAICompatibleAssistant:
         if finish == "content_filter":
             return self._guard(AssistantReply(text or "", model, "refusal", notes))
         if finish == "length":
+            reasoning_note = _reasoning_budget_note(payload.get("usage"), self._max_tokens)
+            if reasoning_note:
+                notes = (*notes, reasoning_note)
             return self._guard(AssistantReply(text or "", model, "length", notes))
         if finish in ("stop", "end_turn", "eos") or (finish is None and text is not None):
             if text is None:
@@ -454,7 +459,10 @@ def _error_message(response: httpx2.Response) -> str:
         if isinstance(error, dict):
             message = error.get("message")
             if isinstance(message, str):
-                return message
+                # OpenRouter relays the upstream provider's reason under metadata.raw, and its own
+                # message says only "Provider returned error": the reason is what a person needs
+                raw = _provider_reason(error)
+                return f"{message}: {raw}" if raw else message
             return json.dumps(error, ensure_ascii=False)[: _ERROR_QUOTE_CHARS * 2]
         if isinstance(error, str):
             return error
@@ -464,6 +472,48 @@ def _error_message(response: httpx2.Response) -> str:
         return response.text[: _ERROR_QUOTE_CHARS * 2]
     except Exception:  # noqa: BLE001 - a diagnostic must never raise
         return "<unreadable body>"
+
+
+def _reasoning_budget_note(usage: Any, max_tokens: int) -> str:
+    """When a cut reply spent its budget on hidden reasoning, say so (reasoning models do this).
+
+    OpenAI-shaped usage: ``completion_tokens`` and ``completion_tokens_details.reasoning_tokens``.
+    The note is a human sentence the application shows next to the failure.
+    """
+    if not isinstance(usage, dict):
+        return ""
+    completion = usage.get("completion_tokens")
+    details = usage.get("completion_tokens_details")
+    reasoning = details.get("reasoning_tokens") if isinstance(details, dict) else None
+    if not isinstance(completion, int) or not isinstance(reasoning, int) or reasoning <= 0:
+        return ""
+    if reasoning * 2 < completion:  # most of the budget went to the visible reply: not this
+        return ""
+    return (
+        f"the reply budget was spent on hidden reasoning ({reasoning} of {completion} tokens, "
+        f"limit {max_tokens}): raise AGENTSCOPE_LLM_MAX_TOKENS or use a model with a lower "
+        "reasoning effort"
+    )
+
+
+def _provider_reason(error: dict[str, Any]) -> str:
+    """The upstream reason relayed under ``error.metadata.raw`` (a JSON string or text), bounded."""
+    metadata = error.get("metadata")
+    raw = metadata.get("raw") if isinstance(metadata, dict) else None
+    if not isinstance(raw, str) or not raw.strip():
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        parsed = None
+    if isinstance(parsed, dict):
+        for key in ("message", "error", "reason"):
+            value = parsed.get(key)
+            if isinstance(value, dict) and isinstance(value.get("message"), str):
+                return value["message"][:_ERROR_QUOTE_CHARS]
+            if isinstance(value, str) and value.strip():
+                return value[:_ERROR_QUOTE_CHARS]
+    return raw[:_ERROR_QUOTE_CHARS]
 
 
 _ESCAPE = re.compile(r"\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})|\\(/)")
