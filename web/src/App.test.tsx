@@ -83,7 +83,7 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', '') } })
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open') } })
 })
-afterEach(() => { sessionStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); fetchMock.mockReset() })
+afterEach(() => { sessionStorage.clear(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); fetchMock.mockReset() })
 
 describe('Import flow', () => {
   it('uploads multipart bytes, previews, confirms, and fetches the persisted report and rejects', async () => {
@@ -512,6 +512,88 @@ describe('Dashboard', () => {
     expect(screen.getByRole('group', { name: 'Scope' })).toHaveTextContent('1 sessions · 4,770 model calls · from 1 imports')
   })
 
+  it('round-trips an exact padded model through a token bar drill', async () => {
+    const paddedModel = ' padded-model '
+    fetchMock.mockImplementation((input, options) => {
+      const url = new URL(String(input), 'http://localhost')
+      const metricId = url.searchParams.get('metric_id')
+      if (url.pathname === '/api/metrics/query' && (metricId === 'input_tokens' || metricId === 'output_tokens')) {
+        const query = metricQueries[metricId]
+        return Promise.resolve(json({
+          ...query,
+          buckets: query.buckets.map(bucket => ({
+            ...bucket,
+            keys: [paddedModel],
+            result: {
+              ...bucket.result,
+              semantics_partitions: bucket.result.semantics_partitions.map(partition => ({
+                ...partition,
+                drill_scope: { ...partition.drill_scope, model: paddedModel },
+              })),
+            },
+          })),
+        }))
+      }
+      return defaultResponse(input, options)
+    })
+    start('/overview')
+    const chart = await screen.findByRole('region', { name: 'Tokens by model' })
+
+    fireEvent.click(within(chart).getByRole('button', { name: /padded-model.*input/i }))
+
+    await screen.findByRole('heading', { name: 'Sessions' })
+    expect(screen.getByText('accounting padded-model · tracelab-claude')).toBeInTheDocument()
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/sessions'
+        && url.searchParams.get('model') === paddedModel
+        && url.searchParams.get('token_semantics') === 'tracelab-claude'
+    })).toBe(true))
+  })
+
+  it('round-trips an exact padded model selected from the facet', async () => {
+    const paddedModel = ' padded-model '
+    fetchMock.mockImplementation((input, options) => {
+      const url = new URL(String(input), 'http://localhost')
+      if (url.pathname === '/api/metrics/facets') {
+        return Promise.resolve(json({ sources: ['tracelab'], agents: ['claude-code'], models: [paddedModel] }))
+      }
+      return defaultResponse(input, options)
+    })
+    start('/sessions')
+    const modelSelect = await screen.findByLabelText('Model') as HTMLSelectElement
+    await waitFor(() => expect([...modelSelect.options].some(option => option.value === paddedModel)).toBe(true))
+
+    fireEvent.change(modelSelect, { target: { value: paddedModel } })
+
+    expect(screen.getByLabelText('Model')).toHaveValue(paddedModel)
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => {
+      const url = new URL(String(value), 'http://localhost')
+      return url.pathname === '/api/sessions' && url.searchParams.get('model') === paddedModel
+    })).toBe(true))
+  })
+
+  it.each(['/overview', '/sessions'])('shows stored drill bounds on %s after a relative-period bookmark moves to the next day', async pathname => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-09T12:00:00Z'))
+    const drill = encodeURIComponent(JSON.stringify({
+      version: 1,
+      label: 'day',
+      value: '2026-09-02 → 2026-09-09 UTC',
+      scope: {
+        started_from: '2026-09-02T00:00:00.000Z',
+        started_before: '2026-09-09T00:00:00.000Z',
+        activity_grain: 'model_call',
+      },
+    }))
+
+    start(`${pathname}?period=7d&drill=${drill}`)
+
+    const bar = screen.getByRole('group', { name: 'Scope' })
+    await waitFor(() => expect(bar).toHaveTextContent('2026-09-02 → 2026-09-09 UTC'))
+    expect(bar).not.toHaveTextContent('2026-09-03 → 2026-09-10 UTC')
+  })
+
   it('keeps a tool bar mounted through hover and opens matching sessions on press and release', async () => {
     start('/overview')
     const chart = await screen.findByRole('region', { name: 'Tool calls' })
@@ -640,6 +722,21 @@ describe('Scope in the shell', () => {
         && url.searchParams.get('activity_grain') === 'tool_call'
     })).toBe(true))
     await waitFor(() => expect(screen.getByRole('group', { name: 'Scope' })).toHaveTextContent('1 sessions'))
+  })
+
+  it('shows and clears Model and Period on session detail without a drill', async () => {
+    start('/sessions/ses_1?model=claude&period=7d')
+    await screen.findByRole('heading', { name: 'Session detail' })
+
+    expect(screen.getByLabelText('Model')).toHaveValue('claude')
+    expect(screen.getByLabelText('Period (UTC)')).toHaveValue('7d')
+    expect(screen.getByRole('button', { name: 'Clear all' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
+    await waitFor(() => expect(screen.getByLabelText('Model')).toHaveValue(''))
+    expect(screen.getByLabelText('Period (UTC)')).toHaveValue('')
+    expect(screen.queryByRole('button', { name: 'Clear all' })).not.toBeInTheDocument()
+    await waitFor(() => expect(fetchMock.mock.calls.some(([value]) => String(value) === '/api/metrics/summary')).toBe(true))
   })
 })
 

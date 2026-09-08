@@ -5,7 +5,8 @@ import type { RawReference } from '../api'
 import { DataTable, IconButton, Notice, SourceRecordDialog, StateBlock } from '../components'
 import type { Column } from '../components'
 import { display } from '../format'
-import { useScope } from '../scope'
+import { scopeDimensions } from '../dashboard/dashboardData'
+import { formatApiScopeBounds, useScope } from '../scope'
 import { useScopeBar } from '../shellHooks'
 import { useResource } from '../useResource'
 import type { ModelCall, ToolCall } from '../api'
@@ -18,17 +19,18 @@ import type { ModelCall, ToolCall } from '../api'
  */
 export default function SessionPage() {
   const { id = '' } = useParams()
-  const { apiScope, link } = useScope()
+  const { scope, apiScope, link } = useScope()
   const resource = useResource(useCallback(() => getSession(id), [id]))
   // The bar keeps the list's context: its receipt is recomputed for the current scope,
   // never carried over from the page that opened this one.
   const metrics = useResource(useCallback(() => getMetricsSummary(apiScope), [apiScope]))
   const [source, setSource] = useState<{ sessionId: string; reference: RawReference }>()
   useScopeBar(
-    [{ key: 'source', label: 'Source', options: [] }, { key: 'agent', label: 'Agent', options: [] }],
+    scopeDimensions(undefined, scope),
     metrics.data ? {
       sessionsText: metrics.data.sessions.value_text,
       modelCallsText: metrics.data.model_calls.value_text,
+      resolvedPeriodText: formatApiScopeBounds(apiScope),
     } : metrics.error ? {} : undefined,
     metrics.loading,
   )

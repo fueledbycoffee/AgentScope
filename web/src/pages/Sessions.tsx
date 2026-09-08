@@ -3,7 +3,7 @@ import { getMetricsSummary, getScopeFacets, listSessions, queryMetric } from '..
 import { groupExactText, Pagination, StateBlock } from '../components'
 import { scopeDimensions } from '../dashboard/dashboardData'
 import { PAGE_SIZE } from '../format'
-import { resolvePeriod, useScope } from '../scope'
+import { formatApiScopeBounds, useScope } from '../scope'
 import { useScopeBar } from '../shellHooks'
 import { useResource } from '../useResource'
 import { SessionsTable } from './sessionsTable'
@@ -25,7 +25,7 @@ export default function SessionsPage() {
       sessionsText: metrics.data.sessions.value_text,
       modelCallsText: metrics.data.model_calls.value_text,
       importsText: imports.data?.overall.value_text,
-      resolvedPeriodText: resolvePeriod(scope.period)?.text,
+      resolvedPeriodText: formatApiScopeBounds(apiScope),
     } : metrics.error ? {} : undefined,
     metrics.loading || facets.loading || imports.loading,
   )

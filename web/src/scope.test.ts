@@ -43,6 +43,18 @@ describe('scope URL contract', () => {
     expect(String((scopeHref(state, 'agent', 'codex') as { search: string }).search)).toContain('drill=')
   })
 
+  it('preserves exact whitespace in URL reads, writes, and the effective base scope', () => {
+    const model = ' padded-model '
+    const read = readScope(new URLSearchParams({ model }))
+    expect(read.model).toBe(model)
+    expect(resolveApiScope(read).model).toBe(model)
+
+    const patched = patchScope(new URLSearchParams(), { model })
+    expect(patched.get('model')).toBe(model)
+    expect(readScope(patched).model).toBe(model)
+    expect(scopeSearch({ model })).toBe('?model=+padded-model+')
+  })
+
   it.each([
     '{',
     JSON.stringify({ version: 2, label: 'tool', value: 'Read', scope: {} }),
@@ -83,6 +95,24 @@ describe('scope URL contract', () => {
   it('lets the drill carry its witnessed date scope until Period changes', () => {
     const witnessed = { ...drill, scope: { ...drill.scope, started_from: '2026-01-01T00:00:00Z' } }
     expect(resolveApiScope({ period: '7d', drill: witnessed }, new Date('2026-09-08T12:00:00Z')).started_from).toBe('2026-01-01T00:00:00Z')
+  })
+
+  it('keeps valid microsecond drill intervals distinct at full precision', () => {
+    const precise = JSON.stringify({
+      version: 1,
+      label: 'day',
+      value: 'microseconds',
+      scope: {
+        started_from: '2026-09-07T00:00:00.000001Z',
+        started_before: '2026-09-07T00:00:00.000002Z',
+        activity_grain: 'model_call',
+      },
+    })
+
+    expect(readScope(new URLSearchParams({ drill: precise })).drill?.scope).toMatchObject({
+      started_from: '2026-09-07T00:00:00.000001Z',
+      started_before: '2026-09-07T00:00:00.000002Z',
+    })
   })
 
   it('lets an explicit base value override and clear a mutually exclusive unknown predicate', () => {

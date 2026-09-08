@@ -8,8 +8,8 @@ import {
   tokenRows, toolPoints,
 } from '../dashboard/dashboardData'
 import type { TokenMeasure, TokenRow } from '../dashboard/dashboardData'
-import { createDrillEnvelope, resolvePeriod, scopeSearch, useScope } from '../scope'
-import type { DrillEnvelopeV1, UrlScope } from '../scope'
+import { createDrillEnvelope, formatApiScopeBounds, scopeSearch, useScope } from '../scope'
+import type { DrillEnvelopeV1 } from '../scope'
 import { useScopeBar } from '../shellHooks'
 import { useResource } from '../useResource'
 import { SessionsTable } from './sessionsTable'
@@ -51,17 +51,17 @@ export default function OverviewPage() {
       sessionsText: data.summary.sessions.value_text,
       modelCallsText: data.summary.model_calls.value_text,
       importsText: data.importsInScope.overall.value_text,
-      resolvedPeriodText: resolvePeriod(scope.period)?.text,
+      resolvedPeriodText: formatApiScopeBounds(apiScope),
     } : dashboard.error ? {} : undefined,
     dashboard.loading,
   )
 
-  const activateDrill = (drill: DrillEnvelopeV1, extra: Partial<UrlScope> = {}) => {
-    const destination = { ...scope, ...extra, drill }
+  const activateDrill = (drill: DrillEnvelopeV1) => {
+    const destination = { ...scope, drill }
     navigate({ pathname: '/sessions', search: scopeSearch(destination) })
   }
-  const activateToken = (row: TokenRow, measure: TokenMeasure) => {
-    if (measure.drill) activateDrill(measure.drill, row.model ? { model: row.model } : {})
+  const activateToken = (_row: TokenRow, measure: TokenMeasure) => {
+    if (measure.drill) activateDrill(measure.drill)
   }
 
   const unknownQuality = (() => {

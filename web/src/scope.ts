@@ -48,10 +48,31 @@ function canonical(value: unknown): string {
   return JSON.stringify(value) ?? 'null'
 }
 
-function awareInstant(value: string): number | undefined {
-  if (!/(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return undefined
-  const instant = Date.parse(value)
-  return Number.isFinite(instant) ? instant : undefined
+function awareInstant(value: string): bigint | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(value)
+  if (!match) return undefined
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, fraction = '', , offsetSign, offsetHourText = '0', offsetMinuteText = '0'] = match
+  const [year, month, day, hour, minute, second, offsetHour, offsetMinute] = [
+    yearText, monthText, dayText, hourText, minuteText, secondText, offsetHourText, offsetMinuteText,
+  ].map(Number)
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > monthDays[month - 1]
+    || hour > 23 || minute > 59 || second > 59 || offsetHour > 23 || offsetMinute > 59) return undefined
+
+  const priorYear = year - 1
+  const daysBeforeYear = 365 * priorYear + Math.floor(priorYear / 4) - Math.floor(priorYear / 100) + Math.floor(priorYear / 400)
+  const daysBeforeMonth = monthDays.slice(0, month - 1).reduce((total, days) => total + days, 0)
+  const dayMicros = 86_400_000_000n
+  const localMicros = BigInt(daysBeforeYear + daysBeforeMonth + day - 1) * dayMicros
+    + BigInt(hour * 3_600_000_000 + minute * 60_000_000 + second * 1_000_000)
+    + BigInt(fraction.padEnd(6, '0') || '0')
+  const offsetMinutes = offsetHour * 60 + offsetMinute
+  const signedOffsetMicros = BigInt(offsetSign === '-' ? -offsetMinutes : offsetMinutes) * 60_000_000n
+  const utcMicros = localMicros - signedOffsetMicros
+  const daysBeforeYear10000 = 365 * 9_999 + Math.floor(9_999 / 4) - Math.floor(9_999 / 100) + Math.floor(9_999 / 400)
+  if (utcMicros < 0n || utcMicros >= BigInt(daysBeforeYear10000) * dayMicros) return undefined
+  return utcMicros
 }
 
 function increasing(scope: PublicMetricDrillScope, prefix: '' | 'witness_') {
@@ -123,7 +144,7 @@ const drillText = (drill: DrillEnvelopeV1) => canonical(drill)
 export function readScope(params: URLSearchParams): UrlScope {
   const scope: UrlScope = {}
   for (const key of SCOPE_KEYS) {
-    const value = params.get(key)?.trim()
+    const value = params.get(key) ?? undefined
     if (value && (key !== 'period' || ['7d', '30d', '90d'].includes(value))) scope[key] = value
   }
   const drill = parseDrill(params.get('drill'))
@@ -171,7 +192,7 @@ export function patchScope(search: URLSearchParams, changes: ScopePatch): URLSea
   for (const key of SCOPE_KEYS) {
     if (!(key in changes)) continue
     const raw = changes[key]
-    const value = typeof raw === 'string' && raw.trim() ? raw.trim() : undefined
+    const value = typeof raw === 'string' && raw !== '' ? raw : undefined
     if (value) next.set(key, value)
     else next.delete(key)
     if (drill) drill = reconcileDrill(drill, key, value)
@@ -226,6 +247,20 @@ export function resolveApiScope(scope: UrlScope, now = new Date()): ApiTraceScop
     }
   }
   return result
+}
+
+const utcDay = (value: string | undefined) => value?.match(/^(\d{4}-\d{2}-\d{2})T00:00:00(?:\.0{1,6})?Z$/)?.[1]
+
+/** Exact bounds from the scope sent to the API; drill witnesses therefore never drift with the clock. */
+export function formatApiScopeBounds(scope: ApiTraceScope): string | undefined {
+  const { started_from: from, started_before: before, started_through: through } = scope
+  if (!from && !before && !through) return undefined
+  const fromDay = utcDay(from)
+  const beforeDay = utcDay(before)
+  if (from && before && !through && fromDay && beforeDay) return `${fromDay} → ${beforeDay} UTC`
+  return [from && `from ${from}`, before && `before ${before}`, through && `through ${through}`]
+    .filter((part): part is string => Boolean(part))
+    .join(' · ')
 }
 
 export function formatScopeValue(key: ScopeKey, value: string) {
