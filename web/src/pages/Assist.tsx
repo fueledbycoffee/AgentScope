@@ -255,6 +255,12 @@ export default function AssistPage() {
   // table is never asked to show rows it cannot build
   const shownView: DocumentView = tableProblem === null ? view : 'json'
 
+  /** Open the JSON view at a path, because that is what the caller asked for. */
+  const openJson = useCallback((path: string) => {
+    setView('json')
+    setFocusRequest(previous => ({ path, nonce: (previous?.nonce ?? 0) + 1 }))
+  }, [])
+
   /** Go to an issue: the control that owns it when the table shows one, else its line in the JSON. */
   const jumpTo = useCallback((path: string) => {
     // the document decides what a dotted parser path means, so it is asked before focusing anything
@@ -355,7 +361,7 @@ export default function AssistPage() {
                 disabled={state.busy !== 'none' || state.bootstrap.phase === 'loading'}
                 onEdit={(edits, nextIdentity) => update(s => applyDocumentEdits(s, edits, nextIdentity))}
                 onRefuse={reason => update(s => ({ ...s, notices: [...s.notices, { kind: 'warn', text: reason }] }))}
-                onOpenJson={(path: DocPath) => jumpTo(showPath(path))}
+                onOpenJson={(path: DocPath) => openJson(showPath(path))}
               />
             )}
             <SuggestionList

@@ -235,6 +235,26 @@ describe('Assist page', () => {
     expect(panel).not.toHaveAttribute('hidden')
   })
 
+  it('opens the JSON view when the table asks for it, and focuses a control when an issue does', async () => {
+    renderPage()
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    const document_ = '{"name": "draft", "source": "assist", "rules": [{"id": "r", "entity": "session", "fields": {"external_id": {"path": "$.s"}}}]}'
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
+    fireEvent.change(screen.getByLabelText('Mapping document (JSON)'), { target: { value: document_ } })
+    fireEvent.click(screen.getByRole('button', { name: 'Field table' }))
+
+    // "Open r in the JSON view" must actually open it, not focus the rule's id input
+    fireEvent.click(screen.getByRole('button', { name: 'Open r in the JSON view' }))
+    expect(screen.getByLabelText('Mapping document (JSON)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'JSON document' })).toHaveAttribute('aria-pressed', 'true')
+
+    // an issue still goes to its control, and switches back to the table to do it
+    fireEvent.click(screen.getByRole('button', { name: 'Field table' }))
+    await waitFor(() => expect(screen.getByLabelText('id of r')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Validate the document' }))
+    await waitFor(() => expect(calls.some(c => c.path === '/mappings/validate')).toBe(true))
+  })
+
   it('keeps the JSON view when the document cannot be shown as rows, and says why', async () => {
     renderPage()
     await screen.findByRole('complementary', { name: 'Evidence' })
