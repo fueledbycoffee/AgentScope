@@ -1,0 +1,13 @@
+{
+  "model": "synthetic-contract-mistake",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": "{\"mapping\": {\"dsl_version\": 1, \"target_schema_version\": 1, \"name\": \"assisted\", \"source\": \"tracelab\", \"input_format\": \"jsonl\", \"rules\": [{\"id\": \"session\", \"entity\": \"session\", \"native_key\": [\"external_id\"], \"fields\": {\"external_id\": {\"path\": \"$.session_id\"}, \"started_at\": {\"path\": \"$.timestamp\"}, \"ended_at\": {\"path\": \"$.timestamp\"}}}], \"notes\": \"\"}, \"explanations\": [], \"ambiguities\": [], \"questions\": []}"
+      }
+    }
+  ]
+}

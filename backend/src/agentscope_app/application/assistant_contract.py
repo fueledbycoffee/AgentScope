@@ -14,7 +14,22 @@ from agentscope_app.domain.mapping.contract import DSL_VERSION
 from agentscope_app.domain.schema import TARGET_SCHEMA, TARGET_SCHEMA_VERSION
 
 CONTEXT_VERSION: Final = 1
-PROMPT_VERSION: Final = 1
+PROMPT_VERSION: Final = 2
+
+COMMON_MISTAKES_REFERENCE: Final = (
+    'native_key lists mapped target field names, e.g. ["external_id"], never source columns. '
+    'For example, fields: {"external_id": {"path": "$.session_id"}} uses '
+    'native_key: ["external_id"], not ["session_id"] or ["$.session_id"]. '
+    "A single scalar timestamp on a row is one instant, never an interval: map it to "
+    "started_at on a call or prompt row and to ended_at on a result row, and never copy "
+    "the same instant into both endpoints. An interval needs a second column that declares "
+    "the other end, or "
+    'the bounds of an event array (e.g. {"path": "$.timing_events[*].timestamp", '
+    '"bounds": "max"}); otherwise omit ended_at rather than invent an interval. '
+    'notes must be a string, never an object or array; use "" when there are no notes. '
+    'Every field mapping must be a JSON object, e.g. {"path": "$.session_id"}, '
+    'never a bare string; use {"literal": value} for a constant. '
+)
 
 DSL_REFERENCE: Final = (
     "Mapping DSL v1. A document is {dsl_version: 1, target_schema_version: 1, name, source, "
@@ -33,7 +48,8 @@ DSL_REFERENCE: Final = (
     "bounds (min|max with a '[*]' path; timestamp fields only). Conversions are strict: no "
     "boolean-to-number, no rounding, unknown enum values are not kept silently. Sessions are "
     "reconciled by external_id within a source; model_call and tool_call need "
-    "session_external_id. Copy source paths exactly as the profile reports them."
+    "session_external_id. Copy source paths exactly as the profile reports them. "
+    + COMMON_MISTAKES_REFERENCE
 )
 
 WRAPPER_REFERENCE: Final = (

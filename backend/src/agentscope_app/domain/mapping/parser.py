@@ -193,7 +193,10 @@ def _required_string(obj: Mapping[str, Any], key: str, issues: _Issues) -> str:
 def _string(obj: Mapping[str, Any], key: str, path: str, issues: _Issues, *, default: str) -> str:
     value = obj.get(key, default)
     if not isinstance(value, str):
-        issues.error("schema", path, "invalid_type", f"{key} must be a string")
+        message = f"{key} must be a string"
+        if key == "notes":
+            message += ", never an object or array"
+        issues.error("schema", path, "invalid_type", message)
         return default
     return value
 
@@ -291,11 +294,17 @@ def _parse_rule(raw_rule: Any, path: str, issues: _Issues) -> Rule | None:
                 "semantic",
                 f"{path}.native_key",
                 "native_key_unmapped",
-                f"native_key fields are not mapped in this rule: {unmapped_keys}",
+                f"native_key fields are not mapped in this rule: {unmapped_keys}. "
+                'native_key lists mapped target field names, e.g. ["external_id"], '
+                "never source columns",
             )
     else:
         issues.error(
-            "schema", f"{path}.native_key", "invalid_type", "native_key must be a list of names"
+            "schema",
+            f"{path}.native_key",
+            "invalid_type",
+            'native_key lists mapped target field names, e.g. ["external_id"], '
+            "never source columns",
         )
         native_key = ()
     return Rule(rule_id, entity_name, select, fields, tuple(where), parent, native_key)
@@ -409,7 +418,13 @@ def _path(raw: Any, path: str, issues: _Issues, *, allow_wildcard: bool) -> Path
 
 def _parse_field(raw: Any, target: TargetField, path: str, issues: _Issues) -> FieldMapping | None:
     if not isinstance(raw, Mapping):
-        issues.error("schema", path, "not_an_object", "A field mapping must be a JSON object")
+        issues.error(
+            "schema",
+            path,
+            "not_an_object",
+            'Every field mapping must be a JSON object, e.g. {"path": "$.session_id"}, '
+            "never a bare string",
+        )
         return None
     issues.unknown_keys(raw, _FIELD_KEYS, path)
     for option in ("path", "paths", "type", "timestamp_format", "unit", "bounds", "transforms"):
