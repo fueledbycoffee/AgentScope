@@ -435,6 +435,30 @@ def test_session_metrics_match_summary_definition_and_partitions(database):
         assert row.tool_call_count == summary.tool_calls.value
         assert GetSession(factory).execute(row.id).summary == row
 
+    missing = ListSessions(factory).execute(scope=TraceScope(usage_missing=True), limit=10)
+    assert [row.id for row in missing] == ["s1"]
+    assert missing[0].model_call_count == 1
+    assert missing[0].tool_call_count == 2
+    assert missing[0].input_tokens.value_text is None
+    assert missing[0].input_tokens.coverage.known == 0
+    assert missing[0].input_tokens.coverage.total == 1
+
+
+def test_session_ids_order_and_offset_are_stable(database):
+    from agentscope_app.application.use_cases.queries import ListSessions
+
+    engine, _ = database
+    with Session(engine) as session:
+        session.get(m.Session, "s1").observed_start_at = datetime(2026, 1, 1, tzinfo=UTC)
+        session.get(m.Session, "s2").observed_start_at = datetime(2026, 1, 2, tzinfo=UTC)
+        session.get(m.Session, "empty").observed_start_at = None
+        session.commit()
+
+    factory = make_uow_factory(engine)
+    first = ListSessions(factory).execute(scope=TraceScope(), limit=1, offset=0)
+    rest = ListSessions(factory).execute(scope=TraceScope(), limit=10, offset=1)
+    assert [row.id for row in [*first, *rest]] == ["s2", "s1", "empty"]
+
 
 def test_missing_time_applies_to_current_grain_and_all_required_witnesses(database):
     engine, _ = database

@@ -133,8 +133,10 @@ def test_summary_facets_and_sessions_share_the_public_scope(client):
         assert response.status_code == 200, response.text
 
     for path in ("/api/metrics/summary", "/api/metrics/facets", "/api/sessions"):
-        assert client.get(path, params={"session_ids": "private"}).status_code == 400
-        assert client.get(path, params=[("source", "one"), ("source", "two")]).status_code == 400
+        for params in ({"session_ids": "private"}, [("source", "one"), ("source", "two")]):
+            invalid_response = client.get(path, params=params)
+            assert invalid_response.status_code == 400
+            assert invalid_response.json()["error"]["code"] == "invalid_input"
 
 
 @pytest.mark.parametrize(
