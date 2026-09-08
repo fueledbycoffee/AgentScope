@@ -1,6 +1,6 @@
 # Metric definitions and query layer
 
-`domain/metrics.py` owns the immutable definition data, count/sum vocabulary, coverage
+`domain/metrics.py` owns the immutable definition data, aggregation vocabulary, coverage
 interpretation and accounting comparability. `application/metric_queries.py` owns typed
 scope, specification, aggregate rows and response assembly. `TraceQuery` lives alongside
 other ports in `application/ports.py`; SQLAlchemy and SQLite stay in infrastructure.
@@ -102,6 +102,42 @@ Null labels are distinct from literal `unknown` labels. The session-ID port pagi
 `session_metrics(scope)` accepts richer scope for #11's session-list wiring. This issue
 keeps existing summary/session HTTP filters at source/agent; #11 owns richer wiring and
 all Overview/definitions UI changes.
+
+## Phase 3 mathematical primitives and local prices
+
+The existing views already project every field needed by the owner decisions. No ingestion
+adapter, mapping, canonical schema or migration changes are needed. The query compiler now
+supports generic observed-span, distribution and cost operations in addition to count/sum;
+it does not dispatch on metric IDs. New definitions over these supported operations remain
+registry data. Diagnostic definitions are explicitly non-executable.
+
+`exact_int_samples` retains original known integer samples per SQL group, including zero,
+and returns JSON for the typed port. Application assembly merges samples across buckets;
+`domain/distributions.py` computes nearest-rank p90 and exact averaged even-n medians.
+Memory is proportional to selected distribution observations. Observed spans read eligible
+sessions' imported bounds, use integer microseconds internally, and sum exact fractions
+of milliseconds. The port permits integers and exact rational values; `domain/numbers.py`
+serializes terminating decimals without relying on floating point or Decimal context
+precision. Cost products likewise remain exact. Legacy summaries still accept integers only.
+
+`domain/pricing.py` owns explicit billing rules and the immutable price schedule vocabulary.
+`infrastructure/prices.py` loads the pinned, user-owned local JSON schedule only when needed;
+`SqlAlchemyTraceQuery` also accepts an injected `PriceSchedule` for offline tests. Cost
+queries stream eligible model-call usage through the same scope predicates and merge per
+accounting group; they never join sibling facts. Aggregate rows carry schedule version,
+priced/total token counts and ordinary known/total row counts. A missing schedule yields
+unavailable cost and zero priced coverage with a reason, without any runtime network call.
+The standalone fetch script and [schedule workflow](../../backend/prices/README.md) own public
+rate acquisition and provenance. The first real snapshot remains blocked by sandbox DNS.
+
+The four KPI definitions are sessions, model-call observations, tool-call observations and
+input usage by accounting group (`headline_kpi=true`), coverage each. The additional
+`observed_span_ms` headline must carry the definition caveat. Reasoning totals/distributions
+require known model groups and compatible semantics; the ratio is a diagnostic definition
+only. Latencies retain all values and carry the instrumentation question. Definition
+quantile rules and display precision travel with every query report. See the
+[API contract](../api/v0.1.md#owner-decisions-kpi-span-quantiles-reasoning-and-prices) for #11
+rendering and drill requirements. Prefix reuse, timelines and repeat-after-error remain deferred.
 
 ## Migration convention
 

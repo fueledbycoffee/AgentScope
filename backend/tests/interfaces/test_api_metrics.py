@@ -313,6 +313,10 @@ def test_scheduled_cost_exact_rates_semantics_splits_and_token_coverage(client, 
             "/api/metrics/query", params={"metric_id": "scheduled_cost_usd", "token_semantics": tag}
         )
         assert response.json()["overall"]["priced_coverage"] == part["priced_coverage"]
+        if tag == "unknown":
+            assert response.json()["overall"]["reason"] == (
+                "No recorded tokens have both a rate and validated billing semantics."
+            )
     monkeypatch.setattr(trace_query, "load_price_schedule", lambda: None)
     response = client.get("/api/metrics/query", params={"metric_id": "scheduled_cost_usd"})
     result = response.json()["overall"]

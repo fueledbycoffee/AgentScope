@@ -348,16 +348,17 @@ def _result(
 ) -> MetricResult:
     result = evaluate(spec.definition, parts)
     is_cost = spec.definition.operation == Aggregation.COST
+    reason = result.reason
+    if is_cost and schedule_version is None:
+        reason = "Price schedule unavailable; no tokens priced."
+    elif is_cost and result.known == 0:
+        reason = "No recorded tokens have both a rate and validated billing semantics."
     return MetricResult(
         _text(result.value),
         _text(result.recorded_sum),
         Coverage(result.known, result.total),
         result.comparability,
-        (
-            "Price schedule unavailable; no tokens priced."
-            if is_cost and schedule_version is None
-            else result.reason
-        ),
+        reason,
         tuple(
             PartitionResult(
                 p.semantics,
