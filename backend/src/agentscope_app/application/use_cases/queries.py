@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import asdict
 from typing import Any
 
@@ -31,6 +31,7 @@ from agentscope_app.application.metric_queries import (
 )
 from agentscope_app.application.ports import UnitOfWork, UnitOfWorkFactory
 from agentscope_app.domain.metrics import REGISTRY, Dimension, MetricRegistry
+from agentscope_app.domain.pricing import PriceSchedule
 
 MAX_PAGE = 500
 
@@ -204,14 +205,38 @@ class MetricsSummary:
 
 
 class ListMetricDefinitions:
-    def __init__(self, registry: MetricRegistry = REGISTRY) -> None:
+    def __init__(
+        self,
+        registry: MetricRegistry = REGISTRY,
+        price_schedule_loader: Callable[[], PriceSchedule | None] | None = None,
+    ) -> None:
         self._registry = registry
+        self._price_schedule_loader = price_schedule_loader
 
     def execute(self) -> list[dict[str, Any]]:
-        return [
+        definitions = [
             dict(asdict(d), supported_dimensions=d.supported_dimensions)
             for d in self._registry.definitions.values()
         ]
+        schedule = self._price_schedule_loader() if self._price_schedule_loader else None
+        for definition in definitions:
+            if definition["id"] != "scheduled_cost_usd":
+                continue
+            definition["price_schedule"] = (
+                {
+                    "schedule_version": schedule.version,
+                    "alias_version": schedule.alias_version,
+                    "aliases": dict(schedule.aliases),
+                    "resolution": "Exact schedule key, then exact reviewed alias; "
+                    "otherwise unpriced.",
+                }
+                if schedule
+                else None
+            )
+            if schedule and schedule.aliases:
+                aliases = "; ".join(f"{a} → {t}" for a, t in sorted(schedule.aliases.items()))
+                definition["caveat"] += f" Aliases in force ({schedule.version}): {aliases}."
+        return definitions
 
 
 class QueryMetric:
