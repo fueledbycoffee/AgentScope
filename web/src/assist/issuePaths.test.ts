@@ -31,13 +31,12 @@ describe('the issue-path resolver', () => {
     expect(resolveIssue('rules[x].id')).toEqual({ kind: 'document' })
   })
 
-  it('reads a dotted field name against the document that has it', () => {
-    // the parser concatenates unescaped keys, so this one path can mean two different things
-    const both = indexDocument('{"rules": [{"id": "r", "entity": "tool_call", "fields": {"wall_latency_ms": {"path": "$.a"}, "wall_latency_ms.type": {"path": "$.b"}}}]}')
-    // the longest field name the document really has wins: the issue belongs to the second field
-    expect(resolveIssue('rules[0].fields.wall_latency_ms.type', both)).toEqual({
-      kind: 'field-source', ruleIndex: 0, field: 'wall_latency_ms.type', part: 'path',
-    })
+  it('gives up on a path the document can read two ways', () => {
+    // the parser joins unescaped keys, so with both fields present this one path is emitted for
+    // the dotted field (unknown_field) *and* for the plain field's type option (type_mismatch):
+    // nothing here can tell them apart, so neither control may be marked
+    const both = indexDocument('{"rules": [{"id": "r", "entity": "tool_call", "fields": {"wall_latency_ms": {"path": "$.a", "type": "string"}, "wall_latency_ms.type": {"path": "$.b"}}}]}')
+    expect(resolveIssue('rules[0].fields.wall_latency_ms.type', both)).toEqual({ kind: 'document' })
     // with only the plain field present, the same path is that field's type option
     const one = indexDocument('{"rules": [{"id": "r", "entity": "tool_call", "fields": {"wall_latency_ms": {"path": "$.a"}}}]}')
     expect(resolveIssue('rules[0].fields.wall_latency_ms.type', one)).toEqual({
@@ -46,9 +45,15 @@ describe('the issue-path resolver', () => {
     // with neither, the issue stays on the rule rather than pointing at a field that is not there
     const none = indexDocument('{"rules": [{"id": "r", "entity": "tool_call", "fields": {"other": {"path": "$.a"}}}]}')
     expect(resolveIssue('rules[0].fields.wall_latency_ms.type', none)).toEqual({ kind: 'rule', ruleIndex: 0, part: 'fields' })
-    // and a dotted name is reachable as a whole field too
+    // a reading that only one field can carry is still resolved: only the dotted field can own
+    // a bounds option under this path
     expect(resolveIssue('rules[0].fields.wall_latency_ms.type.bounds', both)).toEqual({
       kind: 'field-option', ruleIndex: 0, field: 'wall_latency_ms.type', option: 'bounds',
+    })
+    // and a dotted field alone keeps its own resolution
+    const dottedOnly = indexDocument('{"rules": [{"id": "r", "entity": "tool_call", "fields": {"wall_latency_ms.type": {"path": "$.b"}}}]}')
+    expect(resolveIssue('rules[0].fields.wall_latency_ms.type', dottedOnly)).toEqual({
+      kind: 'field-source', ruleIndex: 0, field: 'wall_latency_ms.type', part: 'path',
     })
   })
 
@@ -63,7 +68,10 @@ describe('the issue-path resolver', () => {
     const escaped = controlId({ kind: 'field-option', ruleIndex: 0, field: 'a_20b', option: 'type' })
     expect(spaced).not.toBe(escaped)
     const seen = new Set<string | null>()
-    for (const field of ['a b', 'a_20b', 'a%20b', 'a.b', 'a-b', 'a/b', 'a"b', 'é😀']) {
+    // the encoding must be defined for every UTF-16 string, unpaired surrogates included: a
+    // document can carry "\ud800" as a key and the table has to render its controls
+    for (const field of ['a b', 'a_20b', 'a%20b', 'a.b', 'a-b', 'a/b', 'a"b', 'é😀', '\ud800', '\udfff', '_']) {
+      expect(() => controlId({ kind: 'field-option', ruleIndex: 0, field, option: 'type' }), field).not.toThrow()
       const id = controlId({ kind: 'field-option', ruleIndex: 0, field, option: 'type' })
       expect(seen.has(id), field).toBe(false)
       seen.add(id)

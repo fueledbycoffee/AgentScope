@@ -43,9 +43,9 @@ function show(text = DOC, issues: MappingIssue[] | null = null) {
   const onEdit = vi.fn<(edits: DocEdit[], identity?: { name: string; source: string }) => void>()
   const onOpenJson = vi.fn()
   const onRefuse = vi.fn()
-  render(
+  const table = (source: string) => (
     <FieldTable
-      index={indexDocument(text)}
+      index={indexDocument(source)}
       identity={{ name: 'epoch-assist', source: 'assist' }}
       issues={issues}
       current
@@ -53,14 +53,17 @@ function show(text = DOC, issues: MappingIssue[] | null = null) {
       onEdit={onEdit}
       onRefuse={onRefuse}
       onOpenJson={onOpenJson}
-    />,
+    />
   )
+  const { rerender } = render(table(text))
+  /** What the page does after an edit: index the new text and render the table from it. */
+  const rerenderWith = (next: string) => rerender(table(next))
   const apply = (call = 0) => {
     const planned = planEdits(text, onEdit.mock.calls[call][0])
     if ('problem' in planned) throw new Error(planned.problem)
     return planned.text
   }
-  return { onEdit, onOpenJson, onRefuse, apply }
+  return { onEdit, onOpenJson, onRefuse, apply, rerenderWith }
 }
 
 describe('the field table', () => {
@@ -251,6 +254,25 @@ describe('the field table', () => {
     expect(onEdit).not.toHaveBeenCalled()
   })
 
+  it('offers creation only where a container is absent or an empty list', () => {
+    // a malformed rules section still indexes as zero rules: "add a rule" would replace it whole
+    const { onEdit, onOpenJson } = show('{"name": "x", "source": "y", "rules": {"legacy": 9007199254740993}, "unmapped": {"nope": 1}}')
+    expect(screen.queryByRole('button', { name: 'session' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Declare an unmapped path' })).not.toBeInTheDocument()
+    expect(screen.getByText(/rules must be a JSON array/)).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Repair it in the JSON view' })[0])
+    expect(onOpenJson).toHaveBeenCalledWith(['rules'])
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
+  it('still offers creation when the container is absent or empty', () => {
+    const { onEdit, apply } = show('{"name": "x", "source": "y", "rules": []}')
+    fireEvent.click(screen.getByRole('button', { name: 'session' }))
+    expect(apply()).toContain('"external_id"')
+    fireEvent.click(screen.getByRole('button', { name: 'Declare an unmapped path' }))
+    expect(onEdit.mock.calls[1][0][0]).toMatchObject({ op: 'set', path: ['unmapped'] })
+  })
+
   it('sends what it cannot represent to the JSON view instead of rewriting it', () => {
     const { onOpenJson } = show()
     expect(screen.getByRole('row', { name: /^broken/ })).toHaveTextContent('a field must be a JSON object')
@@ -307,14 +329,19 @@ describe('the field table, for keyboard and screen-reader users', () => {
     }
   })
 
-  it('keeps focus on the control after an edit re-renders its row', () => {
-    const { onEdit } = show()
+  it('keeps focus on the control after the edit is applied and the row re-renders', () => {
+    const { onEdit, rerenderWith } = show()
     const select = screen.getByLabelText('timestamp_format of started_at in model_call')
     select.focus()
     fireEvent.change(select, { target: { value: 'epoch_s' } })
-    expect(onEdit).toHaveBeenCalled()
-    // the row re-renders from the new text; the same control keeps the focus
-    expect(document.activeElement).toBe(screen.getByLabelText('timestamp_format of started_at in model_call'))
+    // the page applies the batch and hands the table a new index: that is the render that could
+    // remount the row and lose the focus, so it is the one this test has to perform
+    const planned = planEdits(DOC, onEdit.mock.calls[0][0])
+    if ('problem' in planned) throw new Error(planned.problem)
+    rerenderWith(planned.text)
+    const after = screen.getByLabelText('timestamp_format of started_at in model_call')
+    expect(after).toHaveValue('epoch_s')
+    expect(document.activeElement).toBe(after)
   })
 
   it('lets a raw value be typed one keystroke at a time without writing rubbish', () => {

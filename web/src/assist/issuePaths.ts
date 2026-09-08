@@ -69,7 +69,10 @@ export function resolveIssue(path: string, index?: DocIndex): Control {
     const rest = tail.slice(1)
     if (rest.length === 0) return { kind: 'rule', ruleIndex, part: 'fields' }
     const known = index?.rules[ruleIndex]?.fields.map(field => field.name)
-    // longest first: a document that has both `a` and `a.type` resolves `a.type` to the second
+    // the parser joins unescaped keys, so one path can name more than one field this document has:
+    // `a.type` is the type option of `a` *and* the field literally called `a.type`, and the parser
+    // emits the same string for both. Where two readings are possible neither may be chosen.
+    const readings: Control[] = []
     for (let take = rest.length; take >= 1; take -= 1) {
       const head = rest.slice(0, take)
       if (!head.every(segment => typeof segment === 'string')) continue
@@ -77,8 +80,10 @@ export function resolveIssue(path: string, index?: DocIndex): Control {
       if (known !== undefined && !known.includes(field)) continue
       if (known === undefined && take > 1) continue // no document to ask: only the plain reading
       const resolved = insideField(ruleIndex, field, rest.slice(take))
-      if (resolved !== null) return resolved
+      if (resolved !== null) readings.push(resolved)
     }
+    if (readings.length === 1) return readings[0]
+    if (readings.length > 1) return { kind: 'document' } // ambiguous: the JSON view is the honest answer
     // the document has no such field: the issue belongs to the rule, not to a guessed control
     return known === undefined ? { kind: 'document' } : { kind: 'rule', ruleIndex, part: 'fields' }
   }
@@ -108,10 +113,15 @@ function insideField(ruleIndex: number, field: string, rest: (string | number)[]
 }
 
 /**
- * Percent-encoding, kept whole: replacing `%` would map `a b` and `a_20b` onto one id, and
- * `getElementById` would then hand an issue the wrong field's control.
+ * An injective encoding defined for every UTF-16 string, unpaired surrogates included.
+ *
+ * `encodeURIComponent` throws `URIError` on a lone surrogate — and a document really can carry
+ * `"\ud800"` as a key — while replacing its `%` would map `a b` and `a_20b` onto one id. Every
+ * character outside `[A-Za-z0-9_-]` becomes `$` plus its four-digit code unit, the escape marker
+ * itself included, so two different names can never share an id and the common names stay legible.
  */
-const part = (value: string | number) => encodeURIComponent(String(value))
+const part = (value: string | number) =>
+  String(value).replace(/[^A-Za-z0-9_-]/g, character => `$${character.charCodeAt(0).toString(16).padStart(4, '0')}`)
 
 /** A DOM id that survives keys containing dots, brackets and spaces. */
 export function controlId(control: Control): string | null {
