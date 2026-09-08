@@ -4,7 +4,8 @@ import { getImport, getRejectSummary, listImports, listRecords, listRejects } fr
 import type { ImportReport, ImportSummary, ImportedFile, ImportReject, RawReference, RecordRow, RejectSummary } from '../api'
 import { DataTable, DateText, Icon, IconButton, Notice, Pagination, ScopeCell, SourceRecordDialog, SpanText, StateBlock, StatusPill } from '../components'
 import type { Column } from '../components'
-import { entityCounts, num, PAGE_SIZE } from '../format'
+import { entityCounts, formatSpan, num, PAGE_SIZE } from '../format'
+import { useSettings } from '../settingsContext'
 import { useScope } from '../scope'
 import { useFileBar } from '../shellHooks'
 import { useResource } from '../useResource'
@@ -59,8 +60,11 @@ export function ImportsPage() {
 /** The status lead, in the product's voice. */
 function Lead({ report }: { report: ImportReport }) {
   const read = report.records.accepted + report.records.partial + report.records.rejected + report.records.ignored
-  if (report.status === 'committed') return <Notice kind="info" title={`${n(report.records.accepted + report.records.partial)} of ${n(read)} records accepted, ${n(report.records.rejected)} rejected${report.records.duplicate ? `, ${n(report.records.duplicate)} skipped as duplicates` : ''}.`}>
-    <p>Committed in <SpanText start={report.started_at} end={report.finished_at} />, started <DateText value={report.started_at} prefer="relative" />.</p>
+  // The design's lead sentence keeps the duration; the exact seconds live in the
+  // SpanText below it, where a tooltip can carry them.
+  const took = formatSpan(report.started_at, report.finished_at, useSettings())
+  if (report.status === 'committed') return <Notice kind="info" title={`Committed in ${took.text}. ${n(report.records.accepted + report.records.partial)} of ${n(read)} records accepted, ${n(report.records.rejected)} rejected${report.records.duplicate ? `, ${n(report.records.duplicate)} skipped as duplicates` : ''}.`}>
+    <p>Took <SpanText start={report.started_at} end={report.finished_at} />, started <DateText value={report.started_at} prefer="relative" />.</p>
     <p><Link to="/overview">Open the overview</Link>{report.records.duplicate > 0 && <> · {n(report.files.filter(f => f.status === 'duplicate').length)} file(s) were skipped as exact duplicates of {originals(report)}.</>}</p>
   </Notice>
   if (report.status === 'duplicate') return <Notice kind="warn" title="These bytes were already imported for this source. No observations were inserted.">

@@ -1,0 +1,14 @@
+[
+  {
+    "route": "import report",
+    "theme": "dark",
+    "rule": "link-in-text-block",
+    "target": "span > a[data-discover=\"true\"]"
+  },
+  {
+    "route": "import report",
+    "theme": "light",
+    "rule": "link-in-text-block",
+    "target": "span > a[data-discover=\"true\"]"
+  }
+]

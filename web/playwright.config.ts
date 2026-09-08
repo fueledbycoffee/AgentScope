@@ -30,7 +30,16 @@ export default defineConfig({
   // assistant spec imports its own source, so the assistant project depends on the smoke project.
   projects: [
     { name: 'chromium', testMatch: /smoke\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
-    { name: 'assistant', testMatch: /assist\.spec\.ts/, dependencies: ['chromium'], use: { ...devices['Desktop Chrome'] } },
+    // #46 runs after the fixture is imported and before the assistant adds its own
+    // source, so its row counts are the fixture's and nothing later perturbs them.
+    // A fixed zone and locale make the rendered dates and numbers deterministic.
+    {
+      name: 'settings',
+      testMatch: /(settings|axe-capture)\.spec\.ts/,
+      dependencies: ['chromium'],
+      use: { ...devices['Desktop Chrome'], timezoneId: 'Europe/Paris', locale: 'en-US' },
+    },
+    { name: 'assistant', testMatch: /assist\.spec\.ts/, dependencies: ['chromium', 'settings'], use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: {
     command: 'node e2e/start-backend.mjs',
