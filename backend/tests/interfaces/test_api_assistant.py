@@ -19,12 +19,13 @@ BUNDLED = Path(__file__).resolve().parents[2] / "mappings"
 IDENTITY = {"name": "tracelab-assist", "source": "tracelab"}
 
 
-def make_client(tmp_path: Path, provider: str) -> TestClient:
+def make_client(tmp_path: Path, provider: str, **overrides: str) -> TestClient:
     settings = Settings(
         _env_file=None,
         database_url=f"sqlite:///{tmp_path / 'db' / 'agentscope.sqlite3'}",
         raw_file_dir=tmp_path / "raw",
         llm_provider=provider,
+        **overrides,
     )
     return TestClient(create_app(settings))
 
@@ -254,6 +255,33 @@ def test_default_provider_starts_and_only_the_assistant_is_unavailable(tmp_path:
         assert (
             "AGENTSCOPE_LLM_MODEL" in error["message"] and "openai_compatible" in error["message"]
         )
+
+
+@pytest.mark.parametrize("value", ["64KiB", "4095"])
+def test_an_invalid_context_budget_disables_only_the_assistant(tmp_path: Path, value: str) -> None:
+    # adversarial review of #48: the budget was parsed outside the configuration handler and a
+    # bad value stopped the whole application, uploads and dashboards included
+    with make_client(tmp_path, "fake", llm_context_bytes=value) as client:
+        assert client.get("/api/health").json()["status"] == "ok"
+        upload_id = upload_fixture(client)
+        mapping_id = client.get("/api/mappings").json()[0]["id"]
+        assert (
+            client.post(
+                "/api/imports/preview", json={"upload_id": upload_id, "mapping_id": mapping_id}
+            ).status_code
+            == 200
+        )
+        body = {"kind": "propose", "upload_id": upload_id, "identity": IDENTITY}
+        prepared = prepare(client, body)  # the default budget applies
+        assert prepared["bytes"] <= 64 * 1024
+        error = envelope(
+            client.post(
+                "/api/assistant/run", json={**body, "context_sha256": prepared["context_sha256"]}
+            ),
+            503,
+            "assistant_unavailable",
+        )
+        assert "AGENTSCOPE_LLM_CONTEXT_BYTES" in error["message"]
 
 
 def test_saved_mapping_documents_round_trip_with_their_number_types(client: TestClient) -> None:

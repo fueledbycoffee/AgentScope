@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import asdict
 from typing import Any
@@ -540,13 +541,21 @@ def _omit_fields(profile: dict[str, Any], omitted: list[str]) -> dict[str, Any]:
     groups: dict[str, int] = {}
     for f in profile["fields"]:
         if f["path"] in gone:
-            parent = str(f["path"]).rsplit(".", 1)[0] if "." in str(f["path"]) else "$"
-            parent = parent.rsplit("[", 1)[0] if parent.endswith("]") else parent
+            parent = _parent_path(str(f["path"]))
             groups[parent] = groups.get(parent, 0) + 1
     reduced = dict(profile)
     reduced["fields"] = [f for f in profile["fields"] if f["path"] not in gone]
     reduced["omitted"] = dict(sorted(groups.items()))
     return reduced
+
+
+_LAST_COMPONENT = re.compile(r"(\.[^.\[\]]+|\[[^\]]*\])$")
+
+
+def _parent_path(path: str) -> str:
+    """The path with exactly one trailing component removed: ``$.a[*].b`` → ``$.a[*]``."""
+    parent = _LAST_COMPONENT.sub("", path, count=1)
+    return parent if parent.startswith("$") and parent != "" else "$"
 
 
 def _reduce_examples(profile: dict[str, Any], keep: int) -> dict[str, Any]:

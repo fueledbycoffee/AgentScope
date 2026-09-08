@@ -264,6 +264,23 @@ def test_omission_order_is_deepest_then_rarest_and_spares_top_level() -> None:
     assert _omission_order(fields) == ["$.a.b.e", "$.a.b.d", "$.a.c", "$.a.b"]
 
 
+@pytest.mark.parametrize(
+    ("path", "parent"),
+    [
+        ("$.events[*].name", "$.events[*]"),
+        ("$.events[*]", "$.events"),
+        ("$.a.b", "$.a"),
+        ("$.a", "$"),
+        ("$[*]", "$"),
+        ("$", "$"),
+    ],
+)
+def test_omitted_fields_are_counted_under_their_immediate_parent(path: str, parent: str) -> None:
+    from agentscope_app.application.use_cases.assistant import _parent_path
+
+    assert _parent_path(path) == parent
+
+
 def test_a_budget_below_the_top_level_shape_still_fails_and_names_the_counts() -> None:
     h = Harness()
     upload_id = h.upload(_wide_rows(300))
