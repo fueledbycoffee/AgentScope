@@ -8,7 +8,7 @@
  * to a guessed control, and the issue opens the JSON view instead.
  */
 import { pathSegments } from './jsonText'
-import { FIELD_OPTIONS, type FieldOption } from './documentIndex'
+import { FIELD_OPTIONS, type DocIndex, type FieldOption } from './documentIndex'
 
 export type Control =
   | { kind: 'document' }
@@ -23,8 +23,16 @@ export type Control =
 const OPTIONS = new Set<string>(FIELD_OPTIONS)
 const RULE_PARTS = new Set(['id', 'entity', 'select', 'parent', 'native_key', 'fields', 'where'])
 
-/** The control an issue points at; `{kind: 'document'}` whenever the path cannot be trusted. */
-export function resolveIssue(path: string): Control {
+/**
+ * The control an issue points at; `{kind: 'document'}` whenever the path cannot be trusted.
+ *
+ * Pass the indexed document whenever there is one: the parser builds these paths by joining
+ * unescaped keys, so `rules[0].fields.wall_latency_ms.type` is either the `type` option of
+ * `wall_latency_ms` or the field literally named `wall_latency_ms.type`, and only the document
+ * knows which. The longest field name it really has wins; when it has neither, the issue stays on
+ * the rule rather than marking a field that is not there.
+ */
+export function resolveIssue(path: string, index?: DocIndex): Control {
   const segments = pathSegments(path)
   if (segments.length === 0) return { kind: 'document' }
   const [head, ...rest] = segments
@@ -58,22 +66,21 @@ export function resolveIssue(path: string): Control {
     return { kind: 'document' }
   }
   if (first === 'fields') {
-    const field = tail[1]
-    if (field === undefined) return { kind: 'rule', ruleIndex, part: 'fields' }
-    if (typeof field !== 'string') return { kind: 'document' }
-    const option = tail[2]
-    if (tail.length === 2) return { kind: 'field-source', ruleIndex, field, part: 'path' }
-    if (tail.length === 3 && typeof option === 'string') {
-      if (option === 'path' || option === 'paths' || option === 'literal') {
-        return { kind: 'field-source', ruleIndex, field, part: option }
-      }
-      if (OPTIONS.has(option)) return { kind: 'field-option', ruleIndex, field, option: option as FieldOption }
+    const rest = tail.slice(1)
+    if (rest.length === 0) return { kind: 'rule', ruleIndex, part: 'fields' }
+    const known = index?.rules[ruleIndex]?.fields.map(field => field.name)
+    // longest first: a document that has both `a` and `a.type` resolves `a.type` to the second
+    for (let take = rest.length; take >= 1; take -= 1) {
+      const head = rest.slice(0, take)
+      if (!head.every(segment => typeof segment === 'string')) continue
+      const field = head.join('.')
+      if (known !== undefined && !known.includes(field)) continue
+      if (known === undefined && take > 1) continue // no document to ask: only the plain reading
+      const resolved = insideField(ruleIndex, field, rest.slice(take))
+      if (resolved !== null) return resolved
     }
-    if (tail.length === 4 && option === 'transforms' && typeof tail[3] === 'number') {
-      return { kind: 'transform', ruleIndex, field, index: tail[3] }
-    }
-    // deeper (unit.from, an unknown key, a dotted field name): the JSON view is the honest answer
-    return { kind: 'document' }
+    // the document has no such field: the issue belongs to the rule, not to a guessed control
+    return known === undefined ? { kind: 'document' } : { kind: 'rule', ruleIndex, part: 'fields' }
   }
   if (tail.length === 1 && RULE_PARTS.has(first)) {
     return { kind: 'rule', ruleIndex, part: first as 'id' }
@@ -81,7 +88,30 @@ export function resolveIssue(path: string): Control {
   return { kind: 'document' }
 }
 
-const part = (value: string | number) => encodeURIComponent(String(value)).replaceAll('%', '_')
+/** What follows a field name inside its path: a source member, an option, or a transform. */
+function insideField(ruleIndex: number, field: string, rest: (string | number)[]): Control | null {
+  if (rest.length === 0) return { kind: 'field-source', ruleIndex, field, part: 'path' }
+  const option = rest[0]
+  if (typeof option !== 'string') return null
+  if (rest.length === 1) {
+    if (option === 'path' || option === 'paths' || option === 'literal') {
+      return { kind: 'field-source', ruleIndex, field, part: option }
+    }
+    if (OPTIONS.has(option)) return { kind: 'field-option', ruleIndex, field, option: option as FieldOption }
+    return null
+  }
+  if (rest.length === 2 && option === 'transforms' && typeof rest[1] === 'number') {
+    return { kind: 'transform', ruleIndex, field, index: rest[1] }
+  }
+  // deeper still (unit.from, an unknown key): the JSON view is the honest answer
+  return null
+}
+
+/**
+ * Percent-encoding, kept whole: replacing `%` would map `a b` and `a_20b` onto one id, and
+ * `getElementById` would then hand an issue the wrong field's control.
+ */
+const part = (value: string | number) => encodeURIComponent(String(value))
 
 /** A DOM id that survives keys containing dots, brackets and spaces. */
 export function controlId(control: Control): string | null {
@@ -106,4 +136,4 @@ export function controlId(control: Control): string | null {
 }
 
 /** The id of the control an issue path points at, or null when only the JSON view can show it. */
-export const controlIdFor = (path: string): string | null => controlId(resolveIssue(path))
+export const controlIdFor = (path: string, index?: DocIndex): string | null => controlId(resolveIssue(path, index))

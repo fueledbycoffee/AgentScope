@@ -70,7 +70,7 @@ export function resolveTarget(index: DocIndex, target: string): Resolution {
   if (trimmed === '') return { kind: 'none' }
 
   if (trimmed.startsWith('rules[')) {
-    const control = resolveIssue(trimmed)
+    const control = resolveIssue(trimmed, index)
     if (control.kind !== 'field-option' && control.kind !== 'field-source') return { kind: 'none' }
     // a path is not a promise: the rule and the field have to be in this document
     const rule = index.rules[control.ruleIndex]

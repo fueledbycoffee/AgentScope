@@ -257,7 +257,8 @@ export default function AssistPage() {
 
   /** Go to an issue: the control that owns it when the table shows one, else its line in the JSON. */
   const jumpTo = useCallback((path: string) => {
-    const id = controlIdFor(path)
+    // the document decides what a dotted parser path means, so it is asked before focusing anything
+    const id = controlIdFor(path, index)
     const element = id === null ? null : document.getElementById(id)
     if (element !== null) {
       element.focus()
@@ -266,7 +267,7 @@ export default function AssistPage() {
     }
     setView('json')
     setFocusRequest(previous => ({ path, nonce: (previous?.nonce ?? 0) + 1 }))
-  }, [])
+  }, [index])
 
   const identityIssue = identityProblem(state.identity)
   const busyLabel = { none: '', preparing: 'Preparing the context…', awaiting_ack: 'Waiting for you to review the payload', running: 'Asking the assistant…', validating: 'Validating…', saving: 'Saving…', previewing: 'Previewing…', importing: 'Importing…' }[state.busy]

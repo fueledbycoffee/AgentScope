@@ -42,14 +42,14 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
   // an issue is attached to the control that owns it, for aria-invalid and aria-describedby
   const byControl = new Map<string, MappingIssue[]>()
   for (const issue of shown) {
-    const id = controlIdFor(issue.path)
+    const id = controlIdFor(issue.path, index)
     if (id !== null) byControl.set(id, [...(byControl.get(id) ?? []), issue])
   }
   const issueId = (id: string | null | undefined) => (id != null && byControl.has(id) ? `${id}-issue` : undefined)
 
   const issuesFor = (ruleIndex: number, field?: string) =>
     shown.filter(issue => {
-      const control = resolveIssue(issue.path)
+      const control = resolveIssue(issue.path, index)
       if (!('ruleIndex' in control) || control.ruleIndex !== ruleIndex) return false
       return field === undefined ? !('field' in control) : 'field' in control && control.field === field
     })
@@ -181,7 +181,7 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
             {ruleIssues.length > 0 && (
               <ul className="issues" aria-label={`Issues of ${ruleName}`}>
                 {ruleIssues.map((issue, at) => (
-                  <li key={at} id={issueId(controlIdFor(issue.path)) ?? undefined} className={issue.severity === 'error' ? 'issue error' : 'issue warn'}>
+                  <li key={at} id={issueId(controlIdFor(issue.path, index)) ?? undefined} className={issue.severity === 'error' ? 'issue error' : 'issue warn'}>
                     <span className="mono code">{issue.code}</span> {issue.message}
                   </li>
                 ))}
@@ -257,7 +257,7 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
                                     fieldIssues.map((issue, at) => (
                                       <span
                                         key={at}
-                                        id={issueId(controlIdFor(issue.path)) ?? undefined}
+                                        id={issueId(controlIdFor(issue.path, index)) ?? undefined}
                                         className={issue.severity === 'error' ? 'issue error' : 'issue warn'}
                                       >
                                         <span className="mono code">{issue.code}</span> {issue.message}
