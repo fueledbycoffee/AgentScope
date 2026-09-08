@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { serializeImportState } from './import/importRuntime'
@@ -29,6 +29,13 @@ function defaultResponse(input: RequestInfo | URL, options?: RequestInit): Promi
 }
 function start(route = '/import') {
   render(<MemoryRouter initialEntries={[route]}><App /></MemoryRouter>)
+}
+function NavigationProbe() {
+  const navigate = useNavigate()
+  return <button type="button" onClick={() => navigate('/import?step=1')}>Simulate history landing on File</button>
+}
+function startWithNavigation(route = '/import') {
+  render(<MemoryRouter initialEntries={[route]}><NavigationProbe /><App /></MemoryRouter>)
 }
 async function uploadOne() {
   await screen.findByLabelText('Trace file')
@@ -214,12 +221,31 @@ describe('Import flow', () => {
     fireEvent.click(button)
     fireEvent.click(button)
     expect(button).toBeDisabled()
+    const progress = screen.getByRole('complementary', { name: 'Progress' })
+    for (const stop of ['File', 'Mapping', 'Preview']) {
+      expect(within(progress).getByRole('button', { name: stop })).toBeDisabled()
+    }
     expect(screen.getAllByRole('status')).toHaveLength(1)
     expect(screen.getByText('Importing 3 records in one transaction')).toBeInTheDocument()
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/imports')).toHaveLength(1)
     await act(async () => finish(json({ error: { code: 'import_conflict', message: 'Another import committed these bytes', details: [] } }, 409)))
     expect(await screen.findByRole('alert')).toHaveTextContent('import_conflict')
     expect(screen.queryByRole('heading', { name: 'Import report' })).not.toBeInTheDocument()
+  })
+
+  it('shows a pending commit failure after history lands on another import stop', async () => {
+    startWithNavigation()
+    await makeConfirmation()
+    let finish!: (response: Response) => void
+    fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    fireEvent.click(screen.getByRole('button', { name: 'Import 3 records' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Simulate history landing on File' }))
+    expect(await screen.findByRole('heading', { name: 'Import a trace file' })).toBeInTheDocument()
+    await act(async () => finish(json({ error: { code: 'import_conflict', message: 'Another import committed these bytes', details: [] } }, 409)))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Another import committed these bytes')
+    expect(screen.getByRole('alert')).toHaveTextContent('import_conflict')
   })
 
   it('keeps aggregate-limit guidance from a 413 commit response', async () => {

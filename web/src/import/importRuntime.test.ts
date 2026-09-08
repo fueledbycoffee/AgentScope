@@ -40,6 +40,27 @@ describe('guided import runtime', () => {
     expect(clampStep(4, one, [mapping()])).toBe(2)
   })
 
+  it('clamps duplicate file bytes to File so the batch can be corrected', () => {
+    const state = { entries: [
+      { upload: upload(), mappingId: 'map_1', preview: { value: preview, detailsAvailable: true } },
+      { upload: upload('upl_2'), mappingId: 'map_1', preview: { value: preview, detailsAvailable: true } },
+    ] }
+
+    expect(highestReachableStep(state, [mapping()])).toBe(1)
+    expect(clampStep(4, state, [mapping()])).toBe(1)
+  })
+
+  it('clamps mixed mapping sources to Mapping so the batch can be corrected', () => {
+    const otherSource = { ...mapping('map_other'), name: 'other', source: 'other' }
+    const state = { entries: [
+      { upload: upload(), mappingId: 'map_1', preview: { value: preview, detailsAvailable: true } },
+      { upload: upload('upl_2', 'b'.repeat(64)), mappingId: 'map_other', preview: null },
+    ] }
+
+    expect(highestReachableStep(state, [mapping(), otherSource])).toBe(2)
+    expect(clampStep(3, state, [mapping(), otherSource])).toBe(2)
+  })
+
   it('a stored mapping id that no longer resolves drops the entry to Mapping', () => {
     const state = { entries: [{ upload: upload(), mappingId: 'deleted', preview: { value: preview, detailsAvailable: true } }] }
     const reconciled = importReducer(state, { type: 'reconcile', mappings: [mapping()] })

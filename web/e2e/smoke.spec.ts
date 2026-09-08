@@ -63,6 +63,14 @@ function comparable(body: { sessions: { value: number }; model_calls: { value: n
 }
 
 test('day-1 path: guided import, deep links, report, re-import leaves totals unchanged', async ({ page, browser }) => {
+  await page.route('**/api/mappings*', async route => {
+    const response = await route.fetch()
+    const mappings = await response.json() as object[]
+    await route.fulfill({ response, json: [...mappings, {
+      id: 'map_history_other', name: 'history-source', source: 'other', revision: 1,
+      created_by: 'user', input_format: 'jsonl',
+    }] })
+  })
   await uploadFixtureAndPreview(page, true)
   const progress = page.getByRole('complementary', { name: 'Progress' })
   await expect(progress.getByRole('button', { name: 'File' })).toBeVisible()
@@ -80,8 +88,45 @@ test('day-1 path: guided import, deep links, report, re-import leaves totals unc
   // A completed stop backtracks and transfers focus; rerunning restores Preview.
   await progress.getByRole('button', { name: 'Mapping' }).click()
   await expect(page.getByRole('heading', { name: 'Choose how to read it' })).toBeFocused()
+  // wait for the rerun's own response and its state update: the earlier preview is still stored,
+  // so a truthy poll would pass before this request lands and its persistence effect could later
+  // overwrite the storage edit below (adversarial review of #62)
+  const rerun = page.waitForResponse(r => r.url().includes('/api/imports/preview') && r.ok())
   await page.getByRole('button', { name: 'Run a dry run' }).click()
+  await rerun
   await expect(page.getByRole('heading', { name: 'Dry run on up to 200 records per file' })).toBeFocused()
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 0)))))
+
+  // Back/Forward clamps a newly mixed-source batch to Mapping with its reason.
+  await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem('agentscope-import-page') ?? '{}').entries?.[0]?.preview)).toBeTruthy()
+  await page.evaluate(() => {
+    const key = 'agentscope-import-page'
+    const stored = JSON.parse(sessionStorage.getItem(key)!)
+    stored.entries.push({
+      ...stored.entries[0],
+      upload: { ...stored.entries[0].upload, upload_id: 'upl_history', filename: 'history.jsonl', sha256: 'f'.repeat(64) },
+    })
+    sessionStorage.setItem(key, JSON.stringify(stored))
+  })
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Dry run on up to 200 records per file' })).toBeVisible()
+  await page.goBack()
+  await expect(page.getByRole('heading', { name: 'Choose how to read it' })).toBeVisible()
+  const historyMapping = page.getByRole('group', { name: 'Mapping for history.jsonl' })
+  await historyMapping.getByRole('radio', { name: /history-source.*source other/ }).click()
+  await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem('agentscope-import-page')!).entries[1].mappingId)).toBe('map_history_other')
+  await page.goForward()
+  await expect(page).toHaveURL(/\/import\?step=2$/)
+  await expect(page.getByRole('heading', { name: 'Choose how to read it' })).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('selected mappings declare different sources')
+
+  // Restore the valid single-file batch for the remaining import assertions.
+  await page.evaluate(() => {
+    const key = 'agentscope-import-page'
+    const stored = JSON.parse(sessionStorage.getItem(key)!)
+    stored.entries = stored.entries.slice(0, 1)
+    sessionStorage.setItem(key, JSON.stringify(stored))
+  })
 
   // Stored summaries make step=3 reachable; a fresh context safely clamps it to File.
   await page.goto('/import?step=3')
