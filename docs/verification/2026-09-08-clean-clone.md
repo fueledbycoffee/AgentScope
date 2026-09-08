@@ -81,3 +81,7 @@ Fresh `git clone --no-hardlinks` of branch `docs/18-documentation` at
 The runner's earlier findings stand: every locked install and check passes
 offline from a cache, and the smoke script's fake receipt matches. The only
 thing it could not do was listen on a port; the host run closes that gap.
+
+Playwright in the same clone, after the host rehearsal (the separately documented
+regression, not the README path): `E2E_PORT=8797 pnpm --dir web e2e` → the
+smoke and assistant projects passed against their own temporary backend.
