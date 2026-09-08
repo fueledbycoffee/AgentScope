@@ -258,17 +258,31 @@ appear beneath a narrower scope.
 
 ### 3. Shared scope and chip contract with issue #46
 
-The coordinator settled the post-review ownership and merge order on
+The coordinator settled the post-review ownership and parallel-work boundary on
 2026-09-08. This is the shared contract, verbatim:
 
-#11 OWNS every change to the shared presentation files web/src/components/{primitives,charts,bars}.tsx, web/src/scope.ts (incl. SCOPE_KEYS with model and period and the drill envelope in the scope identity), web/src/shellContext.tsx and the Model cell activation on web/src/pages/Session.tsx; #46 is sequenced AFTER #11 merges and will rebase onto it, owning settings, dates, ScopeCell/ScopeChips rendering, format.ts and the number-locale migration.
+#11 owns `web/src/components/{primitives,charts,bars}.tsx`, `web/src/scope.ts`
+(`SCOPE_KEYS` with `model` and `period`; `SCOPE_PARAMS = [...SCOPE_KEYS,
+'drill']`; `setDrill`; removing a base dimension deletes it and its unknown
+predicate from the envelope, not an overlay), `web/src/shellContext.tsx`,
+`web/src/pages/Overview.tsx`, and the `.has-tip` upgrade of `ScopeChip`; #46
+(running in parallel now) owns settings, `format.ts`, the Settings page,
+`ScopeCell`/`ScopeChips` as new files, dates, the Model cell on `Session.tsx`,
+and the locale migration (#11's files are migrated in #46's rebase after #11
+merges; lossless exact-text strings may be regrouped by #46 without parsing).
 
 For #11, that contract means:
 
-- `SCOPE_KEYS` becomes exactly
-  `['source', 'agent', 'model', 'period'] as const`; those are the four base
-  keys, while the validated drill is a separate part of the same URL scope
-  identity.
+- `SCOPE_KEYS` and `SCOPE_PARAMS` become exactly:
+
+  ```ts
+  export const SCOPE_KEYS = ['source', 'agent', 'model', 'period'] as const
+  export const SCOPE_PARAMS = [...SCOPE_KEYS, 'drill'] as const
+  ```
+
+  The first constant fixes the four base keys and their order; the second is
+  the full serialised scope. `scopeSearch`, `link` and `scopeHref` iterate
+  `SCOPE_PARAMS`.
 - #11 implements `SCOPE_LABELS`, `formatScopeValue`, `patchScope`, `toggle`,
   `remove`, `scopeHref`, and all `useScope` changes in `scope.ts`. #46 consumes
   those exports after rebasing; it does not reopen `scope.ts`.
@@ -279,16 +293,27 @@ For #11, that contract means:
 - The current `ScopeBar` renders the one derived drill chip through
   `ScopeChip({ label, value, onRemove })`. #11 adds the established visible
   `.has-tip`/`data-tip` treatment without changing its accessible removal name.
-  After #11 merges, #46 owns the new `ScopeChips` renderer; its agreed props
-  include an explicit derived-drill slot, and it builds clearing/toggling and
-  `ScopeCell` links on #11's URL helpers so a base-cell action cannot drop a
-  drill. The derived drill counts as active for Clear-all visibility, and
-  Clear all removes both the four base keys and the drill.
-- #11 makes non-null Model values in `Session.tsx` active links to
-  `/sessions`, using `scopeHref` to set only `model`, keep the drill and other
-  base filters, and reset pagination. Unknown model values remain non-active
-  `Unavailable` text. #46's later generic `ScopeCell` may replace the markup,
-  but not this behavior.
+  After #11 merges, #46 owns the new `ScopeChips` renderer with this exact
+  contract:
+
+  ```ts
+  export interface ScopeChipsProps {
+    keys?: readonly ScopeKey[]
+    includeDrill?: boolean
+    label?: string
+  }
+  ```
+
+  `keys` defaults to `SCOPE_KEYS` in base-key order, `includeDrill` defaults to
+  `true` and appends #11's derived chip, and `label` defaults to
+  `Active filters`. Placement is fixed above the Overview sessions panel and
+  above the Sessions table, base chips first and the derived chip last. #11
+  leaves both mount points ready for #46's rebase to insert `<ScopeChips />`.
+  The derived drill counts as active for Clear-all visibility, and Clear all
+  removes both the four base keys and the drill.
+- #11 publishes `scopeHref` and `SCOPE_PARAMS`; #46's `ScopeCell` renders the
+  `Session.tsx` Model cell as a scope link once `model` is a base key. #11 does
+  not edit that file.
 - `source`, `agent`, and `model` use those exact URL/API names. `period` is
   UI-only and is never forwarded as an unknown server parameter.
 
@@ -322,7 +347,8 @@ export interface DrillEnvelopeV1 {
 ```
 
 `readScope` reads and validates both the base values and the envelope.
-`scopeKey` includes a stable canonical serialization of the envelope as well
+`scopeKey` includes a stable canonical serialization of the complete envelope
+because `useScope` rebuilds the scope object from that key string, as well
 as every `SCOPE_KEY`; therefore setting, replacing or removing a drill changes
 the memoised scope identity and reissues every dashboard request. `scopeSearch`,
 `link`, `scopeHref`, `patchScope` and `clear` likewise carry or intentionally
@@ -335,7 +361,12 @@ envelope is JSON encoded by `URLSearchParams` under `drill`, size-limited and
 strictly allowlisted on read; malformed/unknown versions are ignored rather
 than forwarded. API calls start from the envelope's scope when present, then
 overlay the current Source/Agent/Model base values and clear their mutually
-exclusive unknown flags; removing its one chip restores the four base filters.
+exclusive unknown flags. Removing a base dimension deletes that dimension and
+its mutually exclusive `*_is_unknown` predicate from the effective envelope
+scope; a removed filter is never left active inside the envelope. If deletion
+would leave the envelope's witness fields describing a population the remaining
+predicates no longer select, the envelope is invalidated instead. Removing its
+one derived chip restores the four base filters.
 This is still one URL-owned scope and one chip component—there is no
 component-local drill state or alternate filtering API.
 
@@ -348,19 +379,23 @@ decomposed and recombined in the client.
 
 `ScopeBar` renders complete Source/Agent/Model `<select>` options from the
 facets response, keeps an unknown pasted URL value as a temporary option, and
-adds the fixed Period select. Source/Agent/Model changes preserve the drill
+receives Period as a `Dimension` with fixed options. Source/Agent/Model changes preserve the drill
 while overriding only that predicate, matching the shared `toggle/remove`
 contract.
 A Period change removes the drill envelope because its server-generated date
 witnesses describe the prior period. Every edit resets pagination and issues
 one fresh scoped dashboard/session request.
 
-All exact dashboard text and shared component signatures land in #11 first.
-#46 then rebases onto the #11 merge and performs its settings/date,
-`ScopeCell`/`ScopeChips`, and remaining number-locale work through those
-interfaces. In particular, #46 never locale-formats a transport exact-text
-line. There is no unordered "second branch" merge and no parallel edit to a
-shared presentation file.
+#11 and #46 work in parallel on disjoint owned surfaces. #11's Files-touched
+list defines "#11's files"; #46 makes no edit to a file on that list before
+#11 merges, and its changes to those files land in its post-merge rebase.
+#46's rebase may group an exact line through `formatExactText`, which regroups
+the decimal string without parsing it and keeps the raw string for copy,
+`title` and every API path. It must never route transport text through
+`Number`, `toLocaleString` or `abbreviate`. #11 renders each exact value in a
+single element carrying the raw string, so that substitution is mechanical.
+ADR-006 receives two independent appended amendments: #11's first, then #46's
+after its rebase; neither rewrites the other.
 
 The #11 amendment to ADR-006 records both owner-approved structural decisions:
 four primary KPI cards plus two subordinate headline tiles, and the versioned
@@ -404,7 +439,8 @@ Rules are pinned in component tests:
 The canonical abbreviation is produced from the decimal string by a
 dashboard-local `abbreviateDecimalText` helper (integer/decimal-string
 arithmetic, including values above `Number.MAX_SAFE_INTEGER`); the exact line
-always prints `valueText` verbatim. #11 does not route authoritative text
+prints `valueText` verbatim in #11 and remains one raw-string-carrying element
+for #46's later lossless `formatExactText` regrouping. #11 does not route authoritative text
 through `format.ts`'s numeric `abbreviate`. Per the coordinator contract,
 #46 owns `format.ts` and the later locale migration for non-authoritative
 generic numbers.
@@ -419,9 +455,11 @@ visual treatment. Scheduled cost always shows schedule version, ordinary call
 coverage, exact token-weighted priced coverage, and “estimate, not an invoice”
 copy from the definition. The shipped TraceLab fixture's raw model IDs do not
 match the namespaced schedule keys. That model-id repair is filed as D2-03b and
-is out of #11; the tile therefore renders `Unavailable` and the visible reason
-exactly `no rate for this model id`. #11 neither aliases model IDs nor changes
-the schedule. The popover still carries the server's aggregate priced coverage,
+is out of #11; the tile therefore renders `Unavailable` and prints
+`MetricResult.reason` verbatim. On the fixture that server-emitted reason is
+`No recorded tokens have both a rate and validated billing semantics.` #11
+authors no reason text of its own, neither aliases model IDs nor changes the
+schedule. The popover still carries the server's aggregate priced coverage,
 schedule version and definition caveat.
 Observed span formats its exact millisecond text into a human headline for
 convenience while printing exact milliseconds below and keeping the complete
@@ -483,9 +521,11 @@ cache.
   authoritative displayed count and List scope whenever that bucket exists.
   Under a Period filter, where a null bucket cannot be inside the range, the
   authoritative displayed count is `excluded_unknown_timestamps`; the client
-  separately loads `unknown_timestamps` without direct date bounds but under
-  the same non-time base/drill predicates because the API correctly forbids
-  `timestamp_missing` plus date bounds. The List action is enabled only when
+  separately loads `unknown_timestamps` after clearing `started_from`,
+  `started_before` and `started_through` and nothing else: witness bounds,
+  `witness_timestamp_missing` and every base predicate are forwarded unchanged,
+  exactly mirroring `_excluded_unknown_timestamps`. The API correctly forbids
+  `timestamp_missing` plus direct date bounds. The List action is enabled only when
   that result's exact count equals `excluded_unknown_timestamps`, and then uses
   the result's returned effective scope verbatim. If the two server
   computations diverge under a witness-heavy drill, the strip keeps the
@@ -617,8 +657,6 @@ reason to edit price data in #11.
   receipt and preserve drill state in navigation.
 - `web/src/pages/sessionsTable.tsx` — canonical exact input usage/coverage only;
   expose stable cell contracts for #46's later Source/Agent/date work.
-- `web/src/pages/Session.tsx` — activate non-null Model cells with #11's
-  scope-preserving `/sessions` link behavior.
 - `web/src/pages/Definitions.tsx` — registry-driven anchored definition table.
 - `web/src/pages/Gallery.tsx` — adapt gallery KPI/chart examples to the new
   text and `onSelect(point)` contracts so development typechecking stays green.
@@ -639,7 +677,7 @@ reason to edit price data in #11.
   behavior and real TraceLab fixture assertions for comparable counts and
   non-comparable token partitions.
 
-### Documentation and sequenced dependency
+### Documentation and parallel coordination
 
 - `docs/api/v0.1.md` — facets response, complete summary/sessions scope list,
   period-to-date client rule, dashboard recipes and reject-attribution limit.
@@ -655,8 +693,8 @@ no longer imported by Overview/Sessions after the complete facets endpoint is
 available. `web/src/shellHooks.ts` needs no edit: its existing typed
 `useScopeBar(dimensions, receipt, loading)` already transports the revised
 `ReceiptValues` and `Dimension[]`. #46 owns settings, dates, `ScopeCell` and
-`ScopeChips` rendering after it rebases; #11 owns the Model activation behavior
-that the later renderer must preserve. The listed smoke spec is in #11 scope;
+`ScopeChips` rendering, including the `Session.tsx` Model cell, and performs
+its edits to #11-owned files after rebasing onto the #11 merge. The listed smoke spec is in #11 scope;
 the rest of issue #12's end-to-end expansion is not.
 
 ## Tests
@@ -681,7 +719,9 @@ the rest of issue #12's end-to-end expansion is not.
   leak cached all-time model/tool counts or tokens into the row.
 - `test_unknown_timestamp_count_equals_the_population_its_list_action_opens`:
   compare the null-day/excluded count with the returned unknown-time drill
-  population for no scope, Period only, Source+Period and an active drill.
+  population for no scope, Period only, Source+Period and an active drill. The
+  plain Period case must prove equality, and the companion scope must clear
+  exactly the three `started_*` bounds while retaining all witness fields.
 - Existing #10 `test_day_drill_round_trip_preserves_original_tool_witness` and
   `test_returned_scopes_round_trip_after_every_grain_switch` stay green and
   are treated as contract tests, not rewritten.
@@ -693,8 +733,10 @@ the rest of issue #12's end-to-end expansion is not.
   local-zone independent; Model/Period encode and Back/Clear/reset offset
   correctly; a valid drill envelope round-trips every allowlisted field;
   malformed/oversized/session-ID envelopes are ignored;
-  `clearing_a_base_filter_keeps_the_drill_and_a_period_change_removes_it`; and
-  `patchScope`/`scopeHref` preserve the drill on chart-to-sessions links.
+  `clearing_a_base_filter_keeps_the_drill_and_a_period_change_removes_it`,
+  including deletion of the removed dimension and its unknown predicate from
+  the effective API scope; and `patchScope`/`scopeHref` preserve the drill on
+  chart-to-sessions links.
 - `dashboardData.test.ts`:
   `loadDashboard_uses_the_documented_metric_recipes_and_full_scope`,
   `mixed_tokens_keep_exact_partitions_without_a_pooled_total`,
@@ -706,7 +748,8 @@ the rest of issue #12's end-to-end expansion is not.
   all-null unavailable, mixed partitions); definition Escape/focus return and
   registry link; cache-read result/reason;
   `scheduled_cost_is_unavailable_with_zero_priced_coverage_and_the_server_reason`
-  pins visible `no rate for this model id`; observed-span caveat; quality
+  pins visible `No recorded tokens have both a rate and validated billing
+  semantics.` from `MetricResult.reason`; observed-span caveat; quality
   expansion/action boundary; day/horizontal/token bars expose exact text to
   tooltip/focus/hidden table and activate with click, Enter and Space.
 - `App.test.tsx`:
@@ -716,11 +759,16 @@ the rest of issue #12's end-to-end expansion is not.
   `day_model_semantics_and_tool_bar_clicks_open_matching_sessions`,
   `a_drill_change_reissues_every_dashboard_request`,
   `tool_and_day_drills_keep_cross_grain_dashboard_totals_consistent`,
-  `session_model_cell_opens_sessions_with_the_full_scope`,
   `quality_drills_only_attributable_session_populations`,
   `late_old_scope_responses_never_replace_new_scope_data`,
   `core_metric_failure_never_leaves_stale_dashboard_numbers`, and
   `definitions_page_renders_every_server_definition_and_anchor`.
+
+Five shared drill cases assert the effective API scope and the displayed chip
+set together: a tool or accounting drill carried through a Session cell to
+`/sessions`; Model removal; Period removal; `Clear all`; and Back. The
+Session-cell case runs in #46 after its rebase because #46 owns that cell; #11
+pins the other four and publishes the scope helpers the fifth consumes.
 
 ### End-to-end fixture smoke
 
@@ -765,7 +813,8 @@ headlines, exact mixed accounting splits, chart hover/focus parity, dark
 theme, no document-level horizontal scroll, and chart click -> scoped session
 rows. The Scheduled-cost headline is inspected in its expected fixture state:
 `Unavailable`, zero priced coverage, and visible reason
-`no rate for this model id`. Screenshots remain untracked and go to the
+`No recorded tokens have both a rate and validated billing semantics.`
+Screenshots remain untracked and go to the
 coordinator; no dataset or upload is committed. #11 owns the dashboard/scope
 updates to the existing Playwright smoke; issue #12 owns further journey
 expansion beyond that spec.
@@ -812,15 +861,17 @@ expansion beyond that spec.
   `session_ids`, and has round-trip tests. If review rejects an encoded
   envelope, the alternative must add first-class URL keys for every witness
   field before implementation; component state is not an acceptable fallback.
-- **Issue #46 is sequenced, not parallel on shared files.** #11 owns all shared
-  presentation/scope edits and the Session Model activation, then merges.
-  #46 rebases onto it and owns settings, dates, `ScopeCell`/`ScopeChips`,
-  `format.ts` and the number-locale migration. Its full web/e2e suite must prove
-  that later rendering preserves #11's drill identity and exact-text contract.
+- **Issue #46 runs in parallel on disjoint files.** #11's Files-touched list is
+  the ownership boundary; #46 owns settings, dates, `ScopeCell`/`ScopeChips`,
+  `format.ts`, the `Session.tsx` Model cell and the locale migration. Only
+  #46's migration edits to #11-owned files wait for its post-merge rebase. Its
+  full web/e2e suite must prove that later rendering preserves #11's drill
+  identity and exact-text contract.
 - **Scheduled cost is expected to be unavailable on the fixture.** Raw fixture
   model IDs do not match schedule keys. D2-03b owns that mismatch; #11 shows
-  `Unavailable` plus `no rate for this model id`, never aliases a model or
-  fabricates cost. D2-03b also owns the stale `docs/api/v0.1.md` statement that
+  `Unavailable` plus the verbatim server reason `No recorded tokens have both
+  a rate and validated billing semantics.`, never aliases a model or invents
+  client reason text. D2-03b also owns the stale `docs/api/v0.1.md` statement that
   a production snapshot is DNS-blocked even though the schedule file is now
   committed; #11 does not fold that unrelated correction into its API docs
   edit.
@@ -846,7 +897,7 @@ real-fixture smoke, ADR amendment, scope-identity work and ordering change, the
 full-scope backend/session/facets wiring and tests; 4-5 hours for web DTOs,
 exact adapters, shell receipt and scope/drill URL state; 6-8 hours for KPI,
 headline, quality, definitions and chart presentation; 4-6 hours for page and
-drill integration including the Session Model cell; and 4-6 hours for focused
+drill integration excluding #46's Session Model cell; and 4-6 hours for focused
 tests, Playwright, visual review, docs and the full verification matrix. Reserve
 3-5 hours for review fixes; there is no #10 contract reserve now that
 `eb92b8c` is merged.
@@ -858,12 +909,13 @@ tests, Playwright, visual review, docs and the full verification matrix. Reserve
   identity and exact DTO work only after plan approval.
 - **2026-09-09:** finish backend ordering/facets/routes and scope/shell tests;
   land the exact presentation primitives and dashboard data adapters.
-- **2026-09-10:** integrate Overview, Sessions, Session Model activation,
+- **2026-09-10:** integrate Overview, Sessions,
   charts, quality and Definitions; update Gallery/unit/App tests and the real
   Playwright smoke. Run the complete matrix and target #11 merge by end of day.
-- **2026-09-11:** #46 rebases onto the merged #11 contract. Reserve the day for
-  combined #11/#46 acceptance, 1280/1920/900 visual checks, Playwright and
-  review fixes; #46 must not bypass the rebase by duplicating shared changes.
+- **2026-09-11:** after parallel work on disjoint surfaces, #46 rebases onto
+  the merged #11 contract for migrations of #11-owned files. Reserve the day
+  for combined #11/#46 acceptance, 1280/1920/900 visual checks, Playwright and
+  review fixes.
 
 This schedule has no slack at the high end of the estimate. If #11 slips, cut
 in this order and only at a coordinator checkpoint: (1) defer the facets
@@ -874,8 +926,8 @@ to the required definition/unit/semantics/comparability/coverage fields while
 keeping the complete response accessible in disclosure. Never cut exact-text
 rendering, drill identity/navigation, session ordering, accessibility, the
 four KPI/three-chart/quality-strip core, or the updated e2e assertions. If those
-cuts do not preserve a green #11 by 2026-09-10, #46 moves beyond the sprint;
-the merge order is not relaxed. No paid API call, network dataset, new runtime
+cuts do not preserve a green #11 by 2026-09-10, #46 continues its disjoint work
+and defers only the post-merge migration. No paid API call, network dataset, new runtime
 service or dependency is required.
 
 ## Revision after review
@@ -898,15 +950,15 @@ Finding numbers below match
 3. **P1 — accepted with the coordinator's final boundary.** The contract
    section contains the coordinator decision verbatim. #11 owns all changes to
    `primitives.tsx`, `charts.tsx`, `bars.tsx`, `scope.ts`, `shellContext.tsx`
-   and the `Session.tsx` Model activation. #46 is explicitly after #11 and
-   rebases to add settings, dates, `ScopeCell`/`ScopeChips`, `format.ts` and
-   locale migration without rewriting exact transport text.
+   and `Overview.tsx`. #46 owns settings, dates, `ScopeCell`/`ScopeChips`,
+   `format.ts`, the `Session.tsx` Model cell and locale migration; it works in
+   parallel and rebases later only for migrations of #11-owned files.
 4. **P1 — accepted.** The exhaustive surface now accounts for all six forced
    files: `shellContext.tsx`, `App.tsx`, `Gallery.tsx`, `smoke.spec.ts`,
-   `format.ts`, and ADR-006. It also adds the coordinator-required
-   `Session.tsx`, `api/index.test.ts` and the new `scope.test.ts`. The list
+   `format.ts`, and ADR-006. It also adds `api/index.test.ts` and the new
+   `scope.test.ts`; `Session.tsx` belongs to #46. The list
    names the receipt shape and the page -> `useScopeBar` -> `ShellApi` facet
-   path. `format.ts` is listed as a forced sequenced dependency but is not
+   path. `format.ts` is listed as a forced parallel dependency but is not
    edited by #11 because the coordinator assigned it to #46; #11 uses a
    decimal-text helper instead.
 5. **P2 — accepted under the settled ownership.** #11 supplies the single pure
@@ -926,7 +978,8 @@ Finding numbers below match
 8. **P2 — resolved by coordinator decision.** The schedule-key/model-ID
    mismatch is outside #11 and filed as D2-03b. The Scheduled-cost tile keeps
    its subordinate slot, renders `Unavailable` with zero priced coverage and
-   the visible reason `no rate for this model id`, and is pinned in component
+   the server-emitted reason `No recorded tokens have both a rate and validated
+   billing semantics.`, and is pinned in component
    and manual visual checks. #11 does not alias IDs or edit price data; D2-03b
    also owns the stale API-doc snapshot/DNS sentence noted by the review.
 9. **P2 — accepted.** The existing real-fixture Playwright smoke is the
@@ -949,9 +1002,8 @@ Finding numbers below match
 13. **P2 — accepted.** The estimate is revised to 23-32 engineering hours plus
     3-5 hours of review reserve. The dated path covers the merged #10 gate and
     2026-09-08 contract, targets #11 merge on 2026-09-10, reserves 2026-09-11
-    for #46 rebase/combined acceptance, lists optional cuts in order, and never
-    trades away exactness or e2e coverage. It also states when #46 must move
-    beyond the sprint instead of violating the merge order.
+    for #46's post-merge migrations and combined acceptance, lists optional
+    cuts in order, and never trades away exactness or e2e coverage.
 14. **P3 — accepted.** The stale round-trip claim is replaced with the actual
     contract: the client forwards a returned scope verbatim and the server
     derives destination-grain witnesses. The named App test covers internally
@@ -967,3 +1019,64 @@ Finding numbers below match
     `application/metrics/` does not exist. Activity by day now renders every
     returned bucket in a contained horizontally scrolling plot above the
     normal 14-bar width, with no top-N and a complete hidden table.
+
+## Revision 2 after second review
+
+The second Claude review is `APPROVE WITH CHANGES` and authorises implementation
+without a third review after these edits. Its two P1 corrections are now
+operative throughout this plan:
+
+1. **P1 — server-owned Scheduled-cost reason.** The tile renders
+   `MetricResult.reason` verbatim and #11 authors no client-side reason. For the
+   committed TraceLab fixture the server emits `No recorded tokens have both a
+   rate and validated billing semantics.`; that exact string replaces every
+   prior invented reason in the component test, visual check and risk record.
+2. **P1 — final parallel ownership boundary.** The verbatim boundary in section
+   3 now assigns #11 `web/src/components/{primitives,charts,bars}.tsx`,
+   `web/src/scope.ts`, `web/src/shellContext.tsx` and
+   `web/src/pages/Overview.tsx`, while #46 owns the `Session.tsx` Model cell.
+   #11 and #46 run in parallel on disjoint surfaces. #46 defers only migrations
+   of #11-owned files until its post-merge rebase, and every earlier statement
+   implying a serial branch order or #11 ownership of `Session.tsx` is replaced.
+
+The six section 0.6 coordination decisions are adopted as follows:
+
+1. **Base removal changes the effective envelope.** Removing Source, Agent or
+   Model deletes the dimension and its mutually exclusive unknown predicate
+   from the envelope, rather than merely omitting a base overlay. If the
+   remaining witness fields would no longer describe the selected population,
+   the envelope is invalidated. The named removal test asserts the resulting
+   API scope as well as URL state.
+2. **Base edits and Period are already consistent.** Source/Agent/Model edits
+   preserve the drill and replace or delete only their predicate; Period
+   invalidates the drill because its witnesses describe the old date window;
+   `Clear all` removes both base and drill state. No contradictory rule remains.
+3. **Typed chips contract and placement are fixed.** #46 consumes
+   `ScopeChipsProps { keys?: readonly ScopeKey[]; includeDrill?: boolean;
+   label?: string }`; defaults are `SCOPE_KEYS`, `true`, and `Active filters`.
+   It mounts above the Overview sessions panel and above the Sessions table,
+   with base chips first and the derived chip last. #11 leaves those mount
+   points ready and owns the `.has-tip`/`data-tip` treatment on `ScopeChip`.
+4. **Reciprocal bootstrap is removed.** #11 publishes all of `scope.ts`,
+   including `SCOPE_KEYS`, `SCOPE_PARAMS`, `setDrill`, labels, formatting and
+   patch/link helpers. #46 must correct its own plan's old branch order and
+   make edits to #11-owned files only in its post-merge rebase; this creates no
+   wait for its disjoint Settings, dates, `ScopeCell` or `ScopeChips` work.
+5. **Exact-text wording permits lossless regrouping.** #11 initially renders
+   each exact `valueText` verbatim in one raw-string-carrying element. #46 may
+   later apply `formatExactText`, retain the raw string for copy/title/API use,
+   and regroup it without parsing. `Number`, `toLocaleString` and numeric
+   `abbreviate` remain forbidden for authoritative transport text.
+6. **Five drill cases are joint contracts.** A tool or accounting drill carried
+   through a Session cell to `/sessions`, Model removal, Period removal,
+   `Clear all`, and Back each assert the effective API scope and displayed chip
+   set together. #11 covers the latter four and publishes the helper contract;
+   #46 runs the Session-cell case after its rebase because it owns that cell.
+
+The remaining second-review precision edits are also folded into the operative
+sections: `SCOPE_PARAMS` is the complete serialised key list; `scopeKey` carries
+the complete, reconstructable envelope rather than a digest; Period is a fixed
+`Dimension`; companion unknown-timestamp queries clear only `started_from`,
+`started_before` and `started_through`; and #11's Files-touched list prevents
+#46 from editing the same files before merge. ADR-006 receives #11's amendment
+first and #46 appends its independent amendment after rebasing.
