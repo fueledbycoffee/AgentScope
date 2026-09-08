@@ -161,6 +161,7 @@ called tested):
 | Date | Endpoint | Model | Result |
 | --- | --- | --- | --- |
 | 2026-09-08 | OpenRouter | `inclusionai/ling-3.0-flash-fin:free` (owner's choice from 2026-09-08), budget 32,768, deadline 240 s | 75 s, 2 attempts, **executable** proposal (session, model_call, tool_call rules); 4,764 completion tokens of which 2,571 hidden reasoning; reply captured |
+| 2026-09-08 | OpenRouter | `inclusionai/ling-3.0-flash-fin:free`, same settings from `backend/.env` through `scripts/llm_smoke.py` | 67 s, 2 attempts, editable draft (`unknown_policy`) with session, model_call and tool_call rules: the same model varies between an executable proposal and a draft across identical requests |
 | 2026-09-08 | OpenRouter | `inclusionai/ling-3.0-flash-fin:free`, default budget 8,192 | cut off twice with no content: 7,913 of 8,192 tokens went to hidden reasoning (the failure now says so) |
 | 2026-09-08 | OpenRouter | `inclusionai/ling-3.0-flash-fin:free`, JSON mode auto, adapter before this fix | 400 in 0.6 s: OpenRouter said "Provider returned error" and hid "does not support feature: structured-outputs" under `error.metadata.raw`; the fallback did not fire. Fixed: the reason is read and shown, and structured-output wording counts as a rejection |
 | 2026-09-07 | OpenRouter | `dots-studio/dots-3-note-preview:free` (rewritten adapter) | 78 s, 2 attempts, **executable** proposal: session, model_call, tool_call rules; 26 explanations, 5 ambiguities, 4 questions |

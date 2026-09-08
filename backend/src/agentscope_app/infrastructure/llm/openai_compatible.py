@@ -510,7 +510,7 @@ def _provider_reason(error: dict[str, Any]) -> str:
         for key in ("message", "error", "reason"):
             value = parsed.get(key)
             if isinstance(value, dict) and isinstance(value.get("message"), str):
-                return value["message"][:_ERROR_QUOTE_CHARS]
+                return str(value["message"])[:_ERROR_QUOTE_CHARS]
             if isinstance(value, str) and value.strip():
                 return value[:_ERROR_QUOTE_CHARS]
     return raw[:_ERROR_QUOTE_CHARS]
