@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useRef, useState } from 'react'
+import {createContext, useContext, useMemo, useState} from 'react'
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { ChartPoint, TokenMeasure, TokenRow } from '../dashboard/dashboardData'
@@ -18,73 +18,74 @@ const MAX_PRESS_MOVEMENT = 5
 
 interface BarPress {
   source: 'mouse' | 'pointer'
+  key: string
   clientX: number
   clientY: number
   pointerId?: number
   dragged: boolean
 }
 
-function useBarActivation(activate: () => void) {
-  const press = useRef<BarPress | undefined>(undefined)
-  const suppressClick = useRef(false)
+// Recharts re-creates a bar's shape element when its active state changes on the press, so the
+// element that receives the release is not the one that received the press. The pending press
+// therefore lives outside the component, keyed by the pointer (mouse presses share one slot) and
+// remembering which bar it started on: the release completes the drill only on the same bar.
+const pendingPresses = new Map<string, BarPress>()
+const suppressedClicks = new Set<string>()
+const pressSlot = (source: 'mouse' | 'pointer', pointerId?: number) => (source === 'pointer' ? `pointer:${pointerId}` : 'mouse')
 
+function useBarActivation(activate: () => void, key: string) {
   const moved = (current: BarPress, clientX: number, clientY: number) => (
     Math.abs(clientX - current.clientX) > MAX_PRESS_MOVEMENT
     || Math.abs(clientY - current.clientY) > MAX_PRESS_MOVEMENT
   )
   const finish = (current: BarPress, clientX: number, clientY: number) => {
-    suppressClick.current = true
-    if (!current.dragged && !moved(current, clientX, clientY)) activate()
+    suppressedClicks.add(key)
+    if (current.key === key && !current.dragged && !moved(current, clientX, clientY)) activate()
   }
 
   return {
     onClick: (event: ReactMouseEvent<SVGRectElement>) => {
       // Pointer/mouse release already activated the bar. Keep click for keyboard and
       // scripted activation, which arrive without a preceding physical release.
-      if (suppressClick.current && event.detail !== 0) {
-        suppressClick.current = false
+      if (suppressedClicks.has(key) && event.detail !== 0) {
+        suppressedClicks.delete(key)
         return
       }
-      suppressClick.current = false
+      suppressedClicks.delete(key)
       activate()
     },
     onPointerDown: (event: ReactPointerEvent<SVGRectElement>) => {
       if (event.button !== 0) return
-      suppressClick.current = false
-      press.current = {
-        source: 'pointer', pointerId: event.pointerId,
+      suppressedClicks.delete(key)
+      pendingPresses.set(pressSlot('pointer', event.pointerId), {
+        source: 'pointer', key, pointerId: event.pointerId,
         clientX: event.clientX, clientY: event.clientY, dragged: false,
-      }
+      })
     },
     onPointerMove: (event: ReactPointerEvent<SVGRectElement>) => {
-      const current = press.current
-      if (current?.source === 'pointer' && current.pointerId === event.pointerId && moved(current, event.clientX, event.clientY)) {
-        current.dragged = true
-      }
+      const current = pendingPresses.get(pressSlot('pointer', event.pointerId))
+      if (current && moved(current, event.clientX, event.clientY)) current.dragged = true
     },
     onPointerUp: (event: ReactPointerEvent<SVGRectElement>) => {
-      const current = press.current
-      press.current = undefined
-      if (current?.source === 'pointer' && current.pointerId === event.pointerId) {
-        finish(current, event.clientX, event.clientY)
-      }
+      const slot = pressSlot('pointer', event.pointerId)
+      const current = pendingPresses.get(slot)
+      pendingPresses.delete(slot)
+      if (current) finish(current, event.clientX, event.clientY)
     },
-    onPointerCancel: () => { press.current = undefined },
+    onPointerCancel: (event: ReactPointerEvent<SVGRectElement>) => { pendingPresses.delete(pressSlot('pointer', event.pointerId)) },
     onMouseDown: (event: ReactMouseEvent<SVGRectElement>) => {
-      if (event.button !== 0 || press.current?.source === 'pointer') return
-      suppressClick.current = false
-      press.current = {
-        source: 'mouse', clientX: event.clientX, clientY: event.clientY, dragged: false,
-      }
+      if (event.button !== 0 || [...pendingPresses.values()].some(press => press.source === 'pointer')) return
+      suppressedClicks.delete(key)
+      pendingPresses.set('mouse', { source: 'mouse', key, clientX: event.clientX, clientY: event.clientY, dragged: false })
     },
     onMouseMove: (event: ReactMouseEvent<SVGRectElement>) => {
-      const current = press.current
-      if (current?.source === 'mouse' && moved(current, event.clientX, event.clientY)) current.dragged = true
+      const current = pendingPresses.get('mouse')
+      if (current && moved(current, event.clientX, event.clientY)) current.dragged = true
     },
     onMouseUp: (event: ReactMouseEvent<SVGRectElement>) => {
-      const current = press.current
-      if (current?.source !== 'mouse') return
-      press.current = undefined
+      const current = pendingPresses.get('mouse')
+      if (!current) return
+      pendingPresses.delete('mouse')
       finish(current, event.clientX, event.clientY)
     },
   }
@@ -97,7 +98,7 @@ export function AccessibleBarShape({ shape, onSelect, onFocus }: {
 }) {
   const point = shape.payload
   const activate = () => { if (point) onSelect?.(point) }
-  const activation = useBarActivation(activate)
+  const activation = useBarActivation(activate, JSON.stringify(shape.payload ?? null))
   if (!point || !shape.width || !shape.height) return null
   const key = (event: KeyboardEvent<SVGRectElement>) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -198,7 +199,7 @@ function TokenShape({ shape, series, onSelect, onFocus }: {
   const row = shape.payload
   const measure = row?.[series]
   const activate = () => { if (row && measure) onSelect?.(row, measure) }
-  const activation = useBarActivation(activate)
+  const activation = useBarActivation(activate, `${series}:${row?.key ?? ''}`)
   if (!row || !measure || measure.valueText === null || !shape.width || !shape.height) return null
   const label = `${row.label}, ${series}: ${groupExactText(measure.valueText)}`
   return <rect key={`${series}:${row.key}`} x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={3} fill={shape.fill}
