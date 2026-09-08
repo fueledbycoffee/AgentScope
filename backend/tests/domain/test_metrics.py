@@ -12,6 +12,7 @@ from agentscope_app.domain.metrics import (
 
 def test_registry_has_complete_definitions_for_summary_and_chart_metrics():
     assert set(REGISTRY.definitions) == {
+        "observed_span_ms",
         "sessions",
         "model_calls",
         "tool_calls",

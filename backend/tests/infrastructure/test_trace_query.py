@@ -96,7 +96,14 @@ SCOPES = [
 ]
 
 
-@pytest.mark.parametrize("metric_id", list(REGISTRY.definitions))
+@pytest.mark.parametrize(
+    "metric_id",
+    [
+        d.id
+        for d in REGISTRY.definitions.values()
+        if d.operation in ("count", "sum", "observed_span")
+    ],
+)
 def test_sql_matches_reference_for_every_definition_and_scope(database, metric_id):
     engine, data = database
     definition = REGISTRY.get(metric_id)
@@ -580,3 +587,30 @@ def test_projected_exit_code_sum_is_a_registry_only_extension(database):
             == oracle(data, definition, spec.scope)
             == {(): {None: (0, 1, 3)}}
         )
+
+
+def test_observed_span_exact_bounds_coverage_and_scoped_sessions(database):
+    from datetime import timedelta
+
+    from agentscope_app.application.metric_queries import assemble_query
+
+    engine, _ = database
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    with Session(engine) as session:
+        s1, s2 = session.get(m.Session, "s1"), session.get(m.Session, "s2")
+        s1.observed_start_at = start
+        s1.observed_end_at = start + timedelta(seconds=2, microseconds=1)
+        s2.observed_start_at = start
+        s2.observed_end_at = start  # measured zero; empty session lacks bounds
+        session.commit()
+        query = SqlAlchemyTraceQuery(session)
+        spec = MetricQuerySpec(REGISTRY.get("observed_span_ms"), group_by=(Dimension.SOURCE,))
+        result = assemble_query(spec, query.aggregate(spec))
+        assert result.overall.value_text == "2000.001"
+        assert (result.overall.coverage.known, result.overall.coverage.total) == (2, 3)
+        spec = MetricQuerySpec(REGISTRY.get("observed_span_ms"), TraceScope(model="other"))
+        result = assemble_query(spec, query.aggregate(spec))
+        assert result.overall.value_text == "2000.001"
+        assert result.overall.coverage.total == 1
+        spec = MetricQuerySpec(REGISTRY.get("observed_span_ms"), TraceScope(session_ids=("empty",)))
+        assert assemble_query(spec, query.aggregate(spec)).overall.value_text is None

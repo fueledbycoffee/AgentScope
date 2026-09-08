@@ -15,6 +15,7 @@ from agentscope_app.domain.metrics import (
     MetricDefinition,
     evaluate,
 )
+from agentscope_app.domain.numbers import Number, number_text
 
 
 def invalid(path: str, message: str) -> InvalidInputError:
@@ -258,8 +259,16 @@ class MetricQueryResult:
     buckets: tuple[MetricBucket, ...]
 
 
-def _text(value: int | None) -> str | None:
-    return None if value is None else str(value)
+def _text(value: Number | None) -> str | None:
+    return number_text(value)
+
+
+def _legacy_int(value: Number | None) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int):
+        raise ValueError("Legacy summaries support integer counts and sums only")
+    return value
 
 
 def _combine_parts(rows: AggregateRows) -> tuple[AggregatePart, ...]:
@@ -285,12 +294,14 @@ def assemble_metric(definition: MetricDefinition, rows: AggregateRows) -> Metric
     parts = _combine_parts(rows)
     result = evaluate(definition, parts)
     return Metric(
-        value=result.recorded_sum,
+        value=_legacy_int(result.recorded_sum),
         definition=definition.description,
         unit=definition.unit,
         coverage=Coverage(result.known, result.total),
         by_semantics={
-            p.semantics: p.value for p in parts if p.semantics is not None and p.value is not None
+            p.semantics: p.value
+            for p in parts
+            if p.semantics is not None and isinstance(p.value, int)
         },
         metric_id=definition.id,
         version=definition.version,

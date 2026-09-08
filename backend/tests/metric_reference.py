@@ -1,7 +1,8 @@
 """Independent loop/set oracle. No metric compiler or production evaluation helpers."""
 
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from fractions import Fraction
 
 
 def synthetic_rows():
@@ -200,9 +201,15 @@ def oracle(data, definition, scope, group_by=()):
             else:
                 keys.append(row.get(dimension))
         tag = (row.get("token_semantics") or "unknown") if definition.semantics_field else None
-        grouped[tuple(keys)][tag].append(
-            1 if definition.operation == "count" else row.get(definition.field)
-        )
+        value = 1 if definition.operation == "count" else row.get(definition.field)
+        if definition.operation == "observed_span":
+            start, end = row.get("observed_start_at"), row.get("observed_end_at")
+            value = (
+                Fraction((end - start) // timedelta(microseconds=1), 1000)
+                if start is not None and end is not None
+                else None
+            )
+        grouped[tuple(keys)][tag].append(value)
     if not rows and not group_by and not definition.semantics_field:
         grouped[()][None] = []
     result = {}

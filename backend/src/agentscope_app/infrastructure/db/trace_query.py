@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import replace
+from fractions import Fraction
 from typing import Any
 
 from sqlalchemy import (
@@ -206,6 +207,8 @@ class SqlAlchemyTraceQuery:
         definition, scope = spec.definition, spec.scope
         if definition.grain == EntityGrain.IMPORT:
             return self._imports(scope)
+        if definition.operation == Aggregation.OBSERVED_SPAN:
+            return self._observed_span(spec)
         grain = definition.grain
         table = VIEWS[grain]
         groups = [_dimension(grain, d) for d in spec.group_by]
@@ -250,6 +253,42 @@ class SqlAlchemyTraceQuery:
                 or 0
             )
         return AggregateRows(tuple(AggregateRow(k, tuple(v)) for k, v in grouped.items()), excluded)
+
+    def _observed_span(self, spec: MetricQuerySpec) -> AggregateRows:
+        groups = [_dimension(EntityGrain.SESSION, d) for d in spec.group_by]
+        stmt = select(
+            *groups, SESSION_VIEW.c.observed_start_at, SESSION_VIEW.c.observed_end_at
+        ).where(*_scope_clauses(EntityGrain.SESSION, spec.scope))
+        grouped: dict[tuple[str | bool | None, ...], list[AggregatePart]] = {}
+        if not spec.group_by:
+            grouped[()] = []
+        for row in self._s.execute(stmt):
+            start, end = row[-2:]
+            value = None
+            if start is not None and end is not None:
+                delta = end - start
+                micros = (delta.days * 86400 + delta.seconds) * 1000000 + delta.microseconds
+                value = Fraction(micros, 1000)
+            grouped.setdefault(tuple(row[:-2]), []).append(
+                AggregatePart(value, int(value is not None), 1)
+            )
+        return AggregateRows(
+            tuple(
+                AggregateRow(
+                    keys,
+                    (
+                        AggregatePart(
+                            sum((p.value for p in parts if p.value is not None), Fraction(0))
+                            if any(p.known for p in parts)
+                            else None,
+                            sum(p.known for p in parts),
+                            len(parts),
+                        ),
+                    ),
+                )
+                for keys, parts in sorted(grouped.items(), key=lambda item: str(item[0]))
+            )
+        )
 
     def _imports(self, scope: TraceScope) -> AggregateRows:
         queries = []

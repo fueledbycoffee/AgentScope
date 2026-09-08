@@ -8,6 +8,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
+from agentscope_app.domain.numbers import Number
 from agentscope_app.domain.schema import TARGET_SCHEMA, FieldType
 
 
@@ -21,6 +22,7 @@ class EntityGrain(StrEnum):
 class Aggregation(StrEnum):
     COUNT = "count"
     SUM = "sum"
+    OBSERVED_SPAN = "observed_span"
 
 
 class ComparabilityRule(StrEnum):
@@ -93,6 +95,7 @@ class MetricDefinition:
     comparability_rule: ComparabilityRule = ComparabilityRule.OBSERVATIONS
     population: str | None = None
     headline_kpi: bool = False
+    caveat: str | None = None
 
     @property
     def supported_dimensions(self) -> tuple[Dimension, ...]:
@@ -133,6 +136,14 @@ class MetricRegistry:
                 raise ValueError(
                     "Counts use canonical identities, count units and complete coverage"
                 )
+        elif d.operation == Aggregation.OBSERVED_SPAN:
+            if (d.grain, d.field, d.unit, d.coverage_field) != (
+                EntityGrain.SESSION,
+                None,
+                "ms",
+                None,
+            ):
+                raise ValueError("Observed span requires session bounds and milliseconds")
         else:
             if d.field not in MEASURES[d.grain]:
                 raise ValueError(f"Unresolvable measure: {d.grain}.{d.field}")
@@ -160,7 +171,7 @@ class MetricRegistry:
 
 @dataclass(frozen=True)
 class AggregatePart:
-    value: int | None
+    value: Number | None
     known: int
     total: int
     semantics: str | None = None
@@ -168,8 +179,8 @@ class AggregatePart:
 
 @dataclass(frozen=True)
 class Evaluation:
-    value: int | None
-    recorded_sum: int | None
+    value: Number | None
+    recorded_sum: Number | None
     known: int
     total: int
     comparability: str
@@ -180,8 +191,8 @@ def evaluate(definition: MetricDefinition, parts: Sequence[AggregatePart]) -> Ev
     """All-null partitions affect coverage, never the comparability of known usage."""
     known = sum(p.known for p in parts)
     total = sum(p.total for p in parts)
-    recorded: int | None = sum(p.value for p in parts if p.value is not None)
-    if definition.operation == Aggregation.SUM and known == 0:
+    recorded: Number | None = sum(p.value for p in parts if p.value is not None)
+    if definition.operation != Aggregation.COUNT and known == 0:
         recorded = None
     if definition.comparability_rule == ComparabilityRule.OBSERVATIONS:
         return Evaluation(
@@ -265,8 +276,26 @@ def _sum(metric_id: str, grain: EntityGrain, field: str, unit: str) -> MetricDef
     )
 
 
+OBSERVED_SPAN = MetricDefinition(
+    id="observed_span_ms",
+    version=1,
+    label="observed span in imported data",
+    description="Sum of full imported observed spans of eligible sessions.",
+    grain=EntityGrain.SESSION,
+    operation=Aggregation.OBSERVED_SPAN,
+    field=None,
+    unit="ms",
+    formula="Sum (observed_end_at - observed_start_at) in exact milliseconds per session.",
+    scope="Eligible sessions; child filters select sessions but do not clip their imported bounds.",
+    null_handling="Both bounds required; known zero contributes; no known spans yields null.",
+    caveat="May include idle time and resumptions. Neither active time nor task duration. "
+    "Overlapping session spans are summed, not unioned; bounds cover full imported sessions.",
+)
+
+
 REGISTRY: Final = MetricRegistry(
     [
+        OBSERVED_SPAN,
         _count("sessions", EntityGrain.SESSION, "Stored sessions reconciled within each source."),
         _count(
             "model_calls", EntityGrain.MODEL_CALL, "Model-call observations, not unique requests."

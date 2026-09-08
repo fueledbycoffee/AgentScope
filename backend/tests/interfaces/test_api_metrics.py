@@ -72,7 +72,7 @@ def test_metrics_http_metadata_coverage_and_exact_text(client):
         "tool_calls",
         "input_tokens",
     }
-    assert len(definitions) == 14
+    assert len(definitions) == 15
     by_id = {d["id"]: d for d in definitions}
     assert by_id["tool_wall_latency_ms"]["field"] == "wall_latency_ms"
     assert by_id["tool_internal_latency_ms"]["field"] == "internal_latency_ms"
@@ -235,3 +235,13 @@ def test_invalid_witness_time_overrides_use_400(client, params):
     response = client.get("/api/metrics/query", params={"metric_id": "sessions", **params})
     assert response.status_code == 400, response.text
     assert response.json()["error"]["code"] == "invalid_input"
+
+
+def test_observed_span_definition_and_empty_result(client):
+    response = client.get("/api/metrics/query", params={"metric_id": "observed_span_ms"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["definition"]["label"] == "observed span in imported data"
+    assert "idle time and resumptions" in body["definition"]["caveat"]
+    assert body["overall"]["value_text"] is None
+    assert body["overall"]["coverage"] == {"known": 0, "total": 0}
