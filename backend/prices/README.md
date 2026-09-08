@@ -6,12 +6,7 @@ priced coverage. Refresh explicitly, review the public projection, and retain pr
 versions for reproducibility. The schedule is an estimate, not an invoice: provider
 routing, tiers and cache TTL prices are not inferred.
 
-The initial real fetch was attempted on 2026-09-08 but this worktree's execution sandbox
-could not resolve `openrouter.ai` (`socket.gaierror: [Errno 8]`). **No fetched snapshot is
-present yet.** The application returns null cost, null schedule version and zero priced
-coverage with an explicit unavailable-schedule reason. Synthetic tests are not presented
-as public rate fixtures. Phase 3 remains blocked until the real snapshot is fetched,
-reviewed and committed.
+The first real snapshot, `openrouter-v1.json`, was fetched on 2026-09-08 from the host (the implementation sandbox had no DNS), reviewed (model ids and rates only; no credentials, descriptions or raw response) and committed.
 
 From the repository root, in an execution environment with DNS/network access:
 
