@@ -1,92 +1,33 @@
+import { useState } from 'react'
 import type { MappingIssue } from '../api/types'
 import { IconButton } from '../components'
 import type { DocEdit, DocPath } from './document'
-import { asString, type DocIndex, type FieldView, type Member, type RuleView } from './documentIndex'
-import { controlId, resolveIssue } from './issuePaths'
-
-/** The options this slice edits; the rest are shown as written until their controls land. */
-const EDITABLE = {
-  timestamp_format: ['iso8601', 'epoch_s', 'epoch_ms'],
-  on_missing: ['null', 'default', 'reject'],
-} as const
-type EditableOption = keyof typeof EDITABLE
+import { asString, type DocIndex, type FieldView, type RuleView } from './documentIndex'
+import { DocumentHead } from './DocumentHead'
+import { OptionsCell, SourceCell, TransformsCell, type CellContext } from './FieldCells'
+import { controlId, controlIdFor, resolveIssue } from './issuePaths'
+import { referrers } from './dsl'
+import { RuleHeader } from './RuleHeader'
 
 export interface FieldTableProps {
   index: DocIndex
+  identity: { name: string; source: string }
   issues: MappingIssue[] | null
   /** True when the issues describe the text on screen. */
   current: boolean
   disabled: boolean
-  onEdit: (edits: DocEdit[]) => void
+  onEdit: (edits: DocEdit[], identity?: { name: string; source: string }) => void
+  /** Say why a change was refused (a broken reference, a name already taken). */
+  onRefuse: (reason: string) => void
   /** Open the JSON view at this document path (a section the table cannot represent). */
   onOpenJson: (path: DocPath) => void
 }
 
-const NOT_SET = ''
-
-function OptionSelect({
-  rule,
-  field,
-  option,
-  member,
-  disabled,
-  onEdit,
-}: {
-  rule: RuleView
-  field: FieldView
-  option: EditableOption
-  member: Member
-  disabled: boolean
-  onEdit: (edits: DocEdit[]) => void
-}) {
-  const ruleName = asString(rule.id) ?? `rule ${rule.index + 1}`
-  const value = asString(member) ?? NOT_SET
-  const known = (EDITABLE[option] as readonly string[]).includes(value)
-  const id = controlId({ kind: 'field-option', ruleIndex: rule.index, field: field.name, option })
-  return (
-    <label className="dim">
-      <span className="visually-hidden">{`${option} of ${field.name} in ${ruleName}`}</span>
-      <select
-        id={id ?? undefined}
-        aria-label={`${option} of ${field.name} in ${ruleName}`}
-        value={known ? value : NOT_SET}
-        disabled={disabled}
-        onChange={event => {
-          const chosen = event.target.value
-          onEdit([
-            chosen === NOT_SET
-              ? { op: 'remove', path: member.path }
-              : { op: 'set', path: member.path, raw: JSON.stringify(chosen) },
-          ])
-        }}
-      >
-        <option value={NOT_SET}>{option} · not set</option>
-        {EDITABLE[option].map(choice => (
-          <option key={choice} value={choice}>{`${option}: ${choice}`}</option>
-        ))}
-        {member.raw !== null && !known && <option value={NOT_SET}>{`${option}: ${member.raw} (not editable here)`}</option>}
-      </select>
-    </label>
-  )
-}
-
-function SourceCell({ field }: { field: FieldView }) {
-  if (field.source.present.length === 0) return <span className="muted">Unavailable</span>
-  return (
-    <>
-      {field.source.present.map(kind => (
-        <span key={kind} className="mono" title={`${kind}, exactly as written`}>
-          {kind === 'path' ? '' : `${kind}: `}
-          {field.source.members[kind].raw}
-        </span>
-      ))}
-      {field.source.present.length > 1 && (
-        <span className="chip warn" title="the parser refuses a field with more than one source">
-          {field.source.present.join(' + ')}
-        </span>
-      )}
-    </>
-  )
+/** A new rule that is legal the moment it exists: an entity and its required identity field. */
+const SEEDS: Record<string, { entity: string; field: string }> = {
+  session: { entity: 'session', field: 'external_id' },
+  model_call: { entity: 'model_call', field: 'session_external_id' },
+  tool_call: { entity: 'tool_call', field: 'session_external_id' },
 }
 
 /**
@@ -94,8 +35,18 @@ function SourceCell({ field }: { field: FieldView }) {
  * its path, and every edit leaves as an edit batch for the planner: nothing here rebuilds a
  * document, so an untouched member keeps its bytes.
  */
-export function FieldTable({ index, issues, current, disabled, onEdit, onOpenJson }: FieldTableProps) {
+export function FieldTable({ index, identity, issues, current, disabled, onEdit, onRefuse, onOpenJson }: FieldTableProps) {
+  const [adding, setAdding] = useState<{ rule: RuleView; name: string } | null>(null)
   const shown = current ? (issues ?? []) : []
+
+  // an issue is attached to the control that owns it, for aria-invalid and aria-describedby
+  const byControl = new Map<string, MappingIssue[]>()
+  for (const issue of shown) {
+    const id = controlIdFor(issue.path)
+    if (id !== null) byControl.set(id, [...(byControl.get(id) ?? []), issue])
+  }
+  const issueId = (id: string | null | undefined) => (id != null && byControl.has(id) ? `${id}-issue` : undefined)
+
   const issuesFor = (ruleIndex: number, field?: string) =>
     shown.filter(issue => {
       const control = resolveIssue(issue.path)
@@ -103,8 +54,65 @@ export function FieldTable({ index, issues, current, disabled, onEdit, onOpenJso
       return field === undefined ? !('field' in control) : 'field' in control && control.field === field
     })
 
+  const contextFor = (rule: RuleView, field: FieldView): CellContext => ({
+    ruleName: asString(rule.id) ?? `rule ${rule.index + 1}`,
+    disabled,
+    onEdit: edits => onEdit(edits),
+    issueId,
+    idFor: (part, extra) =>
+      (part === 'opt'
+        ? controlId({ kind: 'field-option', ruleIndex: rule.index, field: field.name, option: extra as never })
+        : part === 'src'
+          ? controlId({ kind: 'field-source', ruleIndex: rule.index, field: field.name, part: (extra ?? 'path') as 'path' })
+          : controlId({ kind: 'transform', ruleIndex: rule.index, field: field.name, index: Number(extra) })) ?? '',
+  })
+
+  function addRule(entity: string) {
+    const seed = SEEDS[entity]
+    const taken = new Set(index.rules.map(rule => asString(rule.id)))
+    let id = seed.entity
+    for (let n = 2; taken.has(id); n += 1) id = `${seed.entity}_${n}`
+    const rule = { id, entity: seed.entity, select: '$', fields: { [seed.field]: { path: '$.change_me' } } }
+    onEdit(
+      index.rules.length === 0
+        ? [{ op: 'set', path: ['rules'], raw: JSON.stringify([rule]) }]
+        : [{ op: 'insert', path: ['rules'], index: index.rules.length, raw: JSON.stringify(rule) }],
+    )
+  }
+
+  function deleteRule(rule: RuleView) {
+    const held = referrers(index, asString(rule.id))
+    if (held.length > 0) {
+      onRefuse(
+        `${asString(rule.id) ?? `rule ${rule.index + 1}`} is the parent of ${held
+          .map(other => asString(other.id) ?? `rule ${other.index + 1}`)
+          .join(', ')}. Change those references first; deleting it here would leave them pointing at nothing.`,
+      )
+      return
+    }
+    onEdit([{ op: 'remove', path: rule.path }])
+  }
+
+  function addField(rule: RuleView, name: string) {
+    const trimmed = name.trim()
+    if (trimmed === '') return
+    if (rule.fields.some(field => field.name === trimmed)) {
+      onRefuse(`${asString(rule.id) ?? 'this rule'} already has a field named ${trimmed}.`)
+      return
+    }
+    const fieldsPath: DocPath = [...rule.path, 'fields']
+    onEdit(
+      rule.fields.length === 0 && index.malformed.every(entry => String(entry.path.at(-1)) !== 'fields')
+        ? [{ op: 'set', path: fieldsPath, raw: JSON.stringify({ [trimmed]: { path: '$.change_me' } }) }]
+        : [{ op: 'set', path: [...fieldsPath, trimmed], raw: '{"path": "$.change_me"}' }],
+    )
+    setAdding(null)
+  }
+
   return (
     <div className="field-table">
+      <DocumentHead index={index} identity={identity} disabled={disabled} onEdit={onEdit} issueId={issueId} />
+
       {index.duplicates.length > 0 && (
         <p className="notice warn" role="status">
           {index.duplicates.length} section{index.duplicates.length === 1 ? '' : 's'} of this document
@@ -112,7 +120,15 @@ export function FieldTable({ index, issues, current, disabled, onEdit, onOpenJso
           them: repair them in the JSON view.
         </p>
       )}
-      {index.rules.length === 0 && <p className="state-block">No rules yet. The assistant proposes them, or you can write them in the JSON view.</p>}
+      {index.malformed.map(entry => (
+        <p key={String(entry.path)} className="issue error">
+          {entry.reason}.{' '}
+          <button type="button" className="link" onClick={() => onOpenJson(entry.path)}>Repair it in the JSON view</button>.
+        </p>
+      ))}
+
+      {index.rules.length === 0 && <p className="state-block">No rules yet: add one, or ask the assistant to propose the mapping.</p>}
+
       {index.rules.map(rule => {
         const ruleName = asString(rule.id) ?? `rule ${rule.index + 1}`
         const invalid = rule.fields.filter(field => field.malformed !== null).length
@@ -134,21 +150,64 @@ export function FieldTable({ index, issues, current, disabled, onEdit, onOpenJso
                 className="btn small icon-only"
                 onClick={() => onOpenJson(rule.path)}
               />
+              <IconButton
+                name="trash"
+                label={`Delete ${ruleName}`}
+                className="btn small icon-only"
+                disabled={disabled}
+                onClick={() => deleteRule(rule)}
+              />
             </div>
-            {rule.malformed !== null && (
+
+            {rule.malformed !== null ? (
               <p className="issue error">
-                {rule.malformed}. <button type="button" className="link" onClick={() => onOpenJson(rule.path)}>Repair it in the JSON view</button>.
+                {rule.malformed}.{' '}
+                <button type="button" className="link" onClick={() => onOpenJson(rule.path)}>Repair it in the JSON view</button>.
               </p>
+            ) : (
+              <RuleHeader
+                rule={rule}
+                index={index}
+                disabled={disabled}
+                onEdit={onEdit}
+                onRefuse={onRefuse}
+                onAddField={target => setAdding({ rule: target, name: '' })}
+                issueId={issueId}
+              />
             )}
+
             {ruleIssues.length > 0 && (
               <ul className="issues" aria-label={`Issues of ${ruleName}`}>
                 {ruleIssues.map((issue, at) => (
-                  <li key={at} className={issue.severity === 'error' ? 'issue error' : 'issue warn'}>
+                  <li key={at} id={issueId(controlIdFor(issue.path)) ?? undefined} className={issue.severity === 'error' ? 'issue error' : 'issue warn'}>
                     <span className="mono code">{issue.code}</span> {issue.message}
                   </li>
                 ))}
               </ul>
             )}
+
+            {adding?.rule.index === rule.index && (
+              <form
+                className="row add-field"
+                onSubmit={event => {
+                  event.preventDefault()
+                  addField(rule, adding.name)
+                }}
+              >
+                <label className="dim">
+                  <span>New field</span>
+                  <input
+                    autoFocus
+                    aria-label={`Name of the new field in ${ruleName}`}
+                    value={adding.name}
+                    onChange={event => setAdding({ rule, name: event.target.value })}
+                  />
+                </label>
+                <button type="submit" className="btn small">Add</button>
+                <button type="button" className="btn small" onClick={() => setAdding(null)}>Cancel</button>
+              </form>
+            )}
+
             {rule.fields.length > 0 && (
               <div className="table-wrap">
                 <table className="data compact">
@@ -165,65 +224,59 @@ export function FieldTable({ index, issues, current, disabled, onEdit, onOpenJso
                   <tbody>
                     {rule.fields.map(field => {
                       const fieldIssues = issuesFor(rule.index, field.name)
+                      const context = contextFor(rule, field)
                       return (
                         <tr key={field.name}>
-                          <th scope="row" className="mono">{field.name}</th>
-                          <td>{field.malformed === null ? <SourceCell field={field} /> : <span className="muted">—</span>}</td>
-                          <td>
-                            {field.transforms === null && <span className="muted">—</span>}
-                            {field.transforms?.map(transform => (
-                              <span key={transform.index} className="chip mono" title={transform.raw}>
-                                {transform.name ?? transform.raw}
-                              </span>
-                            ))}
-                          </td>
-                          <td>
-                            {field.malformed !== null ? (
-                              <>
-                                <span className="issue error">{field.malformed}</span>{' '}
-                                <button type="button" className="link" onClick={() => onOpenJson(field.path)}>
-                                  Repair it in the JSON view
-                                </button>
-                              </>
-                            ) : (
-                              <div className="options">
-                                {(Object.keys(EDITABLE) as EditableOption[]).map(option => (
-                                  <OptionSelect
-                                    key={option}
-                                    rule={rule}
-                                    field={field}
-                                    option={option}
-                                    member={field.options[option]}
-                                    disabled={disabled}
-                                    onEdit={onEdit}
-                                  />
-                                ))}
-                                {Object.entries(field.options)
-                                  .filter(([option, member]) => member.raw !== null && !(option in EDITABLE))
-                                  .map(([option, member]) => (
-                                    <span key={option} className="chip mono" title={`${option}, as written; its control lands with the rest of the table`}>
-                                      {option}: {member.raw}
-                                    </span>
-                                  ))}
-                                {field.extras.map(extra => (
-                                  <span key={String(extra.path.at(-1))} className="chip" title="a key the DSL does not name; it is kept as written">
-                                    {String(extra.path.at(-1))}
+                          <th scope="row" className="mono">
+                            {field.name}
+                            <IconButton
+                              name="trash"
+                              label={`Remove ${field.name} from ${ruleName}`}
+                              className="btn small icon-only"
+                              disabled={disabled}
+                              onClick={() => onEdit([{ op: 'remove', path: field.path }])}
+                            />
+                          </th>
+                          {field.malformed !== null ? (
+                            <td colSpan={4}>
+                              <span className="issue error">{field.malformed}</span>{' '}
+                              <button type="button" className="link" onClick={() => onOpenJson(field.path)}>
+                                Repair it in the JSON view
+                              </button>
+                            </td>
+                          ) : (
+                            <>
+                              <td><SourceCell field={field} context={context} /></td>
+                              <td><TransformsCell field={field} context={context} /></td>
+                              <td>
+                                <OptionsCell field={field} context={context} />
+                                {field.extras.length > 0 && (
+                                  <span className="extras">
+                                    {field.extras.map(extra => (
+                                      <span key={String(extra.path.at(-1))} className="chip" title="a key the DSL does not name; it is kept as written">
+                                        {String(extra.path.at(-1))}: {extra.raw}
+                                      </span>
+                                    ))}
                                   </span>
-                                ))}
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            {fieldIssues.length === 0 ? (
-                              <span className="muted">—</span>
-                            ) : (
-                              fieldIssues.map((issue, at) => (
-                                <span key={at} className={issue.severity === 'error' ? 'issue error' : 'issue warn'} title={issue.message}>
-                                  <span className="mono code">{issue.code}</span>
-                                </span>
-                              ))
-                            )}
-                          </td>
+                                )}
+                              </td>
+                              <td>
+                                {fieldIssues.length === 0 ? (
+                                  <span className="muted">—</span>
+                                ) : (
+                                  fieldIssues.map((issue, at) => (
+                                    <span
+                                      key={at}
+                                      id={issueId(controlIdFor(issue.path)) ?? undefined}
+                                      className={issue.severity === 'error' ? 'issue error' : 'issue warn'}
+                                    >
+                                      <span className="mono code">{issue.code}</span> {issue.message}
+                                    </span>
+                                  ))
+                                )}
+                              </td>
+                            </>
+                          )}
                         </tr>
                       )
                     })}
@@ -234,6 +287,15 @@ export function FieldTable({ index, issues, current, disabled, onEdit, onOpenJso
           </section>
         )
       })}
+
+      <div className="row add-rule">
+        <span className="dim"><span>Add a rule</span></span>
+        {Object.keys(SEEDS).map(entity => (
+          <button key={entity} type="button" className="btn small" disabled={disabled} onClick={() => addRule(entity)}>
+            {entity}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

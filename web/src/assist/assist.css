@@ -92,5 +92,24 @@
 .field-table .options { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .field-table .options select { font-size: 0.8rem; }
 .field-table .chip.warn { color: var(--warn); }
-.field-table th[scope="row"] { text-align: left; font-weight: 500; }
+.field-table th[scope="row"] { text-align: left; font-weight: 500; white-space: nowrap; }
 .field-table .issues { margin: 0; }
+.field-table .state-block { margin-bottom: var(--sp-2); }
+
+/* every editable value: small, monospaced, and wide enough to read a path */
+.field-table input[type="text"], .document-head input[type="text"] { font-family: var(--mono); font-size: 0.8rem; min-width: 9ch; max-width: 24ch; }
+.field-table select.option, .document-head select.option { font-size: 0.8rem; max-width: 22ch; }
+.field-table input[aria-invalid="true"], .field-table select[aria-invalid="true"],
+.document-head input[aria-invalid="true"] { border-color: var(--bad); }
+.raw-json { display: inline-flex; align-items: center; gap: 4px; }
+.raw-json .issue { font-size: 0.7rem; }
+
+.rule-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--sp-2); }
+.rule-head .row, .document-head .row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.rule-head .dim, .document-head .dim { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; color: var(--ink-2); }
+.conditions, .unmapped { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.condition, .path-entry, .transform, .unit, .default, .source, .extras { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.document-head { border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-2); }
+.document-head .notes { align-items: flex-start; }
+.document-head textarea { flex: 1; min-width: 20ch; font: inherit; font-size: 0.8rem; padding: 4px; border: 1px solid var(--line); border-radius: var(--r-1); background: var(--bg); color: var(--ink); }
+.add-field, .add-rule { align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }

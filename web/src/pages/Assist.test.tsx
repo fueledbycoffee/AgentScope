@@ -90,14 +90,17 @@ describe('Assist page', () => {
     expect(run.context_sha256).toBe('plain-digest')
     expect(run.kind).toBe('propose')
     expect(run.message).toBe('Propose a mapping')
-    await waitFor(() => expect((screen.getByLabelText('Mapping document (JSON)') as HTMLTextAreaElement).value).toContain('"external_id"'))
+    // the proposal lands in the table, which is the default view now
+    await screen.findByRole('region', { name: 'Rule session' })
+    expect(screen.getByLabelText('path of external_id in session')).toHaveValue('$.session')
     // the thread's rendering needs a real layout (jsdom shows only the running indicator):
     // the receipt and the ambiguity text are asserted in e2e/assist.spec.ts
     // the outcome's validation counts: saving is possible without a second validate call
     expect(screen.getByRole('button', { name: 'Save a mapping revision' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Preview the import' })).toBeDisabled()
     expect(screen.getAllByText('Save a revision of this exact document first').length).toBeGreaterThan(0)
-    // an edit invalidates it again
+    // an edit invalidates it again; the JSON view is one icon away
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
     fireEvent.change(screen.getByLabelText('Mapping document (JSON)'), { target: { value: '{"dsl_version": 1}' } })
     expect(screen.getByRole('button', { name: 'Save a mapping revision' })).toBeDisabled()
     expect(screen.getAllByText('Validate the document first').length).toBeGreaterThan(0)
@@ -126,11 +129,12 @@ describe('Assist page', () => {
   it('switches to the field table, edits one option through the planner and keeps the rest of the text', async () => {
     renderPage()
     await screen.findByRole('complementary', { name: 'Evidence' })
-    // the JSON view is the default until the table covers the whole DSL
-    expect(screen.getByRole('button', { name: 'JSON document' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'Field table' })).toHaveAttribute('aria-pressed', 'false')
+    // the table leads now that it covers the DSL; the JSON view is one icon away
+    expect(screen.getByRole('button', { name: 'Field table' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'JSON document' })).toHaveAttribute('aria-pressed', 'false')
 
     const document = '{"name": "draft", "source": "assist", "big": 9007199254740993, "rules": [{"id": "r", "entity": "session", "fields": {"started_at": {"path": "$.ts", "timestamp_format": "epoch_ms"}}}]}'
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
     fireEvent.change(screen.getByLabelText('Mapping document (JSON)'), { target: { value: document } })
     fireEvent.click(screen.getByRole('button', { name: 'Field table' }))
     expect(screen.getByRole('region', { name: 'Rule r' })).toBeInTheDocument()
@@ -147,6 +151,7 @@ describe('Assist page', () => {
   it('keeps the JSON view when the document cannot be shown as rows, and says why', async () => {
     renderPage()
     await screen.findByRole('complementary', { name: 'Evidence' })
+    fireEvent.click(screen.getByRole('button', { name: 'JSON document' }))
     fireEvent.change(screen.getByLabelText('Mapping document (JSON)'), { target: { value: '{"rules": [1,' } })
     const table = screen.getByRole('button', { name: 'Field table' })
     expect(table).toBeDisabled()

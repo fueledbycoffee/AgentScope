@@ -75,7 +75,8 @@ export default function AssistPage() {
   const [profile, setProfile] = useState<FieldProfile | null>(null)
   const [profileError, setProfileError] = useState<unknown>()
   const [drawerRequested, setDrawerOpen] = useState(false)
-  const [view, setView] = useState<DocumentView>('json')
+  // the table covers the DSL, so it leads; the JSON view stays one icon away for repairs
+  const [view, setView] = useState<DocumentView>('table')
   const [focusRequest, setFocusRequest] = useState<{ path: string; nonce: number } | null>(null)
   // the drawer opens by itself when a sample needs acknowledging
   const drawerOpen = drawerRequested || state.busy === 'awaiting_ack'
@@ -179,7 +180,9 @@ export default function AssistPage() {
   // table covers the whole DSL, so nothing that exists today loses its editor
   const index = useMemo(() => indexDocument(state.documentText), [state.documentText])
   const documentLines = state.documentText ? state.documentText.split('\n').length : 0
-  const tableProblem = index.problem === null ? null : `The field table needs a JSON object: ${index.problem}`
+  // an empty document is not a problem, it is a starting point: the table offers the skeleton
+  const emptyDocument = state.documentText.trim() === ''
+  const tableProblem = index.problem === null || emptyDocument ? null : `The field table needs a JSON object: ${index.problem}`
   // a document that stops being addressable falls back to the repair view during render, so the
   // table is never asked to show rows it cannot build
   const shownView: DocumentView = tableProblem === null ? view : 'json'
@@ -247,13 +250,36 @@ export default function AssistPage() {
                 focusRequest={focusRequest}
                 onNotFound={path => update(s => ({ ...s, notices: [...s.notices, { kind: 'info', text: `${path || '$'} has no line in this document; it is missing rather than wrong.` }] }))}
               />
+            ) : emptyDocument ? (
+              <div className="field-table">
+                <p className="state-block">
+                  No document yet. Ask the assistant for a proposal, or start one here and fill it in.
+                </p>
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={state.busy !== 'none'}
+                  onClick={() => update(s => setDocumentText(s, JSON.stringify({
+                    dsl_version: 1,
+                    target_schema_version: 1,
+                    name: s.identity.name,
+                    source: s.identity.source,
+                    input_format: 'jsonl',
+                    rules: [],
+                  }, null, 2)))}
+                >
+                  Start a mapping document
+                </button>
+              </div>
             ) : (
               <FieldTable
                 index={index}
+                identity={state.identity}
                 issues={state.validation?.issues ?? null}
                 current={state.validation?.documentVersion === state.documentVersion}
                 disabled={state.busy !== 'none'}
-                onEdit={edits => update(s => applyDocumentEdits(s, edits))}
+                onEdit={(edits, nextIdentity) => update(s => applyDocumentEdits(s, edits, nextIdentity))}
+                onRefuse={reason => update(s => ({ ...s, notices: [...s.notices, { kind: 'warn', text: reason }] }))}
                 onOpenJson={(path: DocPath) => jumpTo(showPath(path))}
               />
             )}
