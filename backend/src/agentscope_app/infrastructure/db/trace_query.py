@@ -104,6 +104,8 @@ def _child_predicates(table: Any, grain: EntityGrain, scope: TraceScope) -> list
         clauses.append(table.c.started_at >= scope.started_from)
     if scope.started_before is not None:
         clauses.append(table.c.started_at < scope.started_before)
+    if scope.started_through is not None:
+        clauses.append(table.c.started_at <= scope.started_through)
     if scope.timestamp_missing:
         clauses.append(table.c.started_at.is_(None))
     if grain == EntityGrain.MODEL_CALL:
@@ -132,6 +134,7 @@ def _witness(session_id: Any, grain: EntityGrain, scope: TraceScope) -> ColumnEl
             scope,
             started_from=scope.witness_started_from,
             started_before=scope.witness_started_before,
+            started_through=scope.witness_started_through,
             timestamp_missing=scope.witness_timestamp_missing,
         )
     return exists(
@@ -280,7 +283,7 @@ class SqlAlchemyTraceQuery:
         if not scope.has_time_bounds or grain == EntityGrain.SESSION:
             return 0
         table = VIEWS[grain]
-        non_time = replace(scope, started_from=None, started_before=None)
+        non_time = replace(scope, started_from=None, started_before=None, started_through=None)
         return int(
             self._s.scalar(
                 select(func.count())

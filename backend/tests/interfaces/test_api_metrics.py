@@ -444,3 +444,53 @@ def test_unknown_timestamp_population_round_trips_tool_witness_over_http(client,
         tokens = query("input_tokens", scope)
         for part in tokens["overall"]["semantics_partitions"]:
             assert query("sessions", part["drill_scope"])["overall"]["value_text"] == "1"
+
+
+@pytest.mark.parametrize("stamp", ["0001-01-01T00:00:00Z", "9999-12-31T23:59:59.999999Z"])
+def test_limit_day_scopes_and_inclusive_witnesses_round_trip_over_http(client, stamp):
+    container = client.app.state.container
+    mapping_id = container.list_mappings.execute()[0].id
+    record = json.loads(_tracelab_line("limit"))
+    record["timing_events"] = [{"timestamp": stamp}]
+    record["tools"] = [{"tool_name": "shell", "emitted_at": stamp}]
+    info = container.store_upload.execute("limit.jsonl", (json.dumps(record) + "\n").encode())
+    report = container.commit_import.execute("tracelab", [FileBinding(info.upload_id, mapping_id)])
+    assert report.records["accepted"] == 1 and report.reject_count == 0
+
+    def query(metric, scope, groups=()):
+        params = {k: v for k, v in scope.items() if v is not None}
+        response = client.get(
+            "/api/metrics/query", params={**params, "metric_id": metric, "group_by": groups}
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    for initial in [{}, {"started_from": stamp, "started_through": stamp}]:
+        result = query("model_calls", initial, ["started_day"])
+        assert result["buckets"][0]["keys"] == [stamp[:10]]
+        drill = result["buckets"][0]["drill_scope"]
+        if stamp.startswith("9999"):
+            assert drill["started_before"] is None
+            assert drill["started_through"] == stamp
+        for target in ["model_calls", "tool_calls", "sessions", "imports_in_scope"]:
+            switched = query(target, drill)
+            assert switched["overall"]["value_text"] == "1"
+            assert query(target, switched["scope"])["overall"]["value_text"] == "1"
+            if target == "tool_calls":
+                assert switched["scope"]["witness_started_through"] == drill["started_through"]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"started_through": "2026-01-01T00:00:00"},
+        {"started_from": "2026-01-02T00:00:00Z", "started_through": "2026-01-01T00:00:00Z"},
+        {"witness_started_through": "9999-12-31T23:59:59Z"},
+        {"started_through": "0001-01-01T00:00:00+01:00"},
+        {"started_through": "9999-12-31T23:59:59-01:00"},
+    ],
+)
+def test_invalid_inclusive_bounds_use_400(client, params):
+    response = client.get("/api/metrics/query", params={"metric_id": "model_calls", **params})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_input"

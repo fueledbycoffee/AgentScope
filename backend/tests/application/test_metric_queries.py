@@ -136,3 +136,47 @@ def test_switching_chart_grains_preserves_the_previous_activity_time_as_witness(
     assert tool_drill.activity_grain == EntityGrain.TOOL_CALL
     assert tool_drill.witness_started_from == datetime(2026, 1, 2, tzinfo=UTC)
     assert tool_drill.witness_started_before == datetime(2026, 1, 3, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("year,month,day", [(1, 1, 1), (9999, 12, 31)])
+def test_inclusive_day_drills_preserve_single_instant_and_witness_bounds(year, month, day):
+    noon = datetime(year, month, day, 12, tzinfo=UTC)
+    scope = TraceScope(started_from=noon, started_through=noon)
+    spec = MetricQuerySpec(REGISTRY.get("model_calls"), scope, (Dimension.STARTED_DAY,))
+    drill = drill_scope(spec, (noon.date().isoformat(),))
+    assert drill.started_from == drill.started_through == noon
+    switched = MetricQuerySpec(REGISTRY.get("tool_calls"), drill).scope
+    assert switched.witness_started_from == switched.witness_started_through == noon
+    assert switched.witness_required
+    with pytest.raises(InvalidInputError):
+        MetricQuerySpec(REGISTRY.get("unknown_timestamps"), switched)
+
+
+@pytest.mark.parametrize("prefix", ["", "witness_"])
+@pytest.mark.parametrize("field", ["started_from", "started_before", "started_through"])
+@pytest.mark.parametrize("stamp", ["0001-01-01T00:00:00+01:00", "9999-12-31T23:59:59-01:00"])
+def test_scope_rejects_unrepresentable_utc_bounds(prefix, field, stamp):
+    with pytest.raises(InvalidInputError, match="representable UTC range"):
+        TraceScope(
+            **{prefix + field: datetime.fromisoformat(stamp)},
+            activity_grain=EntityGrain.MODEL_CALL,
+            witness_time_override=bool(prefix),
+        )
+
+
+@pytest.mark.parametrize("prefix", ["", "witness_"])
+def test_inclusive_bounds_reject_naive_reversed_and_missing_time_ranges(prefix):
+    common = {"activity_grain": EntityGrain.MODEL_CALL, "witness_time_override": bool(prefix)}
+    for bounds in [
+        {prefix + "started_through": datetime(2026, 1, 1)},
+        {
+            prefix + "started_from": datetime(2026, 1, 2, tzinfo=UTC),
+            prefix + "started_through": datetime(2026, 1, 1, tzinfo=UTC),
+        },
+        {
+            prefix + "timestamp_missing": True,
+            prefix + "started_through": datetime.max.replace(tzinfo=UTC),
+        },
+    ]:
+        with pytest.raises(InvalidInputError):
+            TraceScope(**common, **bounds)

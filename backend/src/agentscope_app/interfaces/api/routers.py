@@ -271,6 +271,7 @@ def query_metric(
     tool: str | None = None,
     started_from: datetime | None = None,
     started_before: datetime | None = None,
+    started_through: datetime | None = None,
     import_id: str | None = None,
     activity_grain: EntityGrain | None = None,
     token_semantics: str | None = None,
@@ -284,6 +285,7 @@ def query_metric(
     witness_required: bool = False,
     witness_started_from: datetime | None = None,
     witness_started_before: datetime | None = None,
+    witness_started_through: datetime | None = None,
     witness_timestamp_missing: bool = False,
 ) -> MetricQueryResult:
     allowed = {
@@ -295,6 +297,7 @@ def query_metric(
         "tool",
         "started_from",
         "started_before",
+        "started_through",
         "import_id",
         "activity_grain",
         "token_semantics",
@@ -308,6 +311,7 @@ def query_metric(
         "witness_required",
         "witness_started_from",
         "witness_started_before",
+        "witness_started_through",
         "witness_timestamp_missing",
     }
     for name in request.query_params:
@@ -322,6 +326,7 @@ def query_metric(
         tool=tool,
         started_from=started_from,
         started_before=started_before,
+        started_through=started_through,
         import_id=import_id,
         activity_grain=activity_grain,
         token_semantics=token_semantics,
@@ -335,6 +340,7 @@ def query_metric(
         witness_required=witness_required,
         witness_started_from=witness_started_from,
         witness_started_before=witness_started_before,
+        witness_started_through=witness_started_through,
         witness_timestamp_missing=witness_timestamp_missing,
     )
     return _c(request).query_metric.execute(metric_id, scope, tuple(group_by or ()))

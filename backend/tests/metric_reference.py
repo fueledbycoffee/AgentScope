@@ -84,6 +84,8 @@ def population(data, grain, scope):
             return False
         if scope.started_before is not None and (stamp is None or stamp >= scope.started_before):
             return False
+        if scope.started_through is not None and (stamp is None or stamp > scope.started_through):
+            return False
         if scope.timestamp_missing and stamp is not None:
             return False
         if kind == "model_call":
@@ -138,7 +140,7 @@ def population(data, grain, scope):
             if scope.activity_grain and not matches[scope.activity_grain]:
                 continue
             if (
-                (scope.started_from or scope.started_before)
+                (scope.started_from or scope.started_before or scope.started_through)
                 and not matches["model_call"]
                 and not matches["tool_call"]
             ):
@@ -169,6 +171,7 @@ def oracle(data, definition, scope, group_by=()):
                 scope.tool is not None,
                 scope.started_from,
                 scope.started_before,
+                scope.started_through,
                 scope.activity_grain,
                 scope.token_semantics is not None,
                 scope.model_is_unknown,

@@ -93,6 +93,11 @@ SCOPES = [
     ),
     TraceScope(model="m", started_from=datetime(2026, 1, 2, tzinfo=UTC)),
     TraceScope(tool="read", started_before=datetime(2026, 1, 2, tzinfo=UTC)),
+    TraceScope(started_through=datetime(2026, 1, 1, tzinfo=UTC)),
+    TraceScope(
+        started_from=datetime(2026, 1, 1, tzinfo=UTC),
+        started_through=datetime(2026, 1, 1, tzinfo=UTC),
+    ),
 ]
 
 
@@ -876,4 +881,77 @@ def test_every_returned_day_scope_preserves_partitions_through_every_population(
                             followed = query.execute(target, part.drill_scope).overall
                             assert followed.coverage == part.coverage, context
                             assert followed.value_text == part.value_text, context
+    engine.dispose()
+
+
+@pytest.mark.parametrize("metric_id", ["model_calls", "input_tokens", "tool_calls"])
+def test_day_buckets_at_representable_limits_round_trip_from_import(tmp_path, metric_id):
+    import json
+
+    from agentscope_app.application.use_cases.queries import QueryMetric
+
+    engine = create_engine_for(f"sqlite:///{tmp_path / 'date-limits.sqlite3'}")
+    run_migrations(engine)
+    factory, upload, commit, _, _ = _pipeline(engine, tmp_path)
+    stamps = [
+        None,
+        "0001-01-01T00:00:00Z",
+        "0001-01-01T12:00:00Z",
+        "0001-01-01T23:59:59.999999Z",
+        "0001-01-02T00:00:00Z",
+        "9999-12-30T23:59:59.999999Z",
+        "9999-12-31T00:00:00Z",
+        "9999-12-31T12:00:00Z",
+        "9999-12-31T23:59:59.999999Z",
+    ]
+    records = []
+    for index, stamp in enumerate(stamps):
+        record = json.loads(_tracelab_line(str(index)))
+        record["timing_events"] = [{"timestamp": stamp}] if stamp else []
+        record["tools"] = [{"tool_name": "shell", "emitted_at": stamp}]
+        records.append(json.dumps(record) + "\n")
+    info = upload.execute("limits.jsonl", "".join(records).encode())
+    report = commit.execute("tracelab", [FileBinding(info.upload_id, "map_tracelab")])
+    assert report.status == "committed" and report.records["accepted"] == len(stamps)
+    assert report.reject_count == 0
+    query = QueryMetric(factory)
+    result = query.execute(metric_id, group_by=(Dimension.STARTED_DAY,))
+    assert result.overall.coverage.total == len(stamps)
+    assert {b.keys: b.result.coverage.total for b in result.buckets} == {
+        (None,): 1,
+        ("0001-01-01",): 3,
+        ("0001-01-02",): 1,
+        ("9999-12-30",): 1,
+        ("9999-12-31",): 3,
+    }
+    for bucket in result.buckets:
+        assert (
+            query.execute(metric_id, bucket.drill_scope).overall.coverage == bucket.result.coverage
+        )
+        assert query.execute("sessions", bucket.drill_scope).overall.value_text == str(
+            bucket.result.coverage.total
+        )
+        for part in bucket.result.semantics_partitions:
+            assert query.execute(metric_id, part.drill_scope).overall.coverage == part.coverage
+        if bucket.keys == ("9999-12-31",):
+            assert bucket.drill_scope.started_before is None
+            assert bucket.drill_scope.started_through == datetime.max.replace(tzinfo=UTC)
+        if bucket.keys == ("0001-01-01",):
+            assert bucket.drill_scope.started_from == datetime.min.replace(tzinfo=UTC)
+            assert bucket.drill_scope.started_before == datetime(1, 1, 2, tzinfo=UTC)
+    for year, month, day in [(1, 1, 1), (9999, 12, 31)]:
+        noon = datetime(year, month, day, 12, tzinfo=UTC)
+        bounded = query.execute(
+            metric_id,
+            TraceScope(started_from=noon, started_through=noon),
+            (Dimension.STARTED_DAY,),
+        )
+        assert bounded.overall.coverage.total == 1
+        assert bounded.excluded_unknown_timestamps == 1
+        drill = bounded.buckets[0].drill_scope
+        assert drill.started_from == drill.started_through == noon
+        for target in ["model_calls", "tool_calls"]:
+            switched = query.execute(target, drill)
+            assert switched.overall.value_text == "1"
+            assert query.execute("sessions", switched.scope).overall.value_text == "1"
     engine.dispose()

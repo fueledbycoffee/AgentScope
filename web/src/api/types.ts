@@ -81,6 +81,7 @@ export interface MetricDrillScope {
   tool: string | null
   started_from: string | null
   started_before: string | null
+  started_through: string | null
   import_id: string | null
   session_ids: string[] | null
   activity_grain: 'model_call' | 'tool_call' | null
@@ -95,6 +96,7 @@ export interface MetricDrillScope {
   witness_required: boolean
   witness_started_from: string | null
   witness_started_before: string | null
+  witness_started_through: string | null
   witness_timestamp_missing: boolean
 }
 export interface MetricDistribution {

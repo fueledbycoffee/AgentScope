@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from agentscope_app.application.dto import Coverage, Metric, SemanticsPartition, TokenCoverage
 from agentscope_app.application.errors import InvalidInputError
@@ -32,6 +32,7 @@ class TraceScope:
     tool: str | None = None
     started_from: datetime | None = None
     started_before: datetime | None = None
+    started_through: datetime | None = None
     import_id: str | None = None
     session_ids: tuple[str, ...] | None = None
     activity_grain: EntityGrain | None = None
@@ -47,22 +48,33 @@ class TraceScope:
     witness_required: bool = False
     witness_started_from: datetime | None = None
     witness_started_before: datetime | None = None
+    witness_started_through: datetime | None = None
     witness_timestamp_missing: bool = False
 
     def __post_init__(self) -> None:
         for name in (
             "started_from",
             "started_before",
+            "started_through",
             "witness_started_from",
             "witness_started_before",
+            "witness_started_through",
         ):
             value = getattr(self, name)
             if value is not None:
                 if value.tzinfo is None or value.utcoffset() is None:
                     raise invalid(name, "Date bounds must be timezone-aware")
-                object.__setattr__(self, name, value.astimezone(UTC))
+                try:
+                    normalized = value.astimezone(UTC)
+                except OverflowError:
+                    raise invalid(
+                        name, "Date bound is outside the representable UTC range"
+                    ) from None
+                object.__setattr__(self, name, normalized)
         if self.started_from and self.started_before and self.started_from >= self.started_before:
             raise invalid("started_before", "Date range must be increasing")
+        if self.started_from and self.started_through and self.started_from > self.started_through:
+            raise invalid("started_through", "Inclusive date range must be nondecreasing")
         if self.activity_grain not in (None, EntityGrain.MODEL_CALL, EntityGrain.TOOL_CALL):
             raise invalid("activity_grain", "Activity requires a child grain")
         for label in ("model", "agent"):
@@ -73,7 +85,9 @@ class TraceScope:
         if self.timestamp_missing and (self.has_time_bounds or self.activity_grain is None):
             raise invalid("timestamp_missing", "Missing time needs a grain and no time bounds")
         witness_bounds = (
-            self.witness_started_from is not None or self.witness_started_before is not None
+            self.witness_started_from is not None
+            or self.witness_started_before is not None
+            or self.witness_started_through is not None
         )
         if self.witness_time_override and self.activity_grain is None:
             raise invalid("witness_time_override", "Witness time override needs an activity grain")
@@ -90,9 +104,22 @@ class TraceScope:
         ):
             raise invalid("witness_started_before", "Witness date range must be increasing")
 
+        if (
+            self.witness_started_from
+            and self.witness_started_through
+            and self.witness_started_from > self.witness_started_through
+        ):
+            raise invalid(
+                "witness_started_through", "Inclusive witness range must be nondecreasing"
+            )
+
     @property
     def has_time_bounds(self) -> bool:
-        return self.started_from is not None or self.started_before is not None
+        return (
+            self.started_from is not None
+            or self.started_before is not None
+            or self.started_through is not None
+        )
 
     @property
     def has_model_predicate(self) -> bool:
@@ -179,6 +206,7 @@ def _activity_scope(scope: TraceScope, grain: EntityGrain) -> TraceScope:
             witness_required=True,
             witness_started_from=scope.started_from,
             witness_started_before=scope.started_before,
+            witness_started_through=scope.started_through,
             witness_timestamp_missing=scope.timestamp_missing,
         )
     return replace(scope, activity_grain=grain)
@@ -217,6 +245,7 @@ def drill_scope(
                         witness_time_override=True,
                         witness_started_from=scope.started_from,
                         witness_started_before=scope.started_before,
+                        witness_started_through=scope.started_through,
                         witness_timestamp_missing=scope.timestamp_missing,
                         activity_grain=spec.definition.grain,
                     )
@@ -226,11 +255,20 @@ def drill_scope(
                     )
                 else:
                     start = datetime.fromisoformat(key).replace(tzinfo=UTC)
-                    end = start + timedelta(days=1)
+                    before, through = scope.started_before, scope.started_through
+                    # Never step outside datetime's range: the first day starts at
+                    # datetime.min, and the final day ends inclusively at datetime.max.
+                    if start.date() < date.max:
+                        end = start + timedelta(days=1)
+                        before = min(end, before or end)
+                    else:
+                        end = datetime.max.replace(tzinfo=UTC)
+                        through = min(end, through or end)
                     scope = replace(
                         scope,
                         started_from=max(start, scope.started_from or start),
-                        started_before=min(end, scope.started_before or end),
+                        started_before=before,
+                        started_through=through,
                         activity_grain=spec.definition.grain,
                     )
     if semantics is not None:

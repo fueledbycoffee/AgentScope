@@ -13,7 +13,13 @@ tests assert child sources agree. View tables use private SQLAlchemy metadata, n
 `Base.metadata`. All timestamp columns bind through `UtcDateTime`, including comparisons
 with offset-aware bounds. UTC day grouping is SQLite `date(started_at)` and returns an ISO
 date string or null. Day drills use timezone-aware UTC midnight and next midnight,
-intersected with any existing partial-day range.
+intersected with any existing partial-day range. Before adding a day, the assembler
+checks the representable limit: `9999-12-31` ends inclusively at `datetime.max` via
+`started_through`, while `0001-01-01` starts at `datetime.min` without subtracting a day.
+SQL applies `<=` to inclusive bounds and `<` to exclusive bounds; both can constrain a
+drill, including a single-instant interval. UTC normalization rejects out-of-range
+bounds with a typed input error. Inclusive bounds are also preserved in sibling witnesses
+(`witness_started_through`) and cleared from the current grain for missing-time exclusions.
 
 | Grain | Canonical field | View column |
 | --- | --- | --- |
@@ -95,7 +101,8 @@ explicit witness-time override, preserving the original time bounds/missing-time
 for other-grain sibling witnesses while narrowing the activity grain to the bucket day.
 Without it, a model-day drill under an existing tool filter could silently lose sessions
 whose tool happened on a different day. #11 must forward `witness_time_override`,
-`witness_started_from`, `witness_started_before`, `witness_timestamp_missing`, and `witness_required` from the
+`witness_started_from`, `witness_started_before`, `witness_started_through`,
+`witness_timestamp_missing`, and `witness_required` from the
 returned scope. All child queries normalize their activity grain before population predicates are applied.
 A switch retains the previous grain as a required sibling witness, even without model/tool
 label filters; `witness_required` records that requirement in the returned scope.
