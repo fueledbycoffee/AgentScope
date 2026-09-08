@@ -88,8 +88,14 @@ test('day-1 path: guided import, deep links, report, re-import leaves totals unc
   // A completed stop backtracks and transfers focus; rerunning restores Preview.
   await progress.getByRole('button', { name: 'Mapping' }).click()
   await expect(page.getByRole('heading', { name: 'Choose how to read it' })).toBeFocused()
+  // wait for the rerun's own response and its state update: the earlier preview is still stored,
+  // so a truthy poll would pass before this request lands and its persistence effect could later
+  // overwrite the storage edit below (adversarial review of #62)
+  const rerun = page.waitForResponse(r => r.url().includes('/api/imports/preview') && r.ok())
   await page.getByRole('button', { name: 'Run a dry run' }).click()
+  await rerun
   await expect(page.getByRole('heading', { name: 'Dry run on up to 200 records per file' })).toBeFocused()
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 0)))))
 
   // Back/Forward clamps a newly mixed-source batch to Mapping with its reason.
   await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem('agentscope-import-page') ?? '{}').entries?.[0]?.preview)).toBeTruthy()
