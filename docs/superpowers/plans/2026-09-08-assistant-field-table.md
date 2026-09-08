@@ -1,7 +1,10 @@
 # Plan: assistant field table, lossless numeric codec, report entry point (issue #39)
 
-Revision 2, after the Codex review `2026-09-08-assistant-field-table-review-codex.md` (BLOCK,
-7 P1 · 7 P2 · 1 P3). Revision 1 is commit `b2bc065`.
+Revision 3. Revision 1 is commit `b2bc065`; revision 2 (`0bb38d6`) answered the first Codex
+review `2026-09-08-assistant-field-table-review-codex.md` (BLOCK, 7 P1 · 7 P2 · 1 P3) in §2;
+revision 3 answers the second-pass review `…-review-codex-2.md` (BLOCK; three P1s left open there,
+three further findings) in §11 and in the sections those findings name. The owner has decided that
+#39 stays in v0.1.0 with a go/no-go after step 1 (§10).
 
 Follow-up to #15. The v0.1.0 slice shipped the assistant with a JSON editor
 (`docs/superpowers/plans/2026-09-07-assistant-ui.md`, revision 2, §1); this issue is that plan's
@@ -50,7 +53,7 @@ accepted**; three carry a correction to the finding's own wording, marked *nuanc
 2. **[P1] Grammar, decoded keys, duplicate keys, offset units.** Accepted, verified: the current
    tokenizer (`jsonText.ts:13-42`) has no number/escape grammar and no structural check, and
    `lineFor` compares raw token spelling with `JSON.stringify(segment)` (`:164`), so
-   `{"x": …}` is unreachable and duplicate keys split `JSON.parse` (last) from `lineFor`
+   `{"\u0078": …}` is unreachable and duplicate keys split `JSON.parse` (last) from `lineFor`
    (first). §3.1 adds a real single-value grammar validator, decoded-key comparison with original
    spans, a duplicate-decoded-key repair policy, and states offsets as **UTF-16 code units**
    (`String.prototype.slice` semantics), not bytes.
@@ -199,7 +202,7 @@ export function describeEdits(edits: DocEdit[]): string
 
 `scanDocument` builds a tree of **spans** over the lexemes: for each object, its members with
 decoded key, key span, value span and member span; for each array, its element spans. Keys are
-matched **decoded** (`decodeJsonString`), so `{"x": 1}` is addressable as `x`, and the
+matched **decoded** (`decodeJsonString`), so `{"\u0078": 1}` is addressable as `x`, and the
 original spelling is preserved because only spans are ever spliced.
 
 **Duplicate decoded keys** in any object make that object *unaddressable*: `scanDocument` records
@@ -213,8 +216,22 @@ object.
 
 1. All paths address the **input snapshot**; the plan is computed once against it.
 2. Edits are grouped by the container that owns them. Conflicts abort the whole plan with a
-   problem: two operations on one path, an operation under a path that another operation removes,
-   a rename collision, an insert index out of range.
+   problem: two operations on one path; **any edit strictly beneath a whole-value operation**
+   (`set`, `remove`, `insert`, `move`) on an ancestor, because the ancestor's value would silently
+   discard it — `set unit = {"from":"us","to":"ms"}` together with `set unit.from = "min"` is a
+   conflict, not a merge; an insert or move index out of range; two array operations claiming one
+   destination index. A `rename` is a key-level operation on the parent's member list and
+   therefore does **not** conflict with edits beneath it: the child renders first and the renamed
+   key carries the child-edited text.
+2b. **Final-key check.** For every touched object the planner computes the decoded keys of its
+   final member list (after removes, renames and created members) and aborts on any duplicate, so
+   a batch can never introduce the duplicate-key state §3.1 sends to repair — this covers renaming
+   both `a` and `b` to an absent `c`, which no input-key check would catch.
+2c. **Array semantics.** `insert` and `move` indices address the **input snapshot's** order. The
+   final order is: remove removed elements, then place each moved element at its destination index
+   in the post-removal order (in the order the moves appear in the batch), then apply insertions at
+   their indices in the post-move order. Two operations claiming one destination index abort. A
+   moved element carries its own raw text, including any child edit applied to it.
 3. Containers are rendered **innermost first**. Rendering a container emits one replacement string
    for its span from its member list after removes → renames → sets → inserts/moves, reusing the
    original raw text of every untouched member and of every moved value (never a re-serialisation
@@ -311,6 +328,17 @@ in the same plan, the document's `name`/`source` when a document exists and is a
 the document is malformed the fields still edit the identity and a notice says the two are out of
 sync and why `revise` is blocked (`assistRuntime.ts:174-176`).
 
+**Identity and undo move together** (second-pass finding 9). The runtime's undo today stores text
+only (`assistRuntime.ts:53,89-117`), so an identity rename followed by Undo would restore the old
+document beside the new identity and break the next `revise`. `undo` therefore becomes
+`{ documentText: string; identity: { name: string; source: string } } | null` and `undoDocument`
+restores both. The same rule governs every accepted document replacement: applying a proposal, a
+report bootstrap load, and a JSON-view edit of `name`/`source` all set `state.identity` from the
+document's head when it is addressable, in the same state transition. While the document is
+malformed the user's identity is kept as they typed it and nothing is inferred; when the JSON is
+repaired the head's values win and the notice clears. No second, hidden identity repair is ever
+required of the user.
+
 `WhereEditor.tsx`: `path`, `op` (`eq/ne/in/not_in/exists/not_exists`) and a value editor that is
 **raw JSON by default** — objects, nested lists and large integers are all first-class — with a
 convenience type picker (string / number / boolean / null) that only writes the corresponding
@@ -336,31 +364,37 @@ export function suggestionsFor(a: Ambiguity, index: DocIndex, field: DocPath):
   { ready: Suggestion[] } | { operationChoice: Suggestion[][] } | { prose: string }
 ```
 
-**Targeting** (unchanged from revision 1, which the review accepted): an exact document path, then
-an `entity.field` pair resolved against the rules that declare that entity *and* that field, then
-a bare field name unique across rules. Several matches render a rule picker and become executable
-after the user picks; no match stays prose.
+**Targeting.** A target is normalised into an optional **option** and a **field**: a path ending in
+a DSL option name (`rules[0].fields.x.on_invalid`) keeps that option and resolves the field from
+the prefix; otherwise it is a field target — an exact field path, then an `entity.field` pair
+resolved against the rules that declare that entity *and* that field, then a bare field name
+unique across rules. Several matching rules render a rule picker; no match stays prose.
 
-**Operation** never guessed (finding 5). For a resolved field, the candidate set is
-`{(option, value) : option is a DSL option of a field, value is a legal value of that option's
-closed domain and equals the option string}`. Then:
+**Operation is never inferred from an option string** (second-pass finding 5):
 
-- exactly one candidate → an executable chip;
-- several candidates (`null` → `on_missing` or `on_invalid`; `min` → `bounds` or `unit.from`;
-  `true` → `empty_as_missing`) → a **choice menu** naming each operation with its
-  `describeEdits()` text, so the user picks the operation; nothing is applied until they do;
-- none → prose with "insert into the message", as today.
+- **Target names the option** → the value is matched against *that* option's domain only. One
+  match is an executable chip; no match is prose.
+- **Target names only a field** → the user must pick a **named operation**, always, even when only
+  one option's domain contains the value. The menu lists each candidate operation with its
+  `describeEdits()` text; nothing is applied until the user picks. This is why `true`,
+  `reject`, `null` and `min` cannot be auto-applied: the plan no longer has a rule that would.
 
 Domains in this slice: `timestamp_format` `{iso8601, epoch_s, epoch_ms}`, `type`
 `{string, integer, number, boolean, timestamp}`, `on_missing` `{null, default, reject}`,
-`on_invalid` `{null, reject}`, `empty_as_missing` `{true, false}`, `bounds` `{min, max}`. That is
-five operations beyond `timestamp_format`, all from closed enums, none inferred from prose.
-`unit` needs an ordered pair, so it is only offered when the option names one explicitly
-(`s→ms`, `s to ms`); free-text unit parsing and profile-path suggestions are cut (§7) — the latter
-also because `suggestionsFor` has no profile and the profile's `path` is root-relative while a
-field path is current-item relative (`api/types.ts:113-116`).
-An `on_missing: default` suggestion additionally requires a `default`; the chip says so and the
-plan includes both members or the chip is not offered.
+`on_invalid` `{null, reject}`, `empty_as_missing` `{true, false}`, `bounds` `{min, max}`. `unit`
+needs an ordered pair and is offered **only** from an explicit pair (`s→ms`, `s to ms`), so a bare
+`min` never produces a unit edit; free-text unit parsing and profile-path suggestions are cut (§7).
+
+**Semantic applicability is the parser's, not ours.** The browser has no target schema, and the
+parser's rules are real: `type` must equal the target field's type (`parser.py:498-505`), `bounds`
+requires a timestamp target *and* a `path` containing `[*]` (`:439-473`), `unit.to` must be the
+target's canonical unit and the target must have a convertible one (`:527-556`),
+`timestamp_format` on a non-timestamp is a warning, not an error (`:507-522`). A suggestion
+therefore never claims applicability: the menu shows what the document can already contradict (a
+`bounds` entry on a `path` without `[*]` is labelled "the parser will reject this: bounds needs a
+path containing `[*]`") and the server's validation remains the authority after the edit.
+An `on_missing: default` operation additionally requires a `default`; the menu entry writes both
+members or is not offered.
 
 **Freshness**: applying a proposal records `proposalAnchor = { documentVersion }` — the version
 `editDocument` creates, not the pre-application generation. Chips and Why render only while
@@ -408,7 +442,7 @@ Changes:
 
 - `rawValueOf(rawJson, path)` generalises `extractMappingText` over the span tree;
   `extractMappingText(raw)` becomes `rawValueOf(raw, ['proposal','mapping'])` and now also matches
-  **escaped envelope keys** (`{"proposal": …}`), which today's raw comparison misses.
+  **escaped envelope keys** (`{"\u0070roposal": …}`), which today's raw comparison misses.
 - `api/index.ts`: `getMappingText(id)` reads `response.text()` and takes `['document']` from it.
 - **No parsed-object fallback anywhere** (finding 1). If extraction returns null, or the extracted
   text fails `validateJsonText`, or it is not an object: the document, `documentVersion`, `undo`,
@@ -425,9 +459,12 @@ No new backend route (the alternative is rejected in §9). The browser re-upload
 SHA check.
 
 **Origin.** `origin = { importId, importSource, importStatus, fileSha256, filename, fileStatus,
-mappingId | null, mappingName | null, mappingRevision | null }` — the *file's* binding, never the
-report-level mapping echo, which is only the first file's display value
-(`docs/api/v0.1.md:181-218`, `ImportedFile.mapping` is nullable).
+fileDuplicateOf: string | null, mappingId | null, mappingName | null, mappingRevision | null }` —
+the *file's* binding and the *file's* status, never the report-level mapping echo, which is only
+the first file's display value (`docs/api/v0.1.md:181-218`, `ImportedFile.mapping` is nullable).
+`fileDuplicateOf` comes from `ImportedFile.duplicate_of` (`api/types.ts:20`, already used at
+`Imports.tsx:76-79`) and carries the link to the original import. In a mixed batch every sentence
+below is chosen by the **selected file's** status, not the attempt's.
 
 **Entry points.** One `IconButton` per row of the report's files table ("Correct this file's
 mapping with the assistant") and one in the rejects panel head; when the rejects panel's file
@@ -468,8 +505,12 @@ requires an explicit choice and the confirmation names it. The notice is scoped 
   observations do not change. A corrected revision applies to the next import of this file — under
   a different source, or of a different file."
 - `duplicate`: names the original import and says the same about it.
-- `failed`: "That attempt inserted nothing, so importing these bytes into `A` is a normal import,
-  not a duplicate."
+- `failed`: "That attempt inserted nothing. Importing these bytes into `A` now is checked against
+  what is committed in `A` today, so it may still be recorded as a duplicate — a failed attempt
+  says what it wrote, not whether the bytes are absent." (The attempt that lost a concurrent race
+  is recorded as `failed` for every file even though another import committed some of those bytes,
+  `imports.py:328-344`; a later successful import of the same bytes has the same effect on an
+  older failed report reopened afterwards.)
 
 Re-importing under a different source to "fix" history is never suggested. After Save, the receipt
 states the actual outcome from the response (`created: true` → "saved as revision N", `false` →
@@ -541,7 +582,7 @@ removing every member; two insertions into `{}`; `set` on a one-level-missing me
 levels missing → problem; composite `unit` creation; rename + child edit in one plan; rename
 collision refused; repeated edits of one path refused; array `move` reusing the moved value's raw
 text; a plan whose result would be invalid leaves the input untouched; duplicate decoded keys make
-the container unaddressable; non-ASCII before an edited span; escaped-key edits (editing `"x"`
+the container unaddressable; non-ASCII before an edited span; escaped-key edits (editing `"\u0078"`
 itself, not only a neighbour).
 
 **Index** (`documentIndex.test.ts`): all four states (absent / `null` / `false` / empty) for
@@ -554,18 +595,31 @@ value), never `bounds`, which is `min`/`max`.
 **Issue paths** (`issuePaths.test.ts`): every parser path listed in §3.5 maps to a control and a
 stable id; a field named `a.b` resolves to `{kind:'document'}`; ids are collision-safe.
 
-**Suggestions** (`suggestions.test.ts`): `epoch_s` → one chip; `reject` → `on_missing`; `null` →
-an operation choice of `on_missing` and `on_invalid`; `min` → a choice of `bounds` and `unit.from`;
+**Suggestions** (`suggestions.test.ts`): a target naming the option
+(`rules[0].fields.started_at.timestamp_format`) with `epoch_s` → one executable chip; the same
+value with a **field-only** target → an operation menu, and nothing is applied until a pick;
+`reject` → a menu of `on_missing` and `on_invalid`, never auto-applied to either (both are legal,
+schema lines 97-99); `true` → a menu with `empty_as_missing`, still an explicit pick; `min` → a
+menu with `bounds` only, labelled with the parser's wildcard requirement when the field's `path`
+has no `[*]`, and never a `unit` edit; an explicit `s→ms` pair → a `unit` chip;
 `"a validated swe-chat tag"` → prose; two rules emitting the entity → a rule picker; a click after
 an edit is refused because the anchor moved; `on_missing: default` without a `default` is not
 offered.
 
-**Codec** (`codec.test.ts`): from a raw run-response string containing `"literal": 1.0`,
-`"value": 9007199254740993` and `"sequence": 1`, through `outcomeArrived`, a table edit on another
-field, to a mocked `fetch`; the captured body is **parsed and asserted at its paths** (and the
-lexemes located by span), not by substring. Negative cases: an escaped envelope key
-(`{"proposal": …}`) and a mapping that fails the grammar each leave the document, its version
-and every gate untouched, attach no validation, and surface a recoverable error.
+**Codec** (`codec.test.ts`). Positive cases, each asserted through to the captured request body:
+a run response whose envelope key is escaped (`{"\u0070roposal":{"mapping":{…}}}`) extracts and
+applies normally; a mapping containing `{"fields":{"\u0078":{"literal":9007199254740993}}}` is
+indexed under the decoded name `x`, and **editing that escaped field itself** preserves both its
+original key spelling and the integer; `1.0`, `9007199254740993` and `1` survive `outcomeArrived`
+→ a table edit elsewhere → `saveMappingText`, asserted by locating each value's span **at its
+path** (never by substring, which cannot tell a right value at a wrong path from a duplicated
+member). Negative cases — a missing `mapping` member, a `mapping` that is not an object, a
+`mapping` that fails the grammar, and duplicate envelope keys — each leave the document, its
+version, its undo entry and every gate exactly as they were, attach no outcome validation, keep an
+earlier validated or saved state intact, and surface a recoverable error.
+Transport coverage is named per helper, not left to one mocked fetch: `getMappingText` (GET
+`/api/mappings/{id}`, `api/index.ts:54`), `prepareContext` and `runAssistant` (`:77-100`) and
+`validateMappingText`/`saveMappingText` (`:114-121`).
 
 **Server boundary** (`backend/tests/interfaces/test_api_mapping_numerics.py`): `POST /api/mappings`
 then `GET /api/mappings/{id}` with `9007199254740993` in a `where` value and `1.0` vs `1` literals
@@ -711,16 +765,41 @@ requirement):
 6. Codec tests, server-boundary test, Playwright project + discovery + the two adapted specs, the
    1279/1280/900 px and both-theme browser pass, receipt tests (0.65 day).
 
-**Total ≈ 4.0 engineer-days**, up from revision 1's 3.0 because the contracts are now specified
-rather than assumed, and because the review's test, discovery and browser work is delivery, not
-optional QA. This is a task estimate; it is **not** a claim of capacity. Three calendar days remain
-to the 2026-09-11 freeze and other wave-1 work is in flight, so the owner picks:
+**Total ≈ 4.0 engineer-days** (revision 3 adds no new steps; the second-pass fixes are contract
+changes inside steps 1, 3, 4 and 5), up from revision 1's 3.0 because the contracts are now
+specified rather than assumed and because the review's test, discovery and browser work is
+delivery, not optional QA.
 
-- **(a)** #39 is this agent's only remaining feature work and the freeze is measured at the end of
-  2026-09-11 — the slice of §7 fits with roughly half a day of margin, and step 1 is the gate: if
-  it is not green by the end of its first day, escalate rather than compress the tests.
-- **(b)** v0.1.0 releases with the #15 JSON slice as shipped, and #39 lands in v0.1.1 against this
-  same plan with no further acceptance split — the review's explicit recommendation if (a) does
-  not hold.
+**This is a task estimate, not a capacity claim, and revision 2's "roughly half a day of margin"
+is withdrawn** (second-pass finding 10): four engineer-days against 2026-09-08 to 2026-09-11 has
+no demonstrated reserve, review-fix and shared-file integration time was never costed into it, and
+the sprint keeps feature freeze separate from clean-clone, rehearsal and release work
+(`docs/planning/2026-09-07-consolidated-plan.md:118-122`).
 
-Either way, no second undeclared split of #39's acceptance criteria is proposed.
+**Owner decision, 2026-09-08: #39 stays in v0.1.0**, this agent is the only remaining assistant
+feature-work agent, with a **go/no-go after step 1**. The plan's obligation is therefore to make
+that gate decidable rather than to assert a fit: the step-1 report states the elapsed time, what
+the tests prove, any case the grammar or planner could not handle, and a **fresh estimate of the
+remaining steps measured against step 1's actual pace**. A no-go at that gate means the release
+falls back to the shipped #15 JSON slice with #39 open, and it must be taken on the date of the
+gate so that clean-clone and release verification keep their time. No second undeclared split of
+#39's acceptance criteria is proposed in either direction.
+
+## 11. Revision 3: answers to the second-pass review, by finding
+
+`2026-09-08-assistant-field-table-review-codex-2.md` (BLOCK). Findings 1, 2, 4 and 7 are recorded
+there as closed and need no change. Nothing is contested: every open point was re-verified in the
+code first, and each is closed by a named change above.
+
+| # | Verdict | Change |
+| --- | --- | --- |
+| 1 | closed by the review | No change (parsed-object fallback already removed, §3.6). |
+| 2 | closed by the review | No change (grammar, decoded keys, duplicates, code-unit offsets, §3.1). |
+| 3 | **open → closed** | §3.1 rules 2, 2b, 2c: any edit strictly beneath a whole-value `set`/`remove`/`insert`/`move` is now a conflict (`set unit` + `set unit.from` aborts); `rename` explicitly does not conflict with edits beneath it and carries the child-edited text; a **final decoded-key check** per touched object catches renaming both `a` and `b` to an absent `c`, which no input-key check sees; array `insert`/`move` indices address the input order with a defined remove → move → insert sequence and a conflict on a contested destination. §5 adds each case, asserting that a refused plan leaves text, version, undo and gates unchanged. Verified that the grammar check alone cannot see a discarded child edit — hence the structural rule. |
+| 4 | closed by the review | No change to the surface; the undo/JSON identity transition it deferred to finding 9 is now specified (§3.2). |
+| 5 | **open → closed** | §3.3 stops deriving the operation from the option string. A target that names an option (`…fields.x.on_invalid`) keeps it and matches only that option's domain; a **field-only target always requires the user to pick a named operation**, even when exactly one domain matches — so `true`, `reject`, `null` and `min` have no auto-apply path left. `unit` is offered only from an explicit ordered pair, so bare `min` never yields a unit edit (the revision-2 contradiction is gone). Applicability is stated as the parser's, not ours, with its real rules cited (`parser.py:439-473` bounds needs a timestamp target and a `[*]` path; `:498-505` `type` must equal the target type; `:527-556` `unit.to` must be the canonical unit; `:507-522` `timestamp_format` on a non-timestamp is a warning), and a menu entry the document already contradicts is labelled rather than hidden. §5's `reject → on_missing` test — which did encode the guess — is replaced by a menu assertion. |
+| 6 | **open → closed** | §3.7's `failed` sentence no longer claims a retry cannot be a duplicate: a lost concurrent race is recorded as `failed` for every file even though another import committed those bytes (`imports.py:328-344`), so the copy now says the attempt inserted nothing and the retry is checked against what is committed in that source today. `origin` gains `fileDuplicateOf` (`api/types.ts:20`) for the original-import link, and every status sentence is chosen by the **selected file's** status in a mixed batch. §5's e2e adds the mixed and A-versus-B cases. |
+| 7 | closed by the review | No change (third Playwright project, discovery listing, JSON-view selection in the two existing specs). |
+| 8 | closed | §5's codec section is rewritten: escaped envelope keys (`{"proposal":…}`) and an escaped **field** key (`{"fields":{"x":{"literal":9007199254740993}}}`, edited through its decoded name) are **positive** cases — revision 2 wrongly listed the first as negative — while missing/wrong-type `mapping`, invalid grammar and duplicate envelope keys are the negatives, each asserting unchanged prior validated/saved state. Assertions locate values by span **at their path**; the four transport helpers are named individually (`api/index.ts:54`, `:77-100`, `:114-121`); the server test asserts Python types and integer values. The escape spellings lost in revision 2's prose are restored (lines 53, 202, 442). |
+| 9 | closed | §3.2 "Identity and undo move together": `undo` becomes `{documentText, identity}` and `undoDocument` restores both, so rename → Undo → revise no longer breaks at `assistRuntime.ts:174-176`; every accepted document replacement (proposal, bootstrap, JSON edit of `name`/`source`) sets the identity from the document head when it is addressable, and a malformed document keeps the user's identity untouched until repair. §5 tests rename → undo → revise and malformed → repaired → revise. |
+| 10 | closed | §10 withdraws the half-day margin claim outright and records the owner's decision that #39 stays in v0.1.0 with a go/no-go after step 1, whose report must carry a fresh remaining estimate measured against step 1's actual pace and a dated no-go that preserves release-verification time. |
