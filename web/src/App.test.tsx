@@ -515,7 +515,11 @@ describe('Dashboard', () => {
   it('opens matching sessions when a tool chart bar is clicked', async () => {
     start('/overview')
     const chart = await screen.findByRole('region', { name: 'Tool calls' })
-    fireEvent.click(within(chart).getByRole('button', { name: /^Agent:/ }))
+    const bar = within(chart).getByRole('button', { name: /^Agent:/ })
+    expect(bar.tagName.toLowerCase()).toBe('rect')
+    act(() => {
+      bar.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
 
     expect(await screen.findByRole('heading', { name: 'Sessions' })).toBeInTheDocument()
     expect(screen.getByText('tool Agent')).toBeInTheDocument()

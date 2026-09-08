@@ -31,7 +31,7 @@ export function AccessibleBarShape({ shape, onSelect, onFocus }: {
   return <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={3} fill={shape.fill}
     className="chart-bar" role={onSelect ? 'button' : undefined} tabIndex={onSelect ? 0 : undefined}
     aria-label={`${point.label}: ${groupExactText(point.valueText)}${point.coverage ? `; coverage ${groupExactText(String(point.coverage.known))} / ${groupExactText(String(point.coverage.total))}` : ''}`}
-    onFocus={() => onFocus(point)} onBlur={() => onFocus()} onKeyDown={key} />
+    onClick={activate} onFocus={() => onFocus(point)} onBlur={() => onFocus()} onKeyDown={key} />
 }
 
 function Tip({ active, payload, unit }: { active?: boolean; payload?: { payload: ChartPoint }[]; unit?: string }) {
@@ -60,7 +60,7 @@ export function DayBars({ title, data, unit, onSelect, hint, color = 'var(--s1)'
         <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: 'var(--line)' }} interval="preserveStartEnd" />
         <YAxis width={48} tickLine={false} axisLine={false} tickFormatter={value => abbreviateDecimalText(String(value))} />
         <Tooltip content={<Tip unit={unit} />} cursor={{ fill: 'var(--surface-3)' }} />
-        <Bar dataKey="plotValue" fill={color} isAnimationActive={false} onClick={entry => onSelect?.(entry.payload as ChartPoint)}
+        <Bar dataKey="plotValue" fill={color} isAnimationActive={false}
           shape={props => <AccessibleBarShape shape={props as ShapeProps} onSelect={onSelect} onFocus={setFocused} />} />
       </BarChart>
     </ResponsiveContainer></div></div>}
@@ -80,7 +80,7 @@ export function HBars({ title, data, unit, onSelect, hint, color = 'var(--s2)' }
         <XAxis type="number" hide />
         <YAxis type="category" dataKey="label" width={110} tickLine={false} axisLine={false} />
         <Tooltip content={<Tip unit={unit} />} cursor={{ fill: 'var(--surface-3)' }} />
-        <Bar dataKey="plotValue" fill={color} isAnimationActive={false} barSize={16} onClick={entry => onSelect?.(entry.payload as ChartPoint)}
+        <Bar dataKey="plotValue" fill={color} isAnimationActive={false} barSize={16}
           label={{ position: 'right', fill: 'var(--ink-3)', fontSize: 11, formatter: (value: unknown) => abbreviateDecimalText(String(value)) }}
           shape={props => <AccessibleBarShape shape={props as ShapeProps} onSelect={onSelect} onFocus={setFocused} />} />
       </BarChart>
@@ -106,14 +106,8 @@ function TokenShape({ shape, series, onSelect, onFocus }: {
   const activate = () => onSelect?.(row, measure)
   return <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={3} fill={shape.fill}
     className="chart-bar" role={onSelect ? 'button' : undefined} tabIndex={onSelect ? 0 : undefined}
-    aria-label={label} onFocus={() => onFocus(label)} onBlur={() => onFocus()}
+    aria-label={label} onClick={activate} onFocus={() => onFocus(label)} onBlur={() => onFocus()}
     onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate() } }} />
-}
-
-function selectTokenMeasure(series: 'input' | 'output', onSelect: ((row: TokenRow, measure: TokenMeasure) => void) | undefined, payload: unknown) {
-  const row = payload as TokenRow
-  const measure = row?.[series]
-  if (measure) onSelect?.(row, measure)
 }
 
 export function TokenBars({ title, rows, onSelect }: { title: string; rows: TokenRow[]; onSelect?: (row: TokenRow, measure: TokenMeasure) => void }) {
@@ -136,10 +130,8 @@ export function TokenBars({ title, rows, onSelect }: { title: string; rows: Toke
           return [measure?.valueText === null || measure?.valueText === undefined ? 'Unavailable' : groupExactText(measure.valueText), name]
         }} />
         <Bar name="Input" dataKey="inputPlot" fill="var(--s1)" isAnimationActive={false} barSize={10}
-          onClick={entry => selectTokenMeasure('input', onSelect, entry.payload)}
           shape={props => <TokenShape shape={props as TokenShapeProps} series="input" onSelect={onSelect} onFocus={setFocused} />} />
         <Bar name="Output" dataKey="outputPlot" fill="var(--s2)" isAnimationActive={false} barSize={10}
-          onClick={entry => selectTokenMeasure('output', onSelect, entry.payload)}
           shape={props => <TokenShape shape={props as TokenShapeProps} series="output" onSelect={onSelect} onFocus={setFocused} />} />
       </BarChart>
     </ResponsiveContainer></div>}
