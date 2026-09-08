@@ -6,6 +6,7 @@ Keep these v1 projections stable; future schema changes need versioned helpers.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from sqlalchemy import Connection
@@ -39,7 +40,22 @@ class ExactIntSum:
         return None if self.value is None else str(self.value)
 
 
+class ExactIntSamples:
+    def __init__(self) -> None:
+        self.values: list[int] = []
+
+    def step(self, value: int | None) -> None:
+        if value is not None:
+            if not isinstance(value, int):
+                raise ValueError("exact_int_samples accepts integer measures only")
+            self.values.append(value)
+
+    def finalize(self) -> str:
+        return json.dumps(self.values)
+
+
 def register_metric_functions(connection: Any) -> None:
+    connection.create_aggregate("exact_int_samples", 1, ExactIntSamples)
     connection.create_aggregate("exact_int_sum", 1, ExactIntSum)
 
 

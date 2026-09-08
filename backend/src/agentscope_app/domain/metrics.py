@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
@@ -23,6 +23,8 @@ class Aggregation(StrEnum):
     COUNT = "count"
     SUM = "sum"
     OBSERVED_SPAN = "observed_span"
+    DISTRIBUTION = "distribution"
+    DIAGNOSTIC = "diagnostic"
 
 
 class ComparabilityRule(StrEnum):
@@ -96,6 +98,12 @@ class MetricDefinition:
     population: str | None = None
     headline_kpi: bool = False
     caveat: str | None = None
+    quantile_rule: str = "nearest-rank: sorted[ceil(p*n)-1]"
+    median_rule: str = "middle value; average the two middle values for even n"
+    display_decimal_places: int = 0
+    display_rounding: str = "half_even; display only, exact values are preserved"
+    diagnostic: bool = False
+    model_group_required: bool = False
 
     @property
     def supported_dimensions(self) -> tuple[Dimension, ...]:
@@ -131,7 +139,21 @@ class MetricRegistry:
             raise ValueError("Definitions require ID, positive version and complete metadata")
         if d.grain not in MEASURES or d.operation not in tuple(Aggregation):
             raise ValueError("Unsupported grain or operation")
-        if d.operation == Aggregation.COUNT:
+        if d.display_decimal_places < 0:
+            raise ValueError("Display precision must be nonnegative")
+        if d.diagnostic != (d.operation == Aggregation.DIAGNOSTIC):
+            raise ValueError("Diagnostic definitions must be non-executable")
+        if d.model_group_required and d.grain != EntityGrain.MODEL_CALL:
+            raise ValueError("Model grouping requires model calls")
+        if d.operation == Aggregation.DIAGNOSTIC:
+            if (d.grain, d.field, d.unit, d.coverage_field) != (
+                EntityGrain.MODEL_CALL,
+                None,
+                "ratio",
+                None,
+            ):
+                raise ValueError("Diagnostic ratio is definitions-only")
+        elif d.operation == Aggregation.COUNT:
             if d.field is not None or d.coverage_field is not None or d.unit != "count":
                 raise ValueError(
                     "Counts use canonical identities, count units and complete coverage"
@@ -175,6 +197,7 @@ class AggregatePart:
     known: int
     total: int
     semantics: str | None = None
+    samples: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -288,6 +311,7 @@ OBSERVED_SPAN = MetricDefinition(
     formula="Sum (observed_end_at - observed_start_at) in exact milliseconds per session.",
     scope="Eligible sessions; child filters select sessions but do not clip their imported bounds.",
     null_handling="Both bounds required; known zero contributes; no known spans yields null.",
+    display_decimal_places=3,
     caveat="May include idle time and resumptions. Neither active time nor task duration. "
     "Overlapping session spans are summed, not unioned; bounds cover full imported sessions.",
 )
@@ -303,7 +327,64 @@ REGISTRY: Final = MetricRegistry(
         _count(
             "tool_calls", EntityGrain.TOOL_CALL, "Tool-call observations, including unlinked tools."
         ),
-        *[_sum(f, EntityGrain.MODEL_CALL, f, "tokens") for f in MEASURES[EntityGrain.MODEL_CALL]],
+        *[
+            replace(
+                _sum(f, EntityGrain.MODEL_CALL, f, "tokens"),
+                model_group_required=f == "reasoning_tokens",
+            )
+            for f in MEASURES[EntityGrain.MODEL_CALL]
+        ],
+        replace(
+            _sum(
+                "reasoning_tokens_distribution",
+                EntityGrain.MODEL_CALL,
+                "reasoning_tokens",
+                "tokens",
+            ),
+            operation=Aggregation.DISTRIBUTION,
+            model_group_required=True,
+            display_decimal_places=1,
+            formula=(
+                "Total and min/median/p90/max of known reasoning tokens per call; "
+                "nearest-rank quantiles."
+            ),
+            scope=(
+                "Eligible calls grouped by exact model and compatible accounting; "
+                "known calls / eligible calls."
+            ),
+        ),
+        MetricDefinition(
+            id="reasoning_to_output_ratio",
+            version=1,
+            label="Reasoning-to-output accounting diagnostic",
+            description=(
+                "Definitions-page diagnostic only; inclusion semantics are "
+                "unvalidated, not a trend finding."
+            ),
+            grain=EntityGrain.MODEL_CALL,
+            operation=Aggregation.DIAGNOSTIC,
+            field=None,
+            unit="ratio",
+            formula=(
+                "Sum known reasoning_tokens / sum output_tokens on the same known paired calls."
+            ),
+            scope="One compatible model/accounting group; diagnostic only, not executable.",
+            null_handling=(
+                "Missing pairs excluded; zero output denominator is undefined; "
+                "unavailable is not zero."
+            ),
+            diagnostic=True,
+            display_decimal_places=3,
+        ),
+        *[
+            replace(
+                _sum(f"tool_{field}_distribution", EntityGrain.TOOL_CALL, field, "ms"),
+                operation=Aggregation.DISTRIBUTION,
+                display_decimal_places=1,
+                formula=f"Total and min/median/p90/max of known {field}; nearest-rank quantiles.",
+            )
+            for field in ("wall_latency_ms", "internal_latency_ms")
+        ],
         _sum("tool_wall_latency_ms", EntityGrain.TOOL_CALL, "wall_latency_ms", "ms"),
         _sum("tool_internal_latency_ms", EntityGrain.TOOL_CALL, "internal_latency_ms", "ms"),
         _count(

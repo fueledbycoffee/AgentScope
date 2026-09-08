@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from agentscope_app.application.dto import Coverage, Metric, SemanticsPartition
 from agentscope_app.application.errors import InvalidInputError
+from agentscope_app.domain.distributions import Distribution, distribution
 from agentscope_app.domain.metrics import (
     DIMENSIONS,
     AggregatePart,
@@ -120,6 +121,17 @@ class MetricQuerySpec:
     group_by: tuple[Dimension, ...] = ()
 
     def __post_init__(self) -> None:
+        if self.definition.diagnostic:
+            raise invalid(
+                "metric_id", "This definition is diagnostic only; no executable metric is published"
+            )
+        if (
+            self.definition.model_group_required
+            and self.scope.model is None
+            and not self.scope.model_is_unknown
+            and Dimension.MODEL not in self.group_by
+        ):
+            object.__setattr__(self, "group_by", (*self.group_by, Dimension.MODEL))
         if (
             len(self.group_by) > 2
             or len(set(self.group_by)) != len(self.group_by)
@@ -228,6 +240,7 @@ class PartitionResult:
     value_text: str | None
     coverage: Coverage
     drill_scope: TraceScope
+    distribution: Distribution | None = None
 
 
 @dataclass(frozen=True)
@@ -238,6 +251,7 @@ class MetricResult:
     comparability: str
     reason: str
     semantics_partitions: tuple[PartitionResult, ...]
+    distribution: Distribution | None = None
 
 
 @dataclass(frozen=True)
@@ -284,6 +298,7 @@ def _combine_parts(rows: AggregateRows) -> tuple[AggregatePart, ...]:
             sum(p.known for p in parts),
             sum(p.total for p in parts),
             semantics,
+            tuple(v for p in parts for v in p.samples),
         )
         for semantics, parts in sorted(grouped.items(), key=lambda item: item[0] or "")
     )
@@ -333,10 +348,14 @@ def _result(
                 _text(p.value),
                 Coverage(p.known, p.total),
                 replace(scope, token_semantics=p.semantics, activity_grain=EntityGrain.MODEL_CALL),
+                distribution(p.samples) if p.semantics != "unknown" else None,
             )
             for p in parts
             if p.semantics is not None
         ),
+        distribution([v for p in parts for v in p.samples])
+        if result.comparability in ("comparable", "not_applicable")
+        else None,
     )
 
 
@@ -347,14 +366,50 @@ def assemble_query(spec: MetricQuerySpec, rows: AggregateRows) -> MetricQueryRes
         source_rows = (AggregateRow((), ()),)
     for row in source_rows:
         scope = drill_scope(spec, row.keys)
-        buckets.append(MetricBucket(row.keys, _result(spec, row.parts, scope), scope))
+        result = _result(spec, row.parts, scope)
+        if spec.definition.model_group_required and scope.model_is_unknown:
+            result = replace(
+                result,
+                value_text=None,
+                distribution=None,
+                semantics_partitions=(),
+                comparability="unknown",
+                reason="Unknown model is not a compatible model group.",
+            )
+        buckets.append(MetricBucket(row.keys, result, scope))
+    overall = _result(spec, _combine_parts(rows), spec.scope)
+    if spec.definition.model_group_required and spec.scope.model_is_unknown:
+        overall = replace(
+            overall,
+            value_text=None,
+            distribution=None,
+            semantics_partitions=(),
+            comparability="unknown",
+            reason="Unknown model is not a compatible model group.",
+        )
+    if spec.definition.model_group_required and Dimension.MODEL in spec.group_by:
+        model_index = spec.group_by.index(Dimension.MODEL)
+        models = {row.keys[model_index] for row in rows.rows}
+        if len(models) > 1 or None in models:
+            overall = replace(
+                overall,
+                value_text=None,
+                recorded_sum_text=None,
+                distribution=None,
+                comparability="unknown" if None in models else "mixed",
+                reason=(
+                    "Reasoning usage requires a known compatible model group; use the "
+                    "model buckets."
+                ),
+                semantics_partitions=(),
+            )
     return MetricQueryResult(
         spec.definition.id,
         spec.definition,
         spec.definition.supported_dimensions,
         spec.scope,
         spec.group_by,
-        _result(spec, _combine_parts(rows), spec.scope),
+        overall,
         rows.excluded_unknown_timestamps,
         tuple(buckets),
     )

@@ -13,6 +13,10 @@ from agentscope_app.domain.metrics import (
 def test_registry_has_complete_definitions_for_summary_and_chart_metrics():
     assert set(REGISTRY.definitions) == {
         "observed_span_ms",
+        "reasoning_tokens_distribution",
+        "reasoning_to_output_ratio",
+        "tool_wall_latency_ms_distribution",
+        "tool_internal_latency_ms_distribution",
         "sessions",
         "model_calls",
         "tool_calls",
@@ -93,3 +97,24 @@ def test_registry_itself_is_immutable_and_rejects_unknown_comparability():
         REGISTRY.definitions = {}
     with pytest.raises(ValueError, match="comparability"):
         MetricRegistry([replace(REGISTRY.get("sessions"), comparability_rule="unrecognized")])
+
+
+def test_quantiles_are_nearest_rank_and_even_median_is_exact():
+    from fractions import Fraction
+
+    from agentscope_app.domain.distributions import distribution
+    from agentscope_app.domain.numbers import number_text
+
+    result = distribution([10, 1, 8, 3, 6, 5, 7, 4, 9, 2])
+    assert (result.p90_text, result.median_text) == ("9", "5.5")
+    assert distribution([0]).median_text == "0"
+    assert distribution([]) is None
+    assert distribution([10**40, 10**40 + 1]).median_text == str(10**40) + ".5"
+    assert (
+        number_text(Fraction(10**60 + 1, 10**30))
+        == "1000000000000000000000000000000.000000000000000000000000000001"
+    )
+    for definition in REGISTRY.definitions.values():
+        assert "nearest-rank" in definition.quantile_rule
+        assert "even n" in definition.median_rule
+        assert definition.display_decimal_places >= 0

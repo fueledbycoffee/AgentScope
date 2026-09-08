@@ -72,7 +72,7 @@ def test_metrics_http_metadata_coverage_and_exact_text(client):
         "tool_calls",
         "input_tokens",
     }
-    assert len(definitions) == 15
+    assert len(definitions) == 19
     by_id = {d["id"]: d for d in definitions}
     assert by_id["tool_wall_latency_ms"]["field"] == "wall_latency_ms"
     assert by_id["tool_internal_latency_ms"]["field"] == "internal_latency_ms"
@@ -245,3 +245,20 @@ def test_observed_span_definition_and_empty_result(client):
     assert "idle time and resumptions" in body["definition"]["caveat"]
     assert body["overall"]["value_text"] is None
     assert body["overall"]["coverage"] == {"known": 0, "total": 0}
+
+
+def test_reasoning_model_groups_and_diagnostic_only_definition(client):
+    ingest(client)
+    response = client.get(
+        "/api/metrics/query", params={"metric_id": "reasoning_tokens_distribution"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["group_by"] == ["model"]
+    assert body["definition"]["display_decimal_places"] == 1
+    assert "nearest-rank" in body["definition"]["quantile_rule"]
+    response = client.get("/api/metrics/query", params={"metric_id": "reasoning_to_output_ratio"})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_input"
+    definitions = {d["id"]: d for d in client.get("/api/metrics/definitions").json()}
+    assert definitions["reasoning_to_output_ratio"]["diagnostic"] is True

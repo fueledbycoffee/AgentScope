@@ -114,7 +114,7 @@ def test_sql_matches_reference_for_every_definition_and_scope(database, metric_i
                 continue  # explicitly invalid specification
             for groups in [(), *((d,) for d in definition.supported_dimensions)]:
                 spec = MetricQuerySpec(definition, scope, groups)
-                expected = oracle(data, definition, spec.scope, groups)
+                expected = oracle(data, definition, spec.scope, spec.group_by)
                 actual = sql_parts(query, spec)
                 assert actual == expected, (metric_id, spec)
                 for row in query.aggregate(spec).rows:
@@ -479,8 +479,10 @@ def assert_ingested_oracle(session, scopes):
             r["id"] for r in population(data, "session", scope)
         )
         for definition in REGISTRY.definitions.values():
+            if definition.diagnostic:
+                continue
             spec = MetricQuerySpec(definition, scope)
-            assert sql_parts(query, spec) == oracle(data, definition, spec.scope)
+            assert sql_parts(query, spec) == oracle(data, definition, spec.scope, spec.group_by)
 
 
 def test_imports_in_scope_includes_session_only_contributions_from_real_import(tmp_path):
@@ -584,7 +586,7 @@ def test_projected_exit_code_sum_is_a_registry_only_extension(database):
         query = SqlAlchemyTraceQuery(session)
         assert (
             sql_parts(query, spec)
-            == oracle(data, definition, spec.scope)
+            == oracle(data, definition, spec.scope, spec.group_by)
             == {(): {None: (0, 1, 3)}}
         )
 
@@ -614,3 +616,75 @@ def test_observed_span_exact_bounds_coverage_and_scoped_sessions(database):
         assert result.overall.coverage.total == 1
         spec = MetricQuerySpec(REGISTRY.get("observed_span_ms"), TraceScope(session_ids=("empty",)))
         assert assemble_query(spec, query.aggregate(spec)).overall.value_text is None
+
+
+def test_distributions_use_original_values_and_include_zero_latencies(database):
+    from agentscope_app.application.metric_queries import assemble_query
+
+    engine, _ = database
+    with Session(engine) as session:
+        calls = list(session.scalars(select(m.ModelCall).order_by(m.ModelCall.id)))
+        for call, amount in zip(calls, [0, 1, 2, 3, 4, 100], strict=True):
+            call.reasoning_tokens = amount
+            call.model = "model-a" if amount < 4 else "model-b"
+            call.token_semantics = "validated"
+        tools = list(session.scalars(select(m.ToolCall).order_by(m.ToolCall.id)))
+        for tool, amount in zip(tools, [0, 1, None], strict=True):
+            tool.wall_latency_ms = amount
+        session.commit()
+        query = SqlAlchemyTraceQuery(session)
+        spec = MetricQuerySpec(REGISTRY.get("reasoning_tokens_distribution"))
+        result = assemble_query(spec, query.aggregate(spec))
+        assert result.overall.value_text is None
+        assert [
+            (b.result.value_text, b.result.distribution.median_text) for b in result.buckets
+        ] == [("6", "1.5"), ("104", "52")]
+        spec = MetricQuerySpec(
+            REGISTRY.get("reasoning_tokens_distribution"),
+            TraceScope(model="model-a"),
+            (Dimension.STARTED_DAY,),
+        )
+        result = assemble_query(spec, query.aggregate(spec))
+        assert result.overall.distribution.median_text == "1.5"
+        assert result.overall.distribution.p90_text == "3"
+        # Incompatible semantics within the same model must still be split.
+        calls[0].token_semantics = "different"
+        session.commit()
+        result = assemble_query(spec, query.aggregate(spec))
+        assert result.overall.distribution is None and result.overall.value_text is None
+        assert result.overall.reason == "not comparable: 2 token semantics in selection"
+        assert len(result.overall.semantics_partitions) == 2
+        spec = MetricQuerySpec(REGISTRY.get("tool_wall_latency_ms_distribution"))
+        result = assemble_query(spec, query.aggregate(spec))
+        assert result.overall.value_text == "1"
+        assert result.overall.distribution.median_text == "0.5"
+        assert result.overall.distribution.p90_text == "1"
+        assert (result.overall.coverage.known, result.overall.coverage.total) == (2, 3)
+
+
+def test_reasoning_unknown_model_and_unknown_accounting_are_never_compatible(database):
+    from agentscope_app.application.metric_queries import assemble_query
+
+    engine, _ = database
+    with Session(engine) as session:
+        call = session.get(m.ModelCall, "c0")
+        call.model = None
+        call.reasoning_tokens = 10
+        call.token_semantics = "a"
+        session.commit()
+        query = SqlAlchemyTraceQuery(session)
+        spec = MetricQuerySpec(
+            REGISTRY.get("reasoning_tokens_distribution"), TraceScope(model_is_unknown=True)
+        )
+        result = assemble_query(spec, query.aggregate(spec))
+        assert result.overall.value_text is None and result.overall.distribution is None
+        assert all(b.result.value_text is None for b in result.buckets)
+        call.model = "known"
+        call.token_semantics = "unknown"
+        session.commit()
+        spec = MetricQuerySpec(
+            REGISTRY.get("reasoning_tokens_distribution"), TraceScope(model="known")
+        )
+        result = assemble_query(spec, query.aggregate(spec))
+        assert result.overall.value_text is None and result.overall.distribution is None
+        assert result.overall.semantics_partitions[0].distribution is None

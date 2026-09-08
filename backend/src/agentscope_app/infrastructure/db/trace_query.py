@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import replace
 from fractions import Fraction
@@ -220,7 +221,12 @@ class SqlAlchemyTraceQuery:
         else:
             assert definition.field is not None
             column = MEASURE_COLUMNS[grain][definition.field]
-            value, known = func.exact_int_sum(column), func.count(column)
+            aggregate = (
+                func.exact_int_samples
+                if definition.operation == Aggregation.DISTRIBUTION
+                else func.exact_int_sum
+            )
+            value, known = aggregate(column), func.count(column)
         stmt = (
             select(*groups, value, known, func.count())
             .select_from(table)
@@ -233,12 +239,17 @@ class SqlAlchemyTraceQuery:
             keys = tuple(row[: len(spec.group_by)])
             tag = row[len(spec.group_by)] if definition.semantics_field else None
             total_value, known_count, total = row[-3:]
+            samples: tuple[int, ...] = ()
+            if definition.operation == Aggregation.DISTRIBUTION:
+                samples = tuple(json.loads(total_value)) if total_value else ()
+                total_value = sum(samples) if samples else None
             grouped.setdefault(keys, []).append(
                 AggregatePart(
                     None if total_value is None else int(total_value),
                     int(known_count),
                     int(total),
                     tag,
+                    samples,
                 )
             )
         excluded = 0
