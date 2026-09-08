@@ -144,12 +144,8 @@ def test_returned_tool_scope_preserves_exact_label_whitespace(client):
     mapping_id = container.list_mappings.execute()[0].id
     record = json.loads(_tracelab_line("padded-tool"))
     record["tools"] = [{"tool_name": " Read "}]
-    info = container.store_upload.execute(
-        "padded-tool.jsonl", (json.dumps(record) + "\n").encode()
-    )
-    report = container.commit_import.execute(
-        "tracelab", [FileBinding(info.upload_id, mapping_id)]
-    )
+    info = container.store_upload.execute("padded-tool.jsonl", (json.dumps(record) + "\n").encode())
+    report = container.commit_import.execute("tracelab", [FileBinding(info.upload_id, mapping_id)])
     assert report.status == "committed"
 
     grouped = client.get(
