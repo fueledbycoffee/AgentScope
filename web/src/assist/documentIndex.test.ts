@@ -54,7 +54,8 @@ describe('the indexed view', () => {
     const index = indexDocument(DOC)
     const started = index.rules[0].fields.find(field => field.name === 'started_at')!
     expect(started.source.members.path.raw).toBe('"$.ts"')
-    expect(index.rules[0].where?.[0].raw).toContain('1.0')
+    expect(index.rules[0].where?.[0].value.raw).toBe('1.0')
+    expect(index.rules[0].where?.[0].op.raw).toBe('"eq"')
     expect(index.extras[0].raw).toContain('9007199254740993')
   })
 

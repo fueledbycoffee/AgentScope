@@ -23,6 +23,7 @@ import type {
 import type { AssistantRequestText as AssistantRequest } from '../api'
 import type { ChatTurn } from './Conversation'
 import { planEdits, type DocEdit } from './document'
+import { asString, indexDocument } from './documentIndex'
 import { isJsonObjectText } from './jsonGrammar'
 import { extractMappingText, prettyJson } from './jsonText'
 
@@ -52,7 +53,8 @@ export interface AssistState {
   validation: { documentVersion: number; issues: MappingIssue[]; executable: boolean } | null
   saved: { documentText: string; record: SavedMapping } | null
   preview: { savedId: string; report: ImportPreview } | null
-  undo: string | null
+  /** The text *and* the identity to restore: the two must move together or a revise breaks. */
+  undo: { documentText: string; identity: { name: string; source: string } } | null
   busy: Busy
   notices: Notice[]
   omittedHistory: number
@@ -89,16 +91,29 @@ function invalidate(state: AssistState): AssistState {
 }
 
 /** Every change to the document text moves the version and clears validation, save and preview. */
-function editDocument(state: AssistState, text: string, undo: string | null): AssistState {
+function editDocument(
+  state: AssistState,
+  text: string,
+  undo: AssistState['undo'],
+  identity = state.identity,
+): AssistState {
   return invalidate({
     ...state,
     documentText: text,
     documentVersion: state.documentVersion + 1,
+    identity,
     validation: null,
     saved: null,
     preview: null,
     undo,
   })
+}
+
+/** The identity a document declares, when it is addressable; the user's own otherwise. */
+export function identityOf(text: string, fallback: { name: string; source: string }): { name: string; source: string } {
+  const index = indexDocument(text)
+  if (!index.ok) return fallback
+  return { name: asString(index.head.name) ?? fallback.name, source: asString(index.head.source) ?? fallback.source }
 }
 
 export function setIdentity(state: AssistState, identity: { name: string; source: string }): AssistState {
@@ -110,7 +125,8 @@ export function setIncludeSample(state: AssistState, on: boolean): AssistState {
 }
 
 export function setDocumentText(state: AssistState, text: string): AssistState {
-  return editDocument(state, text, null)
+  // a direct edit of the JSON view may have changed name or source: the identity follows it
+  return editDocument(state, text, null, identityOf(text, state.identity))
 }
 
 /**
@@ -118,18 +134,20 @@ export function setDocumentText(state: AssistState, text: string): AssistState {
  * invalidated once. A batch the planner refuses changes nothing at all — text, version, undo and
  * every gate stay as they were and the reason is shown.
  */
-export function applyDocumentEdits(state: AssistState, edits: DocEdit[]): AssistState {
+export function applyDocumentEdits(state: AssistState, edits: DocEdit[], identity?: { name: string; source: string }): AssistState {
   const planned = planEdits(state.documentText, edits)
   if ('problem' in planned) {
     return { ...state, notices: [...state.notices, { kind: 'warn', text: `That change was not applied: ${planned.problem}.` }] }
   }
-  if (planned.text === state.documentText) return state
-  return editDocument(state, planned.text, state.documentText)
+  if (planned.text === state.documentText && identity === undefined) return state
+  const undo = { documentText: state.documentText, identity: state.identity }
+  return editDocument(state, planned.text, undo, identity ?? identityOf(planned.text, state.identity))
 }
 
 export function undoDocument(state: AssistState): AssistState {
   if (state.undo === null) return state
-  return editDocument(state, state.undo, null)
+  // the identity is restored with the text, so the next revise still matches the document
+  return editDocument(state, state.undo.documentText, null, state.undo.identity)
 }
 
 // The shapes the server's redactor rewrites (domain/redaction.py), approximated; the server stays
@@ -293,7 +311,9 @@ export function outcomeArrived(state: AssistState, generation: number, outcome: 
     return { ...next, notices: [...next.notices, { kind: 'error', text: UNREADABLE_PROPOSAL }] }
   }
   if (readable && outcome.proposal !== null) {
-    next = editDocument(next, prettyJson(mappingText), state.documentText || null)
+    const applied = prettyJson(mappingText)
+    const undo = state.documentText ? { documentText: state.documentText, identity: state.identity } : null
+    next = editDocument(next, applied, undo, identityOf(applied, state.identity))
     next = { ...next, validation: { documentVersion: next.documentVersion, issues: outcome.issues, executable: outcome.proposal.executable } }
   }
   return next

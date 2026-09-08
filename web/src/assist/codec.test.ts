@@ -116,7 +116,7 @@ describe('the numeric codec, from response text to request bytes', () => {
       ...running(),
       documentText: '{"name": "kept", "big": 9007199254740993}',
       documentVersion: 7,
-      undo: '{"name": "older"}',
+      undo: { documentText: '{"name": "older"}', identity: { name: 'older', source: 'assist' } },
       validation: { documentVersion: 7, issues: [], executable: true },
       saved: { documentText: '{"name": "kept", "big": 9007199254740993}', record: { id: 'map_9', name: 'kept', source: 'assist', revision: 2, created_by: 'user', input_format: 'jsonl' as const, created: true } },
     }

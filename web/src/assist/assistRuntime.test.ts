@@ -96,10 +96,15 @@ describe('identity and request building', () => {
     }
   })
 
-  it('refuses a document whose identity differs or that is not a JSON object', () => {
-    const state = setDocumentText(ready(), '{"name": "other", "source": "tracelab"}')
+  it('takes the identity from the document, and refuses one that cannot declare it', () => {
+    // a document the user pastes or edits carries the identity: the two can never disagree
+    const state = setDocumentText(ready(), '{"name": "other", "source": "elsewhere"}')
+    expect(state.identity).toEqual({ name: 'other', source: 'elsewhere' })
     const built = buildRequest({ ...state, turns: [{ id: 'a', role: 'user', content: 'x' }] }, 'm')
-    expect('problem' in built && built.problem).toMatch(/name and source/)
+    expect('request' in built && built.request.kind).toBe('revise')
+    // a document that declares neither still has to match the identity the user typed
+    const silent = buildRequest({ ...setDocumentText(ready(), '{"rules": []}'), turns: [{ id: 'a', role: 'user', content: 'x' }] }, 'm')
+    expect('problem' in silent && silent.problem).toMatch(/name and source/)
     const broken = buildRequest({ ...setDocumentText(ready(), '[1]'), turns: [{ id: 'a', role: 'user', content: 'x' }] }, 'm')
     expect('problem' in broken && broken.problem).toMatch(/JSON object/)
   })
@@ -121,7 +126,7 @@ describe('prepare, acknowledge, run', () => {
     expect(state.validation?.executable).toBe(true)
     expect(state.undo).toBeNull() // the document was empty before
     const again = send(state, 'more', { name: 'assisted', source: 'tracelab', rules: [], notes: 'v2' })
-    expect(again.undo).toBe(state.documentText)
+    expect(again.undo?.documentText).toBe(state.documentText)
     const undone = undoDocument(again)
     expect(undone.documentText).toBe(state.documentText)
     expect(undone.validation).toBeNull()
@@ -190,7 +195,7 @@ describe('table edits', () => {
       { op: 'set', path: ['rules', 0, 'fields', 'x', 'on_missing'], raw: '"reject"' },
     ])
     expect(next.documentVersion).toBe(version + 1) // one bump for the whole batch
-    expect(next.undo).toBe(DOC)
+    expect(next.undo?.documentText).toBe(DOC)
     expect(next.validation).toBeNull()
     expect(next.saved).toBeNull()
     expect(next.documentText).toContain('"epoch_s"')

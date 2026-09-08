@@ -45,15 +45,27 @@ export interface TransformView {
   /** `"trim"` and `{"trim": {}}` are both legal and neither is converted into the other. */
   form: 'short' | 'object' | 'malformed'
   name: string | null
+  /** `enum_map`'s policy member, addressed so the UI never parses the entry itself. */
+  enumMapUnmapped: Member | null
+}
+
+export interface ConditionView {
+  index: number
+  path: DocPath
+  pathMember: Member
+  op: Member
+  value: Member
 }
 
 export interface FieldView {
   name: string
   path: DocPath
   /** Several present kinds is a conflict the parser refuses; it is shown, never silently fixed. */
-  source: { present: SourceKind[]; members: Record<SourceKind, Member> }
+  source: { present: SourceKind[]; members: Record<SourceKind, Member>; paths: Member[] | null }
   transforms: TransformView[] | null
   options: Record<FieldOption, Member>
+  /** `unit` addressed as the ordered pair it is. */
+  unit: { from: Member; to: Member }
   extras: Member[]
   malformed: string | null
 }
@@ -65,7 +77,7 @@ export interface RuleView {
   entity: Member
   select: Member
   parent: Member
-  where: Member[] | null
+  where: ConditionView[] | null
   /** `native_key` absent and `native_key: []` are different declarations. */
   nativeKey: { present: boolean; items: Member[] }
   fields: FieldView[]
@@ -117,12 +129,22 @@ function indexTransforms(tree: DocTree, path: DocPath): TransformView[] | null {
     const at: DocPath = [...path, index]
     const node = nodeAt(tree, at)
     const raw = rawAt(tree, at) ?? ''
-    if (node?.kind === 'string') return { index, path: at, raw, form: 'short' as const, name: JSON.parse(raw) as string }
+    if (node?.kind === 'string') {
+      return { index, path: at, raw, form: 'short' as const, name: JSON.parse(raw) as string, enumMapUnmapped: null }
+    }
     if (node?.kind === 'object') {
       const keys = keysOf(tree, at) ?? []
-      return { index, path: at, raw, form: 'object' as const, name: keys.length === 1 ? keys[0] : null }
+      const name = keys.length === 1 ? keys[0] : null
+      return {
+        index,
+        path: at,
+        raw,
+        form: 'object' as const,
+        name,
+        enumMapUnmapped: name === 'enum_map' ? member(tree, [...at, 'enum_map', 'unmapped']) : null,
+      }
     }
-    return { index, path: at, raw, form: 'malformed' as const, name: null }
+    return { index, path: at, raw, form: 'malformed' as const, name: null, enumMapUnmapped: null }
   })
 }
 
@@ -134,20 +156,28 @@ function indexField(tree: DocTree, path: DocPath, name: string): FieldView {
     source: {
       present: [] as SourceKind[],
       members: Object.fromEntries(SOURCE_KINDS.map(kind => [kind, { path: [...path, kind], raw: null }])) as Record<SourceKind, Member>,
+      paths: null,
     },
     transforms: null,
     options: Object.fromEntries(FIELD_OPTIONS.map(option => [option, { path: [...path, option], raw: null }])) as Record<FieldOption, Member>,
+    unit: { from: { path: [...path, 'unit', 'from'], raw: null }, to: { path: [...path, 'unit', 'to'], raw: null } },
     extras: [],
   }
   if (node === null) return { ...empty, malformed: 'this field is inside a section with duplicate keys' }
   if (node.kind !== 'object') return { ...empty, malformed: 'a field must be a JSON object' }
   const members = Object.fromEntries(SOURCE_KINDS.map(kind => [kind, member(tree, [...path, kind])])) as Record<SourceKind, Member>
+  const pathsLength = lengthOf(tree, [...path, 'paths'])
   return {
     name,
     path,
-    source: { present: SOURCE_KINDS.filter(kind => members[kind].raw !== null), members },
+    source: {
+      present: SOURCE_KINDS.filter(kind => members[kind].raw !== null),
+      members,
+      paths: pathsLength === null ? null : Array.from({ length: pathsLength }, (_unused, i) => member(tree, [...path, 'paths', i])),
+    },
     transforms: indexTransforms(tree, [...path, 'transforms']),
     options: Object.fromEntries(FIELD_OPTIONS.map(option => [option, member(tree, [...path, option])])) as Record<FieldOption, Member>,
+    unit: { from: member(tree, [...path, 'unit', 'from']), to: member(tree, [...path, 'unit', 'to']) },
     extras: extrasOf(tree, path, FIELD_KEYS),
     malformed: null,
   }
@@ -187,7 +217,13 @@ function indexRule(tree: DocTree, index: number, malformed: { path: DocPath; rea
     where:
       rawAt(tree, [...path, 'where']) === null || whereLength === null
         ? null
-        : Array.from({ length: whereLength }, (_unused, i) => member(tree, [...path, 'where', i])),
+        : Array.from({ length: whereLength }, (_unused, i) => ({
+            index: i,
+            path: [...path, 'where', i],
+            pathMember: member(tree, [...path, 'where', i, 'path']),
+            op: member(tree, [...path, 'where', i, 'op']),
+            value: member(tree, [...path, 'where', i, 'value']),
+          })),
     nativeKey: {
       present: rawAt(tree, [...path, 'native_key']) !== null,
       items: Array.from({ length: nativeLength ?? 0 }, (_unused, i) => member(tree, [...path, 'native_key', i])),
