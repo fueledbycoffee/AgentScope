@@ -139,11 +139,31 @@ prints model, attempts, executable, issue codes, ambiguities and questions.
 `backend/tests/llm_recordings/` with the configured key scrubbed everywhere
 (escaped forms included) and refuses to write if any trace of it remains.
 
+**Reasoning models.** Models that think before answering (Ling 3.0, DeepSeek R1
+style, OpenAI o-series) spend `AGENTSCOPE_LLM_MAX_TOKENS` on hidden reasoning
+first and only then on the reply. The usage block of a cut-off reply tells: when
+`completion_tokens_details.reasoning_tokens` took most of the budget, the
+`assistant_failed` message ends with "the reply budget was spent on hidden
+reasoning (N of M tokens, limit L)", and the fix is a larger budget (32,768
+worked for Ling) or a lower reasoning effort where the model offers one. Such
+models also need a longer deadline: set `AGENTSCOPE_LLM_TIMEOUT_S` in minutes.
+
+**Provider errors relayed by OpenRouter.** OpenRouter answers 400 with its own
+message ("Provider returned error") and the upstream provider's reason as a JSON
+string under `error.metadata.raw`. The adapter appends that reason to the
+message, and it takes part in the JSON-mode negotiation: "does not support
+feature: structured-outputs" switches `response_format` off like a direct
+rejection would.
+
 Evidence so far (ADR-005 wants recorded live runs before a configuration is
 called tested):
 
 | Date | Endpoint | Model | Result |
 | --- | --- | --- | --- |
+| 2026-09-08 | OpenRouter | `inclusionai/ling-3.0-flash-fin:free` (owner's choice from 2026-09-08), budget 32,768, deadline 240 s | 75 s, 2 attempts, **executable** proposal (session, model_call, tool_call rules); 4,764 completion tokens of which 2,571 hidden reasoning; reply captured |
+| 2026-09-08 | OpenRouter | `inclusionai/ling-3.0-flash-fin:free`, same settings from `backend/.env` through `scripts/llm_smoke.py` | 67 s, 2 attempts, editable draft (`unknown_policy`) with session, model_call and tool_call rules: the same model varies between an executable proposal and a draft across identical requests |
+| 2026-09-08 | OpenRouter | `inclusionai/ling-3.0-flash-fin:free`, default budget 8,192 | cut off twice with no content: 7,913 of 8,192 tokens went to hidden reasoning (the failure now says so) |
+| 2026-09-08 | OpenRouter | `inclusionai/ling-3.0-flash-fin:free`, JSON mode auto, adapter before this fix | 400 in 0.6 s: OpenRouter said "Provider returned error" and hid "does not support feature: structured-outputs" under `error.metadata.raw`; the fallback did not fire. Fixed: the reason is read and shown, and structured-output wording counts as a rejection |
 | 2026-09-07 | OpenRouter | `dots-studio/dots-3-note-preview:free` (rewritten adapter) | 78 s, 2 attempts, **executable** proposal: session, model_call, tool_call rules; 26 explanations, 5 ambiguities, 4 questions |
 | 2026-09-07 | OpenRouter | `dots-studio/dots-3-note-preview:free` (first adapter build) | 113 s, 2 attempts, editable draft (`invalid_type`, `unknown_key`, `unknown_policy`); reply captured |
 | 2026-09-07 | OpenRouter | `liquid/lfm-2.5-2.6b:free` (second vendor) | 38 s, 2 attempts, editable draft (`native_key_unmapped`, `no_fields`), 3 explanations, 2 ambiguities, 2 questions |

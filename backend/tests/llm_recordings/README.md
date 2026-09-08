@@ -13,3 +13,17 @@ Two kinds of files, told apart by their prefix:
 Statuses and headers are set in the tests themselves; connection failures and
 timeouts are injected as exceptions. CI never calls a network and never reads a
 real key (`tests/infrastructure/test_openai_compatible.py`).
+
+Synthetic bodies added 2026-09-08 (from shapes seen live on OpenRouter):
+
+- `synthetic_openrouter_400_structured_outputs.json`: OpenRouter's 400 whose own
+  message is only "Provider returned error"; the upstream reason ("does not
+  support feature: structured-outputs") is a JSON string under
+  `error.metadata.raw`. Drives the JSON-mode fallback and the error wording.
+- `synthetic_openrouter_length_reasoning.json`: a `length` cut with empty content
+  and `usage.completion_tokens_details.reasoning_tokens` close to
+  `completion_tokens` (a reasoning model spent the reply budget on thinking).
+
+Captured 2026-09-08: `captured_openrouter_ling3_2026-09-08.json` (+ provenance),
+`inclusionai/ling-3.0-flash-fin:free`, executable proposal with a 32,768-token
+budget; the body keeps the model's `reasoning` text about the public fixture.

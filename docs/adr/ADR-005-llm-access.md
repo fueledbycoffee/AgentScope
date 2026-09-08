@@ -38,11 +38,12 @@ provider access only through these backend environment variables:
 The selected targets for documented testing are OpenRouter (primary), LM Studio
 and Ollama. Endpoint examples are `https://openrouter.ai/api/v1`,
 `http://localhost:1234/v1` and `http://localhost:11434/v1`, respectively.
-The owner uses OpenRouter's free-model identifier `minimax/minimax-m3:free`;
-set it through `AGENTSCOPE_LLM_MODEL`. The current `.env.example` instead contains
-`anthropic/claude-sonnet-4.5` as an example, not a mandatory or hard-coded choice.
-The free-model choice is configuration intent, not a guarantee of future pricing
-or availability.
+The owner uses an OpenRouter free-model identifier, set through
+`AGENTSCOPE_LLM_MODEL` (`minimax/minimax-m3:free` at decision time; since
+2026-09-08 `inclusionai/ling-3.0-flash-fin:free`, which `.env.example` now
+names as an example, not a mandatory or hard-coded choice). The free-model
+choice is configuration intent, not a guarantee of future pricing or
+availability.
 
 Advertise configurations as **tested** only with recorded live evidence; accepting
 this ADR does not certify all compatible endpoints or models. Release evidence
@@ -122,6 +123,16 @@ Only recorded live runs count (`scripts/llm_smoke.py`; see
   vendor): same context, 38 s, two generation calls, editable non-executable
   draft (`native_key_unmapped`, `no_fields`). Two distinct vendors have thus
   completed the workflow; only one produced an executable proposal so far.
+- 2026-09-08, OpenRouter, `inclusionai/ling-3.0-flash-fin:free` (inclusionAI, a
+  third vendor; the owner's choice from this date): same context. With the
+  default 8,192-token budget the reply was cut off twice with no content
+  (7,913 tokens of hidden reasoning); with `AGENTSCOPE_LLM_MAX_TOKENS=32768`
+  and a 240 s deadline, 75 s, two generation calls, executable proposal with
+  session, model_call and tool_call rules (reply captured as
+  `backend/tests/llm_recordings/captured_openrouter_ling3_2026-09-08.json`).
+  The provider rejects `response_format` through a relayed error the adapter
+  had not recognised; fixed the same day. Two vendors have now produced
+  executable proposals.
 - The owner's earlier choice `minimax/minimax-m3:free` left OpenRouter's free
   tier on or before 2026-09-07 (404 "unavailable for free"); a paid slug
   exists but was not used.

@@ -81,12 +81,22 @@ REPAIR_INSTRUCTION: Final = (
 REPAIR_INSTRUCTION_END: Final = "\nvalidation-issues>>>"
 
 JSON_MODES: Final = ("auto", "on", "off")
-_UNSUPPORTED_PARAMETER: Final = re.compile(
-    r"(?i)response_format.{0,120}?(not supported|unsupported|does not support|unknown|"
-    r"unrecognized|invalid|must be)|"
-    r"(not supported|unsupported|does not support|unknown|unrecognized|invalid).{0,120}?"
-    r"response_format"
+# the feature has several names: the parameter (response_format), OpenAI's "structured outputs",
+# "json mode", the json_object type; a rejection names one of them near a refusal word
+# feature name and refusal word must share a sentence: a gap may not cross a sentence end
+# (". ", ";", "!", "?"); a dot inside a token ("response_format.type") is not a sentence end.
+# Whitespace is normalised before matching so a relayed newline cannot split the phrase.
+_FEATURE: Final = (
+    r"(response_format|structured[ _-]?outputs?|json[ _-]?mode|json_object|json_schema)"
 )
+_REFUSAL: Final = (
+    r"(not supported|unsupported|does not support|unknown|unrecognized|invalid|must be)"
+)
+_GAP: Final = r"(?:[^.;!?]|\.(?!\s|$)){0,120}?"
+_UNSUPPORTED_PARAMETER: Final = re.compile(
+    rf"(?i){_FEATURE}{_GAP}{_REFUSAL}|{_REFUSAL}{_GAP}{_FEATURE}"
+)
+_WHITESPACE: Final = re.compile(r"\s+")
 _ERROR_QUOTE_CHARS: Final = 200
 _MAX_RESPONSE_BYTES: Final = 4 * 1024 * 1024
 _CANARY_ERROR: Final = (
@@ -288,7 +298,8 @@ class OpenAICompatibleAssistant:
             return False
         if self._configured_json_mode == "on":
             return False
-        return _UNSUPPORTED_PARAMETER.search(_error_message(response)) is not None
+        message = _WHITESPACE.sub(" ", _decode_escapes(_error_message(response)))
+        return _UNSUPPORTED_PARAMETER.search(message) is not None
 
     # -- reply -----------------------------------------------------------------------------
 
@@ -374,6 +385,9 @@ class OpenAICompatibleAssistant:
         if finish == "content_filter":
             return self._guard(AssistantReply(text or "", model, "refusal", notes))
         if finish == "length":
+            reasoning_note = _reasoning_budget_note(payload.get("usage"), self._max_tokens)
+            if reasoning_note:
+                notes = (*notes, reasoning_note)
             return self._guard(AssistantReply(text or "", model, "length", notes))
         if finish in ("stop", "end_turn", "eos") or (finish is None and text is not None):
             if text is None:
@@ -447,23 +461,74 @@ def _json_body(response: httpx2.Response) -> Any:
 
 
 def _error_message(response: httpx2.Response) -> str:
-    """The provider's error message when the body is a structured error, else a body excerpt."""
+    """The provider's error message when the body is a structured error, else the body text.
+
+    Never bounded here: a cut before the key scrub can leave a fragment of the credential in
+    the excerpt, and a cut before classification can lose the words that name a rejection.
+    ``_quote`` scrubs first and bounds last; the body itself is capped at ``_MAX_RESPONSE_BYTES``.
+    """
     payload = _json_body(response)
     if isinstance(payload, dict):
         error = payload.get("error")
         if isinstance(error, dict):
             message = error.get("message")
             if isinstance(message, str):
-                return message
-            return json.dumps(error, ensure_ascii=False)[: _ERROR_QUOTE_CHARS * 2]
+                # OpenRouter relays the upstream provider's reason under metadata.raw, and its own
+                # message says only "Provider returned error": the reason is what a person needs
+                raw = _provider_reason(error)
+                return f"{message}: {raw}" if raw else message
+            return json.dumps(error, ensure_ascii=False)
         if isinstance(error, str):
             return error
         if isinstance(payload.get("message"), str):
             return str(payload["message"])
     try:
-        return response.text[: _ERROR_QUOTE_CHARS * 2]
+        return response.text
     except Exception:  # noqa: BLE001 - a diagnostic must never raise
         return "<unreadable body>"
+
+
+def _reasoning_budget_note(usage: Any, max_tokens: int) -> str:
+    """When a cut reply spent its budget on hidden reasoning, say so (reasoning models do this).
+
+    OpenAI-shaped usage: ``completion_tokens`` and ``completion_tokens_details.reasoning_tokens``.
+    The note is a human sentence the application shows next to the failure.
+    """
+    if not isinstance(usage, dict):
+        return ""
+    completion = usage.get("completion_tokens")
+    details = usage.get("completion_tokens_details")
+    reasoning = details.get("reasoning_tokens") if isinstance(details, dict) else None
+    if not isinstance(completion, int) or not isinstance(reasoning, int) or reasoning <= 0:
+        return ""
+    if reasoning * 2 < completion:  # most of the budget went to the visible reply: not this
+        return ""
+    return (
+        f"the reply budget was spent on hidden reasoning ({reasoning} of {completion} tokens, "
+        f"limit {max_tokens}): raise AGENTSCOPE_LLM_MAX_TOKENS or use a model with a lower "
+        "reasoning effort"
+    )
+
+
+def _provider_reason(error: dict[str, Any]) -> str:
+    """The upstream reason relayed under ``error.metadata.raw`` (a JSON string or text), whole."""
+    metadata = error.get("metadata")
+    raw = metadata.get("raw") if isinstance(metadata, dict) else None
+    if not isinstance(raw, str) or not raw.strip():
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        parsed = None
+    if isinstance(parsed, dict):
+        for key in ("message", "error", "reason"):
+            value = parsed.get(key)
+            nested = value.get("message") if isinstance(value, dict) else None
+            if isinstance(nested, str) and nested.strip():
+                return nested
+            if isinstance(value, str) and value.strip():
+                return value
+    return raw
 
 
 _ESCAPE = re.compile(r"\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})|\\(/)")

@@ -342,6 +342,29 @@ def test_a_truncated_reply_that_still_parses_is_never_executable() -> None:
     assert caught.value.details[0]["kind"] == "truncated"
 
 
+def test_a_terminal_failure_carries_the_adapter_notes() -> None:
+    class Explaining:
+        def complete(
+            self, prepared: PreparedContext, *, repair: RepairRequest | None = None
+        ) -> AssistantReply:
+            return AssistantReply(
+                "", "m", "length", ("the reply budget was spent on hidden reasoning",)
+            )
+
+    h = Harness()
+    h.run = RunAssistant(h.prepare, Explaining())
+    with pytest.raises(AssistantFailedError) as caught:
+        h.go(h.request(h.tracelab_upload()))
+    assert caught.value.message.endswith(
+        "(truncated): the reply budget was spent on hidden reasoning"
+    )
+    assert caught.value.details[0] == {
+        "kind": "truncated",
+        "attempts": 2,
+        "notes": ["the reply budget was spent on hidden reasoning"],
+    }
+
+
 def test_malformed_then_valid_recovers() -> None:
     h = Harness(["malformed", "valid"])
     outcome = h.go(h.request(h.tracelab_upload()))

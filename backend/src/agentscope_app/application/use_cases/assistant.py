@@ -295,15 +295,9 @@ class RunAssistant:
             attempts = 2
             notes.extend(second.notes)
             if attempt.terminal_failure not in (None, "refusal"):
-                raise AssistantFailedError(
-                    f"The assistant did not produce a usable reply ({attempt.terminal_failure})",
-                    [{"kind": attempt.terminal_failure, "attempts": attempts}],
-                )
+                raise _unusable(attempt.terminal_failure, attempts, notes)
         elif attempt.terminal_failure is not None and attempt.terminal_failure != "refusal":
-            raise AssistantFailedError(
-                f"The assistant did not produce a usable reply ({attempt.terminal_failure})",
-                [{"kind": attempt.terminal_failure, "attempts": attempts}],
-            )
+            raise _unusable(attempt.terminal_failure, attempts, notes)
         return AssistantOutcome(
             proposal=attempt.proposal,
             issues=attempt.issues,
@@ -533,6 +527,16 @@ def _project(
             head.append(f"<{len(value) - limits.array_items} more items>")
         return head
     return value
+
+
+def _unusable(kind: str, attempts: int, notes: list[str]) -> AssistantFailedError:
+    """The failure names the kind and, when the adapter explained it, the explanation."""
+    message = f"The assistant did not produce a usable reply ({kind})"
+    detail: dict[str, Any] = {"kind": kind, "attempts": attempts}
+    if notes:
+        message = f"{message}: {'; '.join(dict.fromkeys(notes))}"
+        detail["notes"] = list(dict.fromkeys(notes))
+    return AssistantFailedError(message, [detail])
 
 
 def _parse_envelope(text: str) -> dict[str, Any] | None:
