@@ -191,21 +191,35 @@ test('day-1 path: guided import, deep links, report, re-import leaves totals unc
   await expect(page.getByRole('region', { name: 'Model-call observations' })).toContainText('4,770')
   await expect(page.getByRole('region', { name: 'Tool-call observations' })).toContainText('5,723')
   const tokens = page.getByRole('region', { name: 'Input usage by accounting group' })
-  await expect(tokens).toContainText('Not comparable')
-  await expect(tokens).toContainText('not comparable: 2 token semantics in selection')
-  await expect(tokens).toContainText(/tracelab-claude: 186,?454,?781/)
-  await expect(tokens).toContainText(/coverage 1,?583 \/ 1,?583 calls/)
-  await expect(tokens).toContainText(/tracelab-codex: 366,?993,?096/)
-  await expect(tokens).toContainText(/coverage 3,?187 \/ 3,?187 calls/)
-  await expect(tokens).not.toContainText('553447877')
+  // the card surface: the accounting groups as compact rows, abbreviated with the exact value under
+  // each; the comparability reason and the raw semantics ids live in the definition popover
+  await expect(tokens).toContainText('Claude')
+  await expect(tokens).toContainText('186.5M')
+  await expect(tokens).toContainText('exact 186,454,781')
+  await expect(tokens).toContainText('Codex')
+  await expect(tokens).toContainText('367M')
+  await expect(tokens).toContainText('exact 366,993,096')
+  await expect(tokens).toContainText(/coverage 4,?770 \/ 4,?770 calls/)
   await expect(tokens).not.toContainText('553,447,877')
+  await expect(tokens).not.toContainText('Not comparable')
+  await tokens.getByRole('button', { name: /Definition/ }).click()
+  const tokensPop = page.getByRole('dialog')
+  await expect(tokensPop).toContainText('2 token semantics')
+  await expect(tokensPop).toContainText('tracelab-claude')
+  await page.keyboard.press('Escape')
   const cost = page.getByRole('region', { name: 'Scheduled cost' })
-  // since the alias table (#59) the fixture's Claude models are priced; the Codex rows are not, and
-  // the two accounting semantics are refused as a total, so the tile shows the partitions
-  await expect(cost).toContainText('Not comparable')
-  await expect(cost).toContainText('priced token coverage 180,777,240 / 555,931,704')
-  await expect(cost).toContainText('148 calls unpriced: no rate for this model id')
-  await expect(cost).toContainText('tracelab-claude: 107.8042')
+  // one dollar figure (money adds across accounting groups), its exact line, one priced-coverage line;
+  // the split, schedule version, unpriced calls and caveats are in the popover
+  await expect(cost).toContainText('$132.88')
+  await expect(cost).toContainText('exact 132.8761978')
+  await expect(cost).toContainText(/priced .*% of recorded tokens/)
+  await expect(cost).not.toContainText('Not comparable')
+  await expect(cost).not.toContainText('openrouter-2026')
+  await cost.getByRole('button', { name: /Definition/ }).click()
+  const costPop = page.getByRole('dialog')
+  await expect(costPop).toContainText('openrouter-2026-09-08')
+  await expect(costPop).toContainText('148 calls unpriced')
+  await page.keyboard.press('Escape')
 
   // the same bytes again: the File stop names the earlier import, the report is a duplicate
   await page.goto('/import')
