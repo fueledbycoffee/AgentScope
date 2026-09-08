@@ -170,7 +170,9 @@ export function suggestionsFor(
     if ((UNITS as readonly string[]).includes(from) && (UNITS as readonly string[]).includes(to)) {
       // an existing unit is edited at its members, exactly as the dropdown does: replacing the
       // object would drop anything else it carries, which the parser accepts
-      const exists = field.unit.from.raw !== null && field.unit.to.raw !== null
+      // the same rule as the dropdown: an object that exists is edited at its members, however
+      // partial it is, because rebuilding it would drop whatever else it carries
+      const exists = field.options.unit.raw !== null && field.unitProblem === null
       add(
         'unit',
         JSON.stringify({ from, to }),

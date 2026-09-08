@@ -152,6 +152,19 @@ describe('every option name the backend can target', () => {
     expect(suggestion.description).toContain('us')
   })
 
+  it('completes a partial unit at its members, keeping the rest', () => {
+    const partial = indexDocument(DOC.replace(
+      '"input_tokens": { "path": "$.tokens" }',
+      '"wall_latency_ms": { "path": "$.ms", "unit": {"from": "s", "extension": 9007199254740993} }',
+    ))
+    const rule = partial.rules[1]
+    const field = rule.fields.find(entry => entry.name === 'wall_latency_ms')!
+    expect(suggestionsFor(rule, field, 'unit', 'us to ms')[0].edits).toEqual([
+      { op: 'set', path: ['rules', 1, 'fields', 'wall_latency_ms', 'unit', 'from'], raw: '"us"' },
+      { op: 'set', path: ['rules', 1, 'fields', 'wall_latency_ms', 'unit', 'to'], raw: '"ms"' },
+    ])
+  })
+
   it('offers the pair through the whole path a proposal takes', () => {
     const offer = offerFor(index, ambiguity('rules[1].fields.started_at.unit', ['s to ms', 'ns to ms']))
     expect(offer.kind).toBe('operations')

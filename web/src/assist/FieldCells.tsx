@@ -38,25 +38,34 @@ export function OptionSelect({
 }) {
   const id = context.idFor('opt', option)
   const described = context.issueId(id)
-  const value = plain(member)
-  const known = domain.includes(value)
+  // the type is part of the value: JSON `null` is not the policy "null", and the string "false" is
+  // not the flag false. The parser refuses the wrong one, so the control must not show it as chosen
+  const rawOf = (choice: string) => (quoted ? JSON.stringify(choice) : choice)
+  const selected = domain.find(choice => member.raw === rawOf(choice))
+  const wrongType = member.raw !== null && selected === undefined
   return (
-    <select
-      id={id}
-      className="option"
-      aria-label={label}
-      aria-invalid={described !== undefined || (member.raw !== null && !known) ? true : undefined}
-      aria-describedby={described}
-      value={known ? value : ''}
-      disabled={context.disabled}
-      onChange={event => context.onEdit([setOrRemove(member.path, event.target.value, quoted)])}
-    >
-      <option value="">{`${option} · not set`}</option>
-      {domain.map(choice => (
-        <option key={choice} value={choice}>{`${option}: ${choice}`}</option>
-      ))}
-      {member.raw !== null && !known && <option value="">{`${option}: ${member.raw} — clear it`}</option>}
-    </select>
+    <>
+      <select
+        id={id}
+        className="option"
+        aria-label={label}
+        aria-invalid={described !== undefined || wrongType ? true : undefined}
+        aria-describedby={described}
+        value={selected ?? ''}
+        disabled={context.disabled}
+        onChange={event => context.onEdit([setOrRemove(member.path, event.target.value, quoted)])}
+      >
+        <option value="">{`${option} · not set`}</option>
+        {domain.map(choice => (
+          <option key={choice} value={choice}>{`${option}: ${choice}`}</option>
+        ))}
+      </select>
+      {wrongType && (
+        <span className="chip warn mono" title={`${option} is ${member.raw}, which is not a valid value`}>
+          {member.raw} — not a valid value
+        </span>
+      )}
+    </>
   )
 }
 
@@ -78,20 +87,28 @@ function UnitPair({ field, context }: { field: FieldView; context: CellContext }
   const current = draft.basis === basis ? draft : { basis }
   const from = current.from ?? committedFrom
   const to = current.to ?? committedTo
+  const exists = unit.raw !== null
 
   const write = (half: 'from' | 'to', value: string) => {
-    const next = { from, to, [half]: value }
+    // an object that is already there is edited at the member the user changed, whatever else it
+    // holds; only an absent one is written whole, and only once both halves are known
+    if (exists) {
+      setDraft({ basis })
+      if (value !== '') {
+        context.onEdit([{ op: 'set', path: field.unit[half].path, raw: JSON.stringify(value) }])
+        return
+      }
+      // clearing a half removes the whole unit only when the object holds nothing this control
+      // does not own; anything else there means removing just the member the user cleared
+      const unknown = (field.unit.keys ?? []).filter(key => key !== 'from' && key !== 'to')
+      context.onEdit([{ op: 'remove', path: unknown.length === 0 ? unit.path : field.unit[half].path }])
+      return
+    }
     if (value === '') {
-      // half a unit is not a unit: clearing either half removes the whole member
       setDraft({ basis })
-      context.onEdit(unit.raw === null ? [] : [{ op: 'remove', path: unit.path }])
       return
     }
-    if (unit.raw !== null && committedFrom !== '' && committedTo !== '') {
-      setDraft({ basis })
-      context.onEdit([{ op: 'set', path: field.unit[half].path, raw: JSON.stringify(value) }])
-      return
-    }
+    const next = { from, to, [half]: value }
     if (next.from === '' || next.to === '') {
       setDraft({ ...current, [half]: value })
       return
@@ -99,15 +116,15 @@ function UnitPair({ field, context }: { field: FieldView; context: CellContext }
     setDraft({ basis })
     context.onEdit([{ op: 'set', path: unit.path, raw: JSON.stringify({ from: next.from, to: next.to }) }])
   }
-  const select = (half: 'from' | 'to', value: string, onChange: (next: string) => void) => (
+  const select = (half: 'from' | 'to', value: string) => (
     <select
-      id={context.idFor('opt', `unit-${half}`)}
+      id={context.idFor('opt', half === 'from' ? 'unit' : 'unit-to')}
       className="option"
       aria-label={`unit ${half} of ${field.name} in ${context.ruleName}`}
       aria-describedby={context.issueId(context.idFor('opt', 'unit'))}
       value={value}
       disabled={context.disabled}
-      onChange={event => onChange(event.target.value)}
+      onChange={event => write(half, event.target.value)}
     >
       <option value="">{`unit ${half} · not set`}</option>
       {UNITS.map(choice => (
@@ -115,11 +132,13 @@ function UnitPair({ field, context }: { field: FieldView; context: CellContext }
       ))}
     </select>
   )
+  if (field.unitProblem !== null) {
+    return <RepairLink problem={field.unitProblem} what={`unit of ${field.name} in ${context.ruleName}`} path={unit.path} context={context} />
+  }
   return (
     <span className="unit">
-      {select('from', from, next => write('from', next))}
-      {select('to', to, next => write('to', next))}
-      {unit.raw !== null && from === '' && <span className="chip warn mono" title="unit is not an object with from and to">{unit.raw}</span>}
+      {select('from', from)}
+      {select('to', to)}
     </span>
   )
 }

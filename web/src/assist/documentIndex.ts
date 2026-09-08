@@ -68,8 +68,10 @@ export interface FieldView {
   /** The same, for an ordered `paths` that is not a list. */
   pathsProblem: string | null
   options: Record<FieldOption, Member>
-  /** `unit` addressed as the ordered pair it is. */
-  unit: { from: Member; to: Member }
+  /** `unit` addressed as the ordered pair it is, with whatever else the object holds. */
+  unit: { from: Member; to: Member; keys: string[] | null }
+  /** `unit` present but not an object: repaired in the JSON view, never rebuilt. */
+  unitProblem: string | null
   extras: Member[]
   malformed: string | null
 }
@@ -180,7 +182,8 @@ function indexField(tree: DocTree, path: DocPath, name: string, malformed: { pat
     transformsProblem: null,
     pathsProblem: null,
     options: Object.fromEntries(FIELD_OPTIONS.map(option => [option, { path: [...path, option], raw: null }])) as Record<FieldOption, Member>,
-    unit: { from: { path: [...path, 'unit', 'from'], raw: null }, to: { path: [...path, 'unit', 'to'], raw: null } },
+    unit: { from: { path: [...path, 'unit', 'from'], raw: null }, to: { path: [...path, 'unit', 'to'], raw: null }, keys: null },
+    unitProblem: null,
     extras: [],
   }
   if (node === null) return { ...empty, malformed: 'this field is inside a section with duplicate keys' }
@@ -201,7 +204,12 @@ function indexField(tree: DocTree, path: DocPath, name: string, malformed: { pat
     transformsProblem,
     pathsProblem,
     options: Object.fromEntries(FIELD_OPTIONS.map(option => [option, member(tree, [...path, option])])) as Record<FieldOption, Member>,
-    unit: { from: member(tree, [...path, 'unit', 'from']), to: member(tree, [...path, 'unit', 'to']) },
+    unit: {
+      from: member(tree, [...path, 'unit', 'from']),
+      to: member(tree, [...path, 'unit', 'to']),
+      keys: keysOf(tree, [...path, 'unit']),
+    },
+    unitProblem: wrongType(tree, [...path, 'unit'], 'object', malformed),
     extras: extrasOf(tree, path, FIELD_KEYS),
     malformed: null,
   }
@@ -266,7 +274,17 @@ function indexRule(tree: DocTree, index: number, malformed: { path: DocPath; rea
 
 /** Index a document; never throws, and says why when a section cannot be shown as rows. */
 export function indexDocument(text: string): DocIndex {
-  const empty: DocIndex = {
+  try {
+    return index(text)
+  } catch (error) {
+    // the grammar's depth guard covers the known case; this is the promise itself, so that no
+    // document, however strange, can throw out of a state update and take the draft with it
+    return { ...emptyIndex(), problem: `This document could not be read: ${(error as Error).message}` }
+  }
+}
+
+function emptyIndex(): DocIndex {
+  return {
     ok: false,
     problem: null,
     offset: null,
@@ -280,6 +298,10 @@ export function indexDocument(text: string): DocIndex {
     unmappedProblem: null,
     malformed: [],
   }
+}
+
+function index(text: string): DocIndex {
+  const empty = emptyIndex()
   if (text.trim() === '') return { ...empty, problem: 'The mapping document is empty' }
   const tree = scanDocument(text)
   if ('problem' in tree) return { ...empty, problem: tree.problem, offset: tree.offset }
