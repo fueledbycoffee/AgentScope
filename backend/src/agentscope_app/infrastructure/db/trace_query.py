@@ -29,6 +29,7 @@ from agentscope_app.application.metric_queries import (
     AggregateRows,
     MetricQuerySpec,
     TraceScope,
+    combine_parts,
 )
 from agentscope_app.domain.metrics import (
     MEASURES,
@@ -38,7 +39,9 @@ from agentscope_app.domain.metrics import (
     Dimension,
     EntityGrain,
 )
+from agentscope_app.domain.pricing import PriceSchedule, TokenUsage, price_usage
 from agentscope_app.infrastructure.db.models import EntityContribution, UtcDateTime
+from agentscope_app.infrastructure.prices import load_price_schedule
 
 # Private metadata: Alembic must never mistake these views for canonical tables.
 _VIEW_METADATA = MetaData()
@@ -201,13 +204,16 @@ def _dimension(grain: EntityGrain, dimension: Dimension) -> Any:
 
 
 class SqlAlchemyTraceQuery:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, price_schedule: PriceSchedule | None = None) -> None:
         self._s = session
+        self._price_schedule = price_schedule
 
     def aggregate(self, spec: MetricQuerySpec) -> AggregateRows:
         definition, scope = spec.definition, spec.scope
         if definition.grain == EntityGrain.IMPORT:
             return self._imports(scope)
+        if definition.operation == Aggregation.COST:
+            return self._cost(spec)
         if definition.operation == Aggregation.OBSERVED_SPAN:
             return self._observed_span(spec)
         grain = definition.grain
@@ -252,18 +258,67 @@ class SqlAlchemyTraceQuery:
                     samples,
                 )
             )
-        excluded = 0
-        if scope.has_time_bounds and grain != EntityGrain.SESSION:
-            non_time = replace(scope, started_from=None, started_before=None)
-            excluded = int(
-                self._s.scalar(
-                    select(func.count())
-                    .select_from(table)
-                    .where(*_scope_clauses(grain, non_time), table.c.started_at.is_(None))
-                )
-                or 0
-            )
+        excluded = self._excluded_unknown_timestamps(grain, scope)
         return AggregateRows(tuple(AggregateRow(k, tuple(v)) for k, v in grouped.items()), excluded)
+
+    def _excluded_unknown_timestamps(self, grain: EntityGrain, scope: TraceScope) -> int:
+        if not scope.has_time_bounds or grain == EntityGrain.SESSION:
+            return 0
+        table = VIEWS[grain]
+        non_time = replace(scope, started_from=None, started_before=None)
+        return int(
+            self._s.scalar(
+                select(func.count())
+                .select_from(table)
+                .where(*_scope_clauses(grain, non_time), table.c.started_at.is_(None))
+            )
+            or 0
+        )
+
+    def _cost(self, spec: MetricQuerySpec) -> AggregateRows:
+        schedule = self._price_schedule or load_price_schedule()
+        groups = [_dimension(EntityGrain.MODEL_CALL, d) for d in spec.group_by]
+        fields = (
+            "model",
+            "token_semantics",
+            "input_tokens",
+            "output_tokens",
+            "cache_read_tokens",
+            "cache_creation_tokens",
+        )
+        stmt = select(*groups, *(MODEL_VIEW.c[f] for f in fields)).where(
+            *_scope_clauses(EntityGrain.MODEL_CALL, spec.scope)
+        )
+        grouped: dict[tuple[str | bool | None, ...], tuple[AggregatePart, ...]] = {}
+        if not spec.group_by:
+            grouped[()] = ()
+        for row in self._s.execute(stmt):
+            keys = tuple(row[: len(spec.group_by)])
+            usage = TokenUsage(*row[len(spec.group_by) :])
+            priced = price_usage(usage, schedule)
+            part = AggregatePart(
+                priced.cost,
+                int(priced.cost is not None),
+                1,
+                usage.semantics,
+                priced_tokens=priced.priced_tokens,
+                total_tokens=priced.total_tokens,
+            )
+            grouped[keys] = combine_parts(
+                AggregateRows((AggregateRow(keys, (*grouped.get(keys, ()), part)),))
+            )
+        excluded = self._excluded_unknown_timestamps(EntityGrain.MODEL_CALL, spec.scope)
+        return AggregateRows(
+            tuple(
+                AggregateRow(k, v)
+                for k, v in sorted(
+                    grouped.items(),
+                    key=lambda item: tuple((v is not None, str(v)) for v in item[0]),
+                )
+            ),
+            excluded,
+            schedule.version if schedule else None,
+        )
 
     def _observed_span(self, spec: MetricQuerySpec) -> AggregateRows:
         groups = [_dimension(EntityGrain.SESSION, d) for d in spec.group_by]
@@ -297,7 +352,10 @@ class SqlAlchemyTraceQuery:
                         ),
                     ),
                 )
-                for keys, parts in sorted(grouped.items(), key=lambda item: str(item[0]))
+                for keys, parts in sorted(
+                    grouped.items(),
+                    key=lambda item: tuple((v is not None, str(v)) for v in item[0]),
+                )
             )
         )
 

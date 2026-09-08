@@ -72,7 +72,7 @@ def test_metrics_http_metadata_coverage_and_exact_text(client):
         "tool_calls",
         "input_tokens",
     }
-    assert len(definitions) == 19
+    assert len(definitions) == 20
     by_id = {d["id"]: d for d in definitions}
     assert by_id["tool_wall_latency_ms"]["field"] == "wall_latency_ms"
     assert by_id["tool_internal_latency_ms"]["field"] == "internal_latency_ms"
@@ -262,3 +262,60 @@ def test_reasoning_model_groups_and_diagnostic_only_definition(client):
     assert response.json()["error"]["code"] == "invalid_input"
     definitions = {d["id"]: d for d in client.get("/api/metrics/definitions").json()}
     assert definitions["reasoning_to_output_ratio"]["diagnostic"] is True
+
+
+def test_scheduled_cost_exact_rates_semantics_splits_and_token_coverage(client, monkeypatch):
+    from fractions import Fraction
+
+    from agentscope_app.domain.pricing import ModelRates, PriceSchedule
+    from agentscope_app.infrastructure.db import trace_query
+
+    container = ingest(client)
+    schedule = PriceSchedule(
+        "offline-test-v1",
+        {"vendor/model": ModelRates(Fraction("0.01"), Fraction("0.02"), Fraction("0.001"))},
+    )
+    monkeypatch.setattr(trace_query, "load_price_schedule", lambda: schedule)
+    with container.uow_factory() as uow:
+        calls = list(uow.session.scalars(select(m.ModelCall).order_by(m.ModelCall.id)))
+        for call, tag, input_, output in zip(
+            calls,
+            ["tracelab-claude", "tracelab-codex", "unknown"],
+            [100, 100, 50],
+            [10, 10, 5],
+            strict=True,
+        ):
+            call.model = "vendor/model"
+            call.token_semantics = tag
+            call.input_tokens, call.output_tokens = input_, output
+            call.cache_read_tokens = 60 if tag == "tracelab-claude" else None
+            call.cache_creation_tokens = 20 if tag == "tracelab-claude" else None
+            call.reasoning_tokens = 4  # Never added to the output denominator/cost a second time.
+        uow.commit()
+    response = client.get(
+        "/api/metrics/query", params={"metric_id": "scheduled_cost_usd", "group_by": "model"}
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()["overall"]
+    assert result["schedule_version"] == "offline-test-v1"
+    assert result["value_text"] is None
+    assert result["recorded_sum_text"] == "0.66"
+    assert result["priced_coverage"] == {"known": 100, "total": 275}
+    assert result["coverage"] == {"known": 2, "total": 3}
+    parts = {p["semantics"]: p for p in result["semantics_partitions"]}
+    assert parts["tracelab-claude"]["value_text"] == "0.46"
+    assert parts["tracelab-claude"]["priced_coverage"] == {"known": 90, "total": 110}
+    assert parts["tracelab-codex"]["value_text"] == "0.2"
+    assert parts["tracelab-codex"]["priced_coverage"] == {"known": 10, "total": 110}
+    assert parts["unknown"]["value_text"] is None
+    for tag, part in parts.items():
+        response = client.get(
+            "/api/metrics/query", params={"metric_id": "scheduled_cost_usd", "token_semantics": tag}
+        )
+        assert response.json()["overall"]["priced_coverage"] == part["priced_coverage"]
+    monkeypatch.setattr(trace_query, "load_price_schedule", lambda: None)
+    response = client.get("/api/metrics/query", params={"metric_id": "scheduled_cost_usd"})
+    result = response.json()["overall"]
+    assert result["schedule_version"] is None and result["value_text"] is None
+    assert result["priced_coverage"] == {"known": 0, "total": 275}
+    assert "schedule unavailable" in result["reason"]

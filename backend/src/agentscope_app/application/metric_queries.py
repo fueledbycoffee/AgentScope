@@ -11,6 +11,7 @@ from agentscope_app.domain.distributions import Distribution, distribution
 from agentscope_app.domain.metrics import (
     DIMENSIONS,
     AggregatePart,
+    Aggregation,
     Dimension,
     EntityGrain,
     MetricDefinition,
@@ -165,6 +166,7 @@ class AggregateRow:
 class AggregateRows:
     rows: tuple[AggregateRow, ...] = ()
     excluded_unknown_timestamps: int = 0
+    schedule_version: str | None = None
 
 
 def _activity_scope(scope: TraceScope, grain: EntityGrain) -> TraceScope:
@@ -241,6 +243,8 @@ class PartitionResult:
     coverage: Coverage
     drill_scope: TraceScope
     distribution: Distribution | None = None
+    priced_coverage: Coverage | None = None
+    schedule_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -252,6 +256,8 @@ class MetricResult:
     reason: str
     semantics_partitions: tuple[PartitionResult, ...]
     distribution: Distribution | None = None
+    priced_coverage: Coverage | None = None
+    schedule_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -285,7 +291,7 @@ def _legacy_int(value: Number | None) -> int | None:
     return value
 
 
-def _combine_parts(rows: AggregateRows) -> tuple[AggregatePart, ...]:
+def combine_parts(rows: AggregateRows) -> tuple[AggregatePart, ...]:
     grouped: dict[str | None, list[AggregatePart]] = {}
     for row in rows.rows:
         for part in row.parts:
@@ -299,6 +305,8 @@ def _combine_parts(rows: AggregateRows) -> tuple[AggregatePart, ...]:
             sum(p.total for p in parts),
             semantics,
             tuple(v for p in parts for v in p.samples),
+            sum(p.priced_tokens for p in parts),
+            sum(p.total_tokens for p in parts),
         )
         for semantics, parts in sorted(grouped.items(), key=lambda item: item[0] or "")
     )
@@ -306,7 +314,7 @@ def _combine_parts(rows: AggregateRows) -> tuple[AggregatePart, ...]:
 
 def assemble_metric(definition: MetricDefinition, rows: AggregateRows) -> Metric:
     """The sole compatibility assembler for summary and session metrics."""
-    parts = _combine_parts(rows)
+    parts = combine_parts(rows)
     result = evaluate(definition, parts)
     return Metric(
         value=_legacy_int(result.recorded_sum),
@@ -333,15 +341,23 @@ def assemble_metric(definition: MetricDefinition, rows: AggregateRows) -> Metric
 
 
 def _result(
-    spec: MetricQuerySpec, parts: tuple[AggregatePart, ...], scope: TraceScope
+    spec: MetricQuerySpec,
+    parts: tuple[AggregatePart, ...],
+    scope: TraceScope,
+    schedule_version: str | None = None,
 ) -> MetricResult:
     result = evaluate(spec.definition, parts)
+    is_cost = spec.definition.operation == Aggregation.COST
     return MetricResult(
         _text(result.value),
         _text(result.recorded_sum),
         Coverage(result.known, result.total),
         result.comparability,
-        result.reason,
+        (
+            "Price schedule unavailable; no tokens priced."
+            if is_cost and schedule_version is None
+            else result.reason
+        ),
         tuple(
             PartitionResult(
                 p.semantics,
@@ -349,6 +365,8 @@ def _result(
                 Coverage(p.known, p.total),
                 replace(scope, token_semantics=p.semantics, activity_grain=EntityGrain.MODEL_CALL),
                 distribution(p.samples) if p.semantics != "unknown" else None,
+                Coverage(p.priced_tokens, p.total_tokens) if is_cost else None,
+                schedule_version,
             )
             for p in parts
             if p.semantics is not None
@@ -356,6 +374,10 @@ def _result(
         distribution([v for p in parts for v in p.samples])
         if result.comparability in ("comparable", "not_applicable")
         else None,
+        Coverage(sum(p.priced_tokens for p in parts), sum(p.total_tokens for p in parts))
+        if is_cost
+        else None,
+        schedule_version,
     )
 
 
@@ -366,7 +388,7 @@ def assemble_query(spec: MetricQuerySpec, rows: AggregateRows) -> MetricQueryRes
         source_rows = (AggregateRow((), ()),)
     for row in source_rows:
         scope = drill_scope(spec, row.keys)
-        result = _result(spec, row.parts, scope)
+        result = _result(spec, row.parts, scope, rows.schedule_version)
         if spec.definition.model_group_required and scope.model_is_unknown:
             result = replace(
                 result,
@@ -377,7 +399,7 @@ def assemble_query(spec: MetricQuerySpec, rows: AggregateRows) -> MetricQueryRes
                 reason="Unknown model is not a compatible model group.",
             )
         buckets.append(MetricBucket(row.keys, result, scope))
-    overall = _result(spec, _combine_parts(rows), spec.scope)
+    overall = _result(spec, combine_parts(rows), spec.scope, rows.schedule_version)
     if spec.definition.model_group_required and spec.scope.model_is_unknown:
         overall = replace(
             overall,

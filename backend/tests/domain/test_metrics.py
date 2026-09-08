@@ -13,6 +13,7 @@ from agentscope_app.domain.metrics import (
 def test_registry_has_complete_definitions_for_summary_and_chart_metrics():
     assert set(REGISTRY.definitions) == {
         "observed_span_ms",
+        "scheduled_cost_usd",
         "reasoning_tokens_distribution",
         "reasoning_to_output_ratio",
         "tool_wall_latency_ms_distribution",

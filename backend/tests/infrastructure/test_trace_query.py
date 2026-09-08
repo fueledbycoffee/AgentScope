@@ -479,7 +479,7 @@ def assert_ingested_oracle(session, scopes):
             r["id"] for r in population(data, "session", scope)
         )
         for definition in REGISTRY.definitions.values():
-            if definition.diagnostic:
+            if definition.diagnostic or definition.operation == "cost":
                 continue
             spec = MetricQuerySpec(definition, scope)
             assert sql_parts(query, spec) == oracle(data, definition, spec.scope, spec.group_by)
@@ -688,3 +688,51 @@ def test_reasoning_unknown_model_and_unknown_accounting_are_never_compatible(dat
         result = assemble_query(spec, query.aggregate(spec))
         assert result.overall.value_text is None and result.overall.distribution is None
         assert result.overall.semantics_partitions[0].distribution is None
+
+
+def test_cost_preserves_scopes_entity_grain_and_unknown_timestamp_counts(database):
+    from decimal import Decimal
+    from fractions import Fraction
+
+    from agentscope_app.application.metric_queries import assemble_query
+    from agentscope_app.domain.pricing import ModelRates, PriceSchedule
+
+    engine, data = database
+    schedule = PriceSchedule(
+        "test-scope-v1", {"m": ModelRates(Fraction("0.01"), Fraction("0.02"), Fraction("0.001"))}
+    )
+    with Session(engine) as session:
+        for row in data["model_call"]:
+            row["token_semantics"] = "tracelab-claude" if row["id"] == "c0" else "tracelab-codex"
+            session.get(m.ModelCall, row["id"]).token_semantics = row["token_semantics"]
+        session.commit()
+        query = SqlAlchemyTraceQuery(session, schedule)
+        for scope in SCOPES:
+            spec = MetricQuerySpec(REGISTRY.get("scheduled_cost_usd"), scope)
+            selected = population(data, "model_call", scope)
+            # Independent small-fixture oracle: only c0 has priced components.
+            total = sum((r["input_tokens"] or 0) + (r["output_tokens"] or 0) for r in selected)
+            priced = any(r["id"] == "c0" for r in selected)
+            result = assemble_query(spec, query.aggregate(spec)).overall
+            expected_cost = (
+                str(
+                    Decimal(5) * Decimal("0.01")
+                    + Decimal(7) * Decimal("0.02")
+                    + Decimal(3) * Decimal("0.001")
+                )
+                if priced
+                else None
+            )
+            assert result.value_text == expected_cost
+            assert result.schedule_version == "test-scope-v1"
+            assert result.coverage.total == len(selected)
+            assert result.coverage.known == int(priced)
+            assert (result.priced_coverage.known, result.priced_coverage.total) == (
+                15 if priced else 0,
+                total,
+            )
+        spec = MetricQuerySpec(
+            REGISTRY.get("scheduled_cost_usd"),
+            TraceScope(started_from=datetime(2026, 1, 1, tzinfo=UTC)),
+        )
+        assert query.aggregate(spec).excluded_unknown_timestamps == 2

@@ -25,6 +25,7 @@ class Aggregation(StrEnum):
     OBSERVED_SPAN = "observed_span"
     DISTRIBUTION = "distribution"
     DIAGNOSTIC = "diagnostic"
+    COST = "cost"
 
 
 class ComparabilityRule(StrEnum):
@@ -153,6 +154,14 @@ class MetricRegistry:
                 None,
             ):
                 raise ValueError("Diagnostic ratio is definitions-only")
+        elif d.operation == Aggregation.COST:
+            if (d.grain, d.field, d.unit, d.coverage_field) != (
+                EntityGrain.MODEL_CALL,
+                None,
+                "USD",
+                None,
+            ):
+                raise ValueError("Cost requires model usage and USD")
         elif d.operation == Aggregation.COUNT:
             if d.field is not None or d.coverage_field is not None or d.unit != "count":
                 raise ValueError(
@@ -177,7 +186,7 @@ class MetricRegistry:
                 raise ValueError("Sum coverage must count the same measure")
         if d.comparability_rule not in tuple(ComparabilityRule):
             raise ValueError("Unsupported comparability rule")
-        tokens = d.unit == "tokens"
+        tokens = d.unit == "tokens" or d.operation == Aggregation.COST
         if tokens != (d.comparability_rule == ComparabilityRule.TOKEN_SEMANTICS):
             raise ValueError("Token measures require accounting partitions")
         if d.semantics_field != ("token_semantics" if tokens else None):
@@ -198,6 +207,8 @@ class AggregatePart:
     total: int
     semantics: str | None = None
     samples: tuple[int, ...] = ()
+    priced_tokens: int = 0
+    total_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -320,6 +331,30 @@ OBSERVED_SPAN = MetricDefinition(
 REGISTRY: Final = MetricRegistry(
     [
         OBSERVED_SPAN,
+        MetricDefinition(
+            id="scheduled_cost_usd",
+            version=1,
+            label="Scheduled token cost (USD)",
+            description="Priced tokens × exact rates, by accounting group and schedule version.",
+            grain=EntityGrain.MODEL_CALL,
+            operation=Aggregation.COST,
+            field=None,
+            unit="USD",
+            formula="Sum priced tokens × scheduled USD rate. Priced coverage = tokens with "
+            "a rate and validated billing semantics / all recorded input and output tokens.",
+            scope="Eligible model-call observations, exact model IDs, one pinned local schedule.",
+            null_handling="Missing rates/unvalidated semantics stay unpriced; no priced component "
+            "yields null. Known zero contributes. Ordinary coverage counts calls with "
+            "any priced component / eligible calls; priced coverage counts tokens.",
+            semantics_field="token_semantics",
+            comparability_rule=ComparabilityRule.TOKEN_SEMANTICS,
+            display_decimal_places=6,
+            caveat="Schedule estimate, not an invoice. Codex prefix billing is unknown; "
+            "all Codex input stays unpriced without a canonical validated split. Claude prompt "
+            "is input minus known cache read and creation; inconsistent splits stay unpriced. "
+            "Cache creation has no rate. Reasoning is not added to output. Missing token "
+            "quantities cannot enter the denominator: priced coverage describes recorded tokens.",
+        ),
         _count("sessions", EntityGrain.SESSION, "Stored sessions reconciled within each source."),
         _count(
             "model_calls", EntityGrain.MODEL_CALL, "Model-call observations, not unique requests."
