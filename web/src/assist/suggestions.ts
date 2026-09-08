@@ -132,12 +132,12 @@ export function suggestionsFor(
   const at = `${ruleName} · ${field.name}`
   const found: Suggestion[] = []
 
-  const add = (name: EnumOption | 'unit', raw: string, path: DocEdit['path'], blocked: string | null = null) => {
+  const add = (name: EnumOption | 'unit', raw: string, edits: DocEdit[], blocked: string | null = null) => {
     found.push({
       id: `${rule.index}-${field.name}-${name}-${text}`,
       operation: name,
       description: `set ${name} of ${at} to ${raw}`,
-      edits: [{ op: 'set', path, raw }],
+      edits,
       warning: warningFor(name, field),
       blocked,
     })
@@ -160,7 +160,7 @@ export function suggestionsFor(
       candidate === 'on_missing' && text === 'default' && field.options.default.raw === null
         ? 'set a default for this field first; on_missing: default has nothing to fall back to'
         : null
-    add(candidate, raw, field.options[candidate].path, blocked)
+    add(candidate, raw, [{ op: 'set', path: field.options[candidate].path, raw }], blocked)
   }
 
   // a unit needs an ordered pair, so only an explicit one is executable: a bare `min` never is
@@ -168,7 +168,19 @@ export function suggestionsFor(
   if (pair !== null && (option === null || option === 'unit')) {
     const [, from, to] = pair
     if ((UNITS as readonly string[]).includes(from) && (UNITS as readonly string[]).includes(to)) {
-      add('unit', JSON.stringify({ from, to }), field.options.unit.path)
+      // an existing unit is edited at its members, exactly as the dropdown does: replacing the
+      // object would drop anything else it carries, which the parser accepts
+      const exists = field.unit.from.raw !== null && field.unit.to.raw !== null
+      add(
+        'unit',
+        JSON.stringify({ from, to }),
+        exists
+          ? [
+              { op: 'set', path: field.unit.from.path, raw: JSON.stringify(from) },
+              { op: 'set', path: field.unit.to.path, raw: JSON.stringify(to) },
+            ]
+          : [{ op: 'set', path: field.options.unit.path, raw: JSON.stringify({ from, to }) }],
+      )
     }
   }
   return found
