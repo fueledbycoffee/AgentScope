@@ -364,13 +364,28 @@ def test_scheduled_cost_exact_rates_semantics_splits_and_token_coverage(client, 
     assert result["schedule_version"] == "offline-test-v1"
     assert result["value_text"] is None
     assert result["recorded_sum_text"] == "0.66"
-    assert result["priced_coverage"] == {"known": 100, "total": 275}
+    assert result["priced_coverage"] == {
+        "known": 100,
+        "total": 275,
+        "known_text": "100",
+        "total_text": "275",
+    }
     assert result["coverage"] == {"known": 2, "total": 3}
     parts = {p["semantics"]: p for p in result["semantics_partitions"]}
     assert parts["tracelab-claude"]["value_text"] == "0.46"
-    assert parts["tracelab-claude"]["priced_coverage"] == {"known": 90, "total": 110}
+    assert parts["tracelab-claude"]["priced_coverage"] == {
+        "known": 90,
+        "total": 110,
+        "known_text": "90",
+        "total_text": "110",
+    }
     assert parts["tracelab-codex"]["value_text"] == "0.2"
-    assert parts["tracelab-codex"]["priced_coverage"] == {"known": 10, "total": 110}
+    assert parts["tracelab-codex"]["priced_coverage"] == {
+        "known": 10,
+        "total": 110,
+        "known_text": "10",
+        "total_text": "110",
+    }
     assert parts["unknown"]["value_text"] is None
     for tag, part in parts.items():
         response = client.get(
@@ -385,5 +400,10 @@ def test_scheduled_cost_exact_rates_semantics_splits_and_token_coverage(client, 
     response = client.get("/api/metrics/query", params={"metric_id": "scheduled_cost_usd"})
     result = response.json()["overall"]
     assert result["schedule_version"] is None and result["value_text"] is None
-    assert result["priced_coverage"] == {"known": 0, "total": 275}
+    assert result["priced_coverage"] == {
+        "known": 0,
+        "total": 275,
+        "known_text": "0",
+        "total_text": "275",
+    }
     assert "schedule unavailable" in result["reason"]

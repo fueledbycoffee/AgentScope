@@ -71,6 +71,58 @@ export interface ImportSummary {
 }
 export interface ImportReport extends ImportSummary { warnings: Record<string, number> }
 export interface Coverage { known: number; total: number }
+// Token counts can exceed Number.MAX_SAFE_INTEGER. Use the text fields for display
+// and exact arithmetic; known/total are potentially rounded compatibility aliases.
+export interface TokenCoverage extends Coverage { known_text: string; total_text: string }
+export interface MetricDrillScope {
+  source: string | null
+  agent: string | null
+  model: string | null
+  tool: string | null
+  started_from: string | null
+  started_before: string | null
+  import_id: string | null
+  session_ids: string[] | null
+  activity_grain: 'model_call' | 'tool_call' | null
+  token_semantics: string | null
+  model_is_unknown: boolean
+  agent_is_unknown: boolean
+  timestamp_missing: boolean
+  tool_is_unlinked: boolean
+  usage_missing: boolean
+  tool_is_linked: boolean
+  witness_time_override: boolean
+  witness_started_from: string | null
+  witness_started_before: string | null
+  witness_timestamp_missing: boolean
+}
+export interface MetricDistribution {
+  count: number
+  min_text: string
+  median_text: string
+  p90_text: string
+  max_text: string
+}
+export interface MetricPartition {
+  semantics: string
+  value_text: string | null
+  coverage: Coverage
+  drill_scope: MetricDrillScope
+  distribution: MetricDistribution | null
+  priced_coverage: TokenCoverage | null
+  schedule_version: string | null
+}
+export interface MetricResult {
+  value_text: string | null
+  recorded_sum_text: string | null
+  coverage: Coverage
+  comparability: 'comparable' | 'mixed' | 'unknown' | 'not_applicable'
+  reason: string
+  semantics_partitions: MetricPartition[]
+  distribution: MetricDistribution | null
+  priced_coverage: TokenCoverage | null
+  schedule_version: string | null
+}
 export interface CoveredValue { value: number | null; coverage: Coverage }
 export interface RawReference { file_sha256: string; locator: string }
 export interface RawRecord extends RawReference { payload: Json; payload_text: string; derived?: 'parquet-row' | null }

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
-from agentscope_app.application.dto import Coverage, Metric, SemanticsPartition
+from agentscope_app.application.dto import Coverage, Metric, SemanticsPartition, TokenCoverage
 from agentscope_app.application.errors import InvalidInputError
 from agentscope_app.domain.distributions import Distribution, distribution
 from agentscope_app.domain.metrics import (
@@ -243,7 +243,7 @@ class PartitionResult:
     coverage: Coverage
     drill_scope: TraceScope
     distribution: Distribution | None = None
-    priced_coverage: Coverage | None = None
+    priced_coverage: TokenCoverage | None = None
     schedule_version: str | None = None
 
 
@@ -256,7 +256,7 @@ class MetricResult:
     reason: str
     semantics_partitions: tuple[PartitionResult, ...]
     distribution: Distribution | None = None
-    priced_coverage: Coverage | None = None
+    priced_coverage: TokenCoverage | None = None
     schedule_version: str | None = None
 
 
@@ -366,7 +366,7 @@ def _result(
                 Coverage(p.known, p.total),
                 replace(_activity_scope(scope, spec.definition.grain), token_semantics=p.semantics),
                 distribution(p.samples) if p.semantics != "unknown" else None,
-                Coverage(p.priced_tokens, p.total_tokens) if is_cost else None,
+                TokenCoverage(p.priced_tokens, p.total_tokens) if is_cost else None,
                 schedule_version,
             )
             for p in parts
@@ -375,7 +375,7 @@ def _result(
         distribution([v for p in parts for v in p.samples])
         if result.comparability in ("comparable", "not_applicable")
         else None,
-        Coverage(sum(p.priced_tokens for p in parts), sum(p.total_tokens for p in parts))
+        TokenCoverage(sum(p.priced_tokens for p in parts), sum(p.total_tokens for p in parts))
         if is_cost
         else None,
         schedule_version,

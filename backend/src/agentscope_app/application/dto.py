@@ -199,6 +199,19 @@ class Coverage:
     total: int
 
 
+@dataclass(frozen=True, init=False)
+class TokenCoverage(Coverage):
+    """Token-weighted counts with authoritative text for lossless JSON transport."""
+
+    known_text: str
+    total_text: str
+
+    def __init__(self, known: int, total: int) -> None:
+        super().__init__(known, total)
+        object.__setattr__(self, "known_text", str(known))
+        object.__setattr__(self, "total_text", str(total))
+
+
 @dataclass(frozen=True)
 class SemanticsPartition:
     semantics: str
