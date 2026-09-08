@@ -32,7 +32,7 @@ function Bar() {
   const { pathname } = useLocation()
   const { dimensions, receipt, receiptLoading, file } = useShellContext()
   const dataRoute = pathname === '/overview' || pathname.startsWith('/sessions')
-  if (dataRoute) return <ScopeBar dimensions={dimensions} loading={receiptLoading} receipt={receipt && <ScopeReceipt {...receipt} />} />
+  if (dataRoute) return <ScopeBar dimensions={dimensions} loading={receiptLoading} receipt={receipt && <ScopeReceipt sessionsText={receipt.sessionsText ?? receipt.sessions?.toString()} modelCallsText={receipt.modelCallsText ?? receipt.modelCalls?.toString()} importsText={receipt.importsText ?? receipt.imports?.toString()} resolvedPeriodText={receipt.resolvedPeriodText} />} />
   return <FileBar items={file.items} title={file.title} />
 }
 

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { DataTable, Drawer, JsonText, KpiTile, Notice, Pagination, Popover, QualityStrip, ScopeChip, Skeleton, StateBlock, StatusPill } from '../components'
 import { DayBars, HBars } from '../components/charts'
 import { ApiError } from '../api'
+import type { ChartPoint } from '../dashboard/dashboardData'
 
 /**
  * Development-only gallery: every component in every state, so a reviewer can
@@ -12,8 +13,12 @@ export default function GalleryPage() {
   const [drawer, setDrawer] = useState(false)
   const [chip, setChip] = useState(true)
   const [selected, setSelected] = useState<string>()
-  const days = Array.from({ length: 14 }, (_, index) => ({ name: `06-${String(index + 1).padStart(2, '0')}`, value: [120, 88, 260, 140, 300, 90, 210, 330, 180, 240, 60, 410, 150, 200][index] }))
-  const tools = [['Bash', 2032], ['Read', 1534], ['Edit', 1013], ['Grep', 484], ['Glob', 377], ['Agent', 180], ['WebFetch', 103]].map(([name, value]) => ({ name: String(name), value: Number(value) }))
+  const point = (label: string, value: number): ChartPoint => ({
+    key: label, label, valueText: String(value), plotValue: value, coverage: { known: value, total: value },
+    drill: { version: 1, label: 'tool', value: label, scope: { tool: label } },
+  })
+  const days = Array.from({ length: 14 }, (_, index) => point(`06-${String(index + 1).padStart(2, '0')}`, [120, 88, 260, 140, 300, 90, 210, 330, 180, 240, 60, 410, 150, 200][index]))
+  const tools = [['Bash', 2032], ['Read', 1534], ['Edit', 1013], ['Grep', 484], ['Glob', 377], ['Agent', 180], ['WebFetch', 103]].map(([name, value]) => point(String(name), Number(value)))
   return <>
     <div className="page-head"><h1>Component gallery</h1><span className="sub">development only</span></div>
     <section className="panel"><div className="panel-head"><h2>KPI tiles</h2></div>
@@ -25,8 +30,8 @@ export default function GalleryPage() {
       </div></section>
     <section className="panel"><div className="panel-head"><h2>Charts</h2><span className="count">{selected ? `selected ${selected}` : 'click or focus a bar'}</span></div>
       <div className="grid charts">
-        <DayBars title="Activity by day" unit="model calls" data={days} onSelect={setSelected} hint="Click a day to list its sessions." />
-        <HBars title="Tool calls" unit="calls" data={tools} onSelect={setSelected} hint="Click a tool to list sessions using it." />
+        <DayBars title="Activity by day" unit="model calls" data={days} onSelect={value => setSelected(value.label)} hint="Click a day to list its sessions." />
+        <HBars title="Tool calls" unit="calls" data={tools} onSelect={value => setSelected(value.label)} hint="Click a tool to list sessions using it." />
       </div></section>
     <QualityStrip items={[
       { key: 'rejects', label: 'rejects', count: 0, explanation: 'Records no rule could turn into an observation.' },

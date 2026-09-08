@@ -1,35 +1,29 @@
 import { useCallback } from 'react'
-import { getMetricsSummary } from '../api'
+import { getMetricDefinitions } from '../api'
+import type { MetricDefinition } from '../api'
 import { DataTable, StateBlock } from '../components'
 import { useFileBar } from '../shellHooks'
 import { useResource } from '../useResource'
 
-interface Row { key: string; metric: string; unit: string; definition: string; semantics: string }
+const optional = (value: string | null) => value ?? 'Not applicable'
 
-/**
- * Every metric the API defines today, with its unit and definition. Semantics
- * tags and comparability rules arrive with the metric layer (#10); this page
- * renders what the summary returns rather than restating it by hand.
- */
+/** The complete server registry, without a client-owned second glossary. */
 export default function DefinitionsPage() {
-  const resource = useResource(useCallback(() => getMetricsSummary({}), []))
+  const resource = useResource(useCallback(() => getMetricDefinitions(), []))
   useFileBar('Definitions', [])
-  const rows: Row[] = resource.data ? [
-    { key: 'sessions', metric: 'Sessions', unit: 'sessions', definition: resource.data.sessions.definition, semantics: '—' },
-    { key: 'model_calls', metric: 'Model calls', unit: 'observations', definition: resource.data.model_calls.definition, semantics: '—' },
-    { key: 'tool_calls', metric: 'Tool calls', unit: 'observations', definition: resource.data.tool_calls.definition, semantics: '—' },
-    { key: 'input_tokens', metric: 'Input tokens', unit: resource.data.input_tokens.unit, definition: resource.data.input_tokens.definition, semantics: Object.keys(resource.data.input_tokens.by_semantics).join(', ') || '—' },
-  ] : []
   return <>
-    <div className="page-head"><h1>Definitions</h1><span className="sub">what every number means, from the same source the tiles use</span></div>
+    <div className="page-head"><h1>Definitions</h1><span className="sub">the server registry that governs every dashboard number</span></div>
     <section className="panel">
-      <StateBlock loading={resource.loading} error={resource.error} retry={resource.retry} lines={4}>
-        <DataTable caption="Metric definitions" hideCaption columns={[
-          { key: 'metric', header: 'Metric', render: row => row.metric },
-          { key: 'unit', header: 'Unit', render: row => row.unit },
-          { key: 'definition', header: 'Definition', wrap: true, render: row => row.definition },
-          { key: 'semantics', header: 'Token semantics seen', render: row => row.semantics },
-        ]} rows={rows} rowKey={row => row.key} empty="No definitions yet." />
+      <StateBlock loading={resource.loading} error={resource.error} retry={resource.retry} lines={7}>
+        <DataTable caption="Metric definitions" columns={[
+          { key: 'metric', header: 'Metric / version', wrap: true, render: (row: MetricDefinition) => <span id={row.id}><b>{row.label}</b><br /><code>{row.id}</code> · v{row.version}{row.headline_kpi && <><br /><span className="pill">headline</span></>}{row.diagnostic && <><br /><span className="pill">definition only</span></>}</span> },
+          { key: 'unit', header: 'Unit / grain', render: row => <>{row.unit}<br />{row.grain}</> },
+          { key: 'definition', header: 'Definition / formula', wrap: true, render: row => <>{row.description}<br /><span className="muted">{row.formula}</span>{row.caveat && <><br />Caveat: {row.caveat}</>}</> },
+          { key: 'population', header: 'Population / scope', wrap: true, render: row => <>{optional(row.population)}<br />{row.scope}</> },
+          { key: 'null', header: 'Null / coverage', wrap: true, render: row => <>{row.null_handling}<br />Coverage field: {optional(row.coverage_field)}</> },
+          { key: 'semantics', header: 'Semantics / comparability', wrap: true, render: row => <>{optional(row.semantics_field)}<br />{row.comparability_rule}{row.model_group_required && <><br />Model group required</>}</> },
+          { key: 'display', header: 'Display / quantiles', wrap: true, render: row => <>{row.display_decimal_places} decimal places · {row.display_rounding}<br />{row.quantile_rule}<br />Median: {row.median_rule}</> },
+        ]} rows={resource.data ?? []} rowKey={row => row.id} empty="No metric definitions were published." />
       </StateBlock>
     </section>
   </>

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { ApiError } from '../api'
-import { PAGE_SIZE, abbreviate } from '../format'
+import type { Coverage, MetricDefinition, TokenCoverage } from '../api'
+import { PAGE_SIZE } from '../format'
 import { Icon, IconButton } from './icons'
 import type { IconName } from './icons'
 
@@ -135,53 +137,150 @@ export function DataTable<Row>({ caption, count, columns, rows, rowKey, empty, h
 
 export interface KpiProps {
   label: string
-  value: number | null | undefined
+  value?: number | null
+  display?: MetricDisplay
   unit?: string
   coverage?: { known: number; total: number; unit?: string }
-  definition?: string
+  definition?: string | MetricDefinition
   semantics?: Record<string, number | null>
   note?: string
+  headlineText?: string
+  related?: readonly { label: string; display: MetricDisplay }[]
+  coverageUnit?: string
 }
 
-/** Exact value beside any abbreviation; coverage in the same element; Unavailable is a designed state. */
-export function KpiTile({ label, value, unit, coverage, definition, semantics, note }: KpiProps) {
-  const unavailable = value == null || (coverage !== undefined && coverage.total > 0 && coverage.known === 0)
-  const text = unavailable ? 'Unavailable' : abbreviate(value as number)
-  const exact = !unavailable && text !== (value as number).toLocaleString('en-US') ? (value as number).toLocaleString('en-US') : undefined
-  const tone = coverage === undefined ? undefined : coverage.known === 0 ? 'bad' : coverage.known < coverage.total ? 'warn' : 'ok'
+export interface MetricDisplay {
+  valueText: string | null
+  recordedSumText: string | null
+  coverage: Coverage
+  comparability: 'comparable' | 'mixed' | 'unknown' | 'not_applicable'
+  reason: string
+  partitions: readonly { semantics: string; valueText: string | null; coverage: Coverage }[]
+  pricedCoverage?: TokenCoverage | null
+  scheduleVersion?: string | null
+}
+
+export function abbreviateDecimalText(valueText: string): string {
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(valueText)
+  if (!match) return valueText
+  const [, sign, whole, fraction = ''] = match
+  if (whole.length <= 5) return valueText
+  const groups = [
+    { size: 13, divisor: 1_000_000_000_000n, suffix: 'T' },
+    { size: 10, divisor: 1_000_000_000n, suffix: 'B' },
+    { size: 7, divisor: 1_000_000n, suffix: 'M' },
+    { size: 4, divisor: 1_000n, suffix: 'k' },
+  ]
+  const group = groups.find(item => whole.length >= item.size) ?? groups.at(-1)!
+  const scale = 10n ** BigInt(fraction.length)
+  const magnitude = BigInt(`${whole}${fraction}`)
+  const scaledDivisor = group.divisor * scale
+  const tenths = (magnitude * 10n + scaledDivisor / 2n) / scaledDivisor
+  const major = tenths / 10n
+  const minor = tenths % 10n
+  return `${sign}${major}${minor ? `.${minor}` : ''}${group.suffix}`
+}
+
+function legacyDisplay(value: number | null | undefined, coverage?: KpiProps['coverage'], semantics?: KpiProps['semantics']): MetricDisplay {
+  const text = value == null ? null : String(value)
+  return {
+    valueText: coverage && coverage.total > 0 && coverage.known === 0 ? null : text,
+    recordedSumText: text,
+    coverage: coverage ?? { known: value == null ? 0 : 1, total: value == null ? 0 : 1 },
+    comparability: 'not_applicable',
+    reason: value == null ? 'No recorded value in scope.' : 'Recorded observations in scope.',
+    partitions: Object.entries(semantics ?? {}).map(([name, count]) => ({
+      semantics: name,
+      valueText: count == null ? null : String(count),
+      coverage: { known: count == null ? 0 : 1, total: 1 },
+    })),
+  }
+}
+
+function MetricFacts({ label, metric, definition, unit, related = [], coverageUnit }: {
+  label: string
+  metric: MetricDisplay
+  definition?: KpiProps['definition']
+  unit?: string
+  related?: KpiProps['related']
+  coverageUnit?: string
+}) {
+  const metadata = typeof definition === 'object' ? definition : undefined
+  return <dl className="facts">
+    <dt>Definition</dt><dd>{metadata?.description ?? (typeof definition === 'string' ? definition : 'Not applicable')}</dd>
+    <dt>Formula</dt><dd>{metadata?.formula ?? 'Not applicable'}</dd>
+    <dt>Unit</dt><dd>{metadata?.unit ?? unit ?? 'Not applicable'}</dd>
+    <dt>Scope</dt><dd>{metadata?.scope ?? 'Not applicable'}</dd>
+    <dt>Null handling</dt><dd>{metadata?.null_handling ?? 'Not applicable'}</dd>
+    <dt>Comparability</dt><dd>{metric.comparability}: {metric.reason}</dd>
+    <dt>Coverage</dt><dd>{metric.coverage.known} / {metric.coverage.total}{coverageUnit ? ` ${coverageUnit}` : ''}</dd>
+    {metric.pricedCoverage && <><dt>Priced token coverage</dt><dd>{metric.pricedCoverage.known_text} / {metric.pricedCoverage.total_text}</dd></>}
+    {metric.scheduleVersion && <><dt>Schedule version</dt><dd>{metric.scheduleVersion}</dd></>}
+    {metric.valueText !== null && <><dt>Exact</dt><dd className="mono">{metric.valueText}</dd></>}
+    {metric.partitions.length > 0 && <><dt>Accounting groups</dt><dd>{metric.partitions.map(partition => <div key={partition.semantics}>{partition.semantics}: {partition.valueText ?? 'Unavailable'} · coverage {partition.coverage.known} / {partition.coverage.total}</div>)}</dd></>}
+    {related.map(item => <div key={item.label} className="related-metric">
+      <dt>{item.label}</dt>
+      <dd>{item.display.valueText ?? 'Unavailable'} · coverage {item.display.coverage.known} / {item.display.coverage.total}{coverageUnit ? ` ${coverageUnit}` : ''}<br />{item.display.reason}</dd>
+    </div>)}
+    {metadata && <><dt>Registry</dt><dd><Link to={`/definitions#${metadata.id}`}>Open complete definition for {label}</Link></dd></>}
+  </dl>
+}
+
+/** Exact transport text remains one element; abbreviations are never authoritative. */
+export function KpiTile({ label, value, display, unit, coverage, definition, semantics, note, headlineText, related, coverageUnit }: KpiProps) {
+  const metric = display ?? legacyDisplay(value, coverage, semantics)
+  const mixed = metric.valueText === null && metric.partitions.some(partition => partition.valueText !== null)
+  const unavailable = metric.valueText === null && !mixed
+  const text = mixed ? 'Not comparable' : unavailable ? 'Unavailable' : headlineText ?? abbreviateDecimalText(metric.valueText!)
+  const exact = metric.valueText !== null && text !== metric.valueText ? metric.valueText : undefined
+  const tone = metric.coverage.known === 0 ? 'bad' : metric.coverage.known < metric.coverage.total ? 'warn' : 'ok'
   return <section className="kpi" aria-label={label}>
     <div className="label"><span>{label}</span>
       {definition && <Popover label={`Definition of ${label}`} title={label}>
-        <dl className="facts">
-          <dt>Definition</dt><dd>{definition}</dd>
-          {unit && <><dt>Unit</dt><dd>{unit}</dd></>}
-          {coverage && <><dt>Coverage</dt><dd>{coverage.known.toLocaleString('en-US')} / {coverage.total.toLocaleString('en-US')} {coverage.unit ?? ''}</dd></>}
-          {!unavailable && <><dt>Exact</dt><dd className="mono">{(value as number).toLocaleString('en-US')}</dd></>}
-          {semantics && Object.keys(semantics).length > 0 && <><dt>By semantics</dt><dd>{Object.entries(semantics).map(([name, count]) => <div key={name}>{name}: {count == null ? 'Unavailable' : count.toLocaleString('en-US')}</div>)}</dd></>}
-        </dl>
+        <MetricFacts label={label} metric={metric} definition={definition} unit={unit} related={related} coverageUnit={coverageUnit ?? coverage?.unit} />
       </Popover>}
     </div>
     <p className={`value${unavailable ? ' unavailable' : ''}`}>{text}</p>
     <div className="meta">
-      {coverage && <><span className={`dot ${tone}`} aria-hidden="true" /><span>coverage {coverage.known.toLocaleString('en-US')} / {coverage.total.toLocaleString('en-US')} {coverage.unit ?? ''}</span></>}
+      <span className={`dot ${tone}`} aria-hidden="true" /><span>coverage {metric.coverage.known} / {metric.coverage.total}{coverageUnit ?? coverage?.unit ? ` ${coverageUnit ?? coverage?.unit}` : ''}</span>
       {exact && <span className="exact">exact {exact}</span>}
+      {metric.pricedCoverage && <span>priced token coverage <span className="exact">{metric.pricedCoverage.known_text}</span> / <span className="exact">{metric.pricedCoverage.total_text}</span></span>}
+      {metric.scheduleVersion && <span>schedule {metric.scheduleVersion}</span>}
+      {mixed && <><span>{metric.reason}</span>{metric.partitions.map(partition => <span className="partition" key={partition.semantics}>{partition.semantics}: <span className="exact">{partition.valueText ?? 'Unavailable'}</span> · coverage {partition.coverage.known} / {partition.coverage.total}{coverageUnit ? ` ${coverageUnit}` : ''}</span>)}</>}
+      {unavailable && metric.reason && <span>{metric.reason}</span>}
       {note && <span>{note}</span>}
     </div>
   </section>
 }
 
+export function HeadlineTile({ label, display, definition, unit, note, headlineText, related, coverageUnit }: Omit<KpiProps, 'value' | 'coverage' | 'semantics'> & { display: MetricDisplay }) {
+  return <div className="headline-tile"><KpiTile label={label} display={display} definition={definition} unit={unit} note={note} headlineText={headlineText} related={related} coverageUnit={coverageUnit} /></div>
+}
+
 /* ----------------------------------------------------------- quality strip */
 
-export interface QualityItem { key: string; label: string; count: number | null; explanation: string; onList?: () => void }
+export interface QualityItem {
+  key: string
+  label: string
+  count?: number | null
+  countText?: string | null
+  explanation: string
+  onList?: () => void
+  actionHref?: string
+  actionLabel?: string
+}
 
 export function QualityStrip({ items }: { items: QualityItem[] }) {
   const [open, setOpen] = useState<string>()
   const current = items.find(item => item.key === open)
   return <div className="quality" aria-label="Data quality">
     <span style={{ color: 'var(--ink-3)' }}>Quality</span>
-    {items.map(item => <button key={item.key} type="button" className="item" aria-expanded={open === item.key} onClick={() => setOpen(open === item.key ? undefined : item.key)}>
-      <span className={`dot ${item.count ? 'warn' : ''}`} aria-hidden="true" /><b>{item.count == null ? 'Unavailable' : item.count.toLocaleString('en-US')}</b> {item.label}
-    </button>)}
-    {current && <div className="detail"><span>{current.explanation}</span>{current.onList && current.count ? <button className="btn small" onClick={current.onList}><Icon name="sessions" />List these sessions</button> : null}</div>}
+    {items.map(item => { const text = item.countText ?? (item.count == null ? null : String(item.count)); return <button key={item.key} type="button" className="item" aria-expanded={open === item.key} onClick={() => setOpen(open === item.key ? undefined : item.key)}>
+      <span className={`dot ${text !== null && text !== '0' ? 'warn' : ''}`} aria-hidden="true" /><b>{text ?? 'Unavailable'}</b> {item.label}
+    </button> })}
+    {current && <div className="detail"><span>{current.explanation}</span>
+      {current.actionHref && <Link className="btn small" to={current.actionHref}>{current.actionLabel ?? 'Open details'}</Link>}
+      {current.onList && (() => { const value = current.countText ?? (current.count == null ? null : String(current.count)); return value !== null && value !== '0' })() ? <button className="btn small" onClick={current.onList}><Icon name="sessions" />List these sessions</button> : null}
+    </div>}
   </div>
 }

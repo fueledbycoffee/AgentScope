@@ -2,7 +2,31 @@
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 export type InputFormat = 'jsonl' | 'parquet'
 export interface Page { limit?: number; offset?: number }
-export interface Scope { source?: string; agent?: string }
+export interface ApiTraceScope {
+  source?: string
+  agent?: string
+  model?: string
+  tool?: string
+  started_from?: string
+  started_before?: string
+  started_through?: string
+  import_id?: string
+  activity_grain?: 'model_call' | 'tool_call'
+  token_semantics?: string
+  model_is_unknown?: boolean
+  agent_is_unknown?: boolean
+  timestamp_missing?: boolean
+  tool_is_unlinked?: boolean
+  usage_missing?: boolean
+  tool_is_linked?: boolean
+  witness_time_override?: boolean
+  witness_required?: boolean
+  witness_started_from?: string
+  witness_started_before?: string
+  witness_started_through?: string
+  witness_timestamp_missing?: boolean
+}
+export type Scope = Pick<ApiTraceScope, 'source' | 'agent' | 'model'>
 export interface ErrorDetail { code: string; message: string; details: Json[] }
 export interface ErrorResponse { error: ErrorDetail }
 export interface FileInfo {
@@ -99,6 +123,34 @@ export interface MetricDrillScope {
   witness_started_through: string | null
   witness_timestamp_missing: boolean
 }
+export type PublicMetricDrillScope = Partial<Omit<MetricDrillScope, 'session_ids'>>
+export type MetricDimension = 'source' | 'agent' | 'model' | 'started_day' | 'tool_name' | 'linked'
+export interface MetricDefinition {
+  id: string
+  version: number
+  label: string
+  description: string
+  grain: 'session' | 'model_call' | 'tool_call' | 'import'
+  operation: 'count' | 'sum' | 'observed_span' | 'distribution' | 'diagnostic' | 'cost'
+  field: string | null
+  unit: string
+  formula: string
+  scope: string
+  null_handling: string
+  coverage_field: string | null
+  semantics_field: string | null
+  comparability_rule: 'observations' | 'token_semantics'
+  population: string | null
+  supported_dimensions: MetricDimension[]
+  headline_kpi: boolean
+  caveat: string | null
+  quantile_rule: string
+  median_rule: string
+  display_decimal_places: number
+  display_rounding: string
+  diagnostic: boolean
+  model_group_required: boolean
+}
 export interface MetricDistribution {
   count: number
   min_text: string
@@ -126,6 +178,22 @@ export interface MetricResult {
   priced_coverage: TokenCoverage | null
   schedule_version: string | null
 }
+export interface MetricBucket {
+  keys: (string | boolean | null)[]
+  result: MetricResult
+  drill_scope: MetricDrillScope
+}
+export interface MetricQuery {
+  metric_id: string
+  definition: MetricDefinition
+  supported_dimensions: MetricDimension[]
+  scope: MetricDrillScope
+  group_by: MetricDimension[]
+  overall: MetricResult
+  excluded_unknown_timestamps: number
+  buckets: MetricBucket[]
+}
+export interface ScopeFacets { sources: string[]; agents: string[]; models: string[] }
 export interface CoveredValue { value: number | null; coverage: Coverage }
 export interface RawReference { file_sha256: string; locator: string }
 export interface RawRecord extends RawReference { payload: Json; payload_text: string; derived?: 'parquet-row' | null }
@@ -138,7 +206,7 @@ export interface Session {
   observed_end_at: string | null
   model_call_count: number
   tool_call_count: number
-  input_tokens: CoveredValue
+  input_tokens: Metric
 }
 export interface ModelCall {
   id: string; sequence: number | null; model: string | null
@@ -158,10 +226,28 @@ export interface SessionDetail extends Session {
   model_calls: ModelCall[]; tool_calls: ToolCall[]
   diagnostics: { code: string; field: string | null; message: string }[]
 }
-export interface Metric { value: number | null; definition: string }
+export interface SummaryMetricPartition {
+  semantics: string
+  value_text: string | null
+  coverage: Coverage
+}
+export interface Metric {
+  value: number | null
+  definition: string
+  unit: string
+  coverage: Coverage
+  by_semantics: Record<string, number | null>
+  metric_id: string
+  version: number
+  value_text: string | null
+  recorded_sum_text: string | null
+  comparability: MetricResult['comparability']
+  reason: string
+  semantics_partitions: SummaryMetricPartition[]
+}
 export interface MetricsSummary {
   sessions: Metric; model_calls: Metric; tool_calls: Metric
-  input_tokens: Metric & CoveredValue & { unit: string; by_semantics: Record<string, number | null> }
+  input_tokens: Metric; output_tokens: Metric
 }
 
 // --- mapping assistant (docs/api/v0.1.md, ADR-005) -------------------------------------------

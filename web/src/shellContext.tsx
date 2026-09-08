@@ -7,7 +7,16 @@ import type { Dimension, FileItem } from './components'
  * receipt on data routes, file identity elsewhere); the shell renders it. The
  * bar slot keeps its height either way, so the frame never jumps.
  */
-export interface ReceiptValues { sessions?: number | null; modelCalls?: number | null; imports?: number | null }
+export interface ReceiptValues {
+  sessionsText?: string | null
+  modelCallsText?: string | null
+  importsText?: string | null
+  resolvedPeriodText?: string | null
+  /** Compatibility for #46-owned pages until its post-merge migration. */
+  sessions?: number | null
+  modelCalls?: number | null
+  imports?: number | null
+}
 interface ShellState {
   dimensions: Dimension[]
   receipt?: ReceiptValues
