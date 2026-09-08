@@ -1,16 +1,17 @@
 # Plan: assistant field table, lossless numeric codec, report entry point (issue #39)
 
+Revision 2, after the Codex review `2026-09-08-assistant-field-table-review-codex.md` (BLOCK,
+7 P1 · 7 P2 · 1 P3). Revision 1 is commit `b2bc065`.
+
 Follow-up to #15. The v0.1.0 slice shipped the assistant with a JSON editor
-(`docs/superpowers/plans/2026-09-07-assistant-ui.md`, revision 2, §1); this issue is the
-"follow-up issue" paragraph of that plan and answers the Codex review findings
-`2026-09-07-assistant-ui-review-codex.md` [2] (field-table model), [3] (numeric loss at the
-JSON boundary), [5] (ambiguity options are prose), [6] (issue paths), [8] (report entry has no
-bootstrap contract) and [11] (breakpoints, exact evidence, labelled controls).
+(`docs/superpowers/plans/2026-09-07-assistant-ui.md`, revision 2, §1); this issue is that plan's
+"follow-up issue" paragraph and also answers the #15 review findings [2], [3], [5], [6], [8]
+and [11].
 
 ## 1. Goal
 
-The issue states no separate "expected verifiable result" section; its **Scope** is the goal and
-is quoted verbatim:
+The issue states no separate "expected verifiable result"; its **Scope** is the goal and is
+quoted verbatim:
 
 > - Field table bound to the DSL: rows as an indexed view over the canonical document (never a
 >   lossy rows→document rebuild), all field options (`path`/`paths`/`literal`, `transforms` in
@@ -30,493 +31,696 @@ is quoted verbatim:
 >
 > **Not in scope**: persisted conversations, streaming, provenance columns.
 
-Owner constraints that bind this issue: the conversation keeps `@assistant-ui/react`; Console
-design of record (`research/design/claude/3-console/README.md` §"6. Mapping assistant": rule,
-target, editable source path, transforms, why + ambiguity, caption counting ambiguities and
-invalid rows); icons over labels, every icon-only control with an accessible name and a visible
-tooltip; "Unavailable" is a designed value; numbers that must round-trip travel as text.
+Owner constraints: the conversation keeps `@assistant-ui/react`; the Console design of record
+(`research/design/claude/3-console/README.md:116`); icons over labels with an accessible name and
+a visible tooltip on every icon-only control; "Unavailable" is a designed value; numbers that must
+round-trip travel as text.
 
-## 2. Current state (verified on this branch)
+## 2. Revision 2: answers to the review, by finding
 
-- `web/src/pages/Assist.tsx` (258 lines): route `/import/assist/:uploadId`, identity form,
-  profile fetch, prepare/run effects, gates validate → save → preview → import, payload drawer.
-  It holds no rows model; the document is text.
-- `web/src/assist/assistRuntime.ts` (328 lines): the pure state machine. `editDocument()` bumps
-  `documentVersion` and clears `validation`/`saved`/`preview`; `outcomeArrived()` applies the
-  proposal from the **raw response text** via `extractMappingText` + `prettyJson`, and falls back
-  to `JSON.stringify(outcome.proposal.mapping, null, 2)` **silently** when extraction fails.
-  Ambiguities are rendered as prose inside `assistantText()`; nothing is executable.
-- `web/src/assist/jsonText.ts` (187 lines): a tokenizer that never parses numbers, plus
-  `prettyJson`, `extractMappingText`, `envelopeWithRawJson`, `pathSegments`, `lineFor`. It can
-  *locate* a value (`valueSpan` is private) but cannot *edit* one.
-- `web/src/assist/DocumentEditor.tsx`: textarea + issue list with "jump to line" via `lineFor`.
-- `web/src/assist/EvidenceRail.tsx`: `<aside aria-label="Evidence">`, always expanded.
-- `web/src/assist/Conversation.tsx`: `@assistant-ui/react` 0.15.18 external-store runtime; the
-  receipt is a second text part styled by the CSS hack
-  `.chat-msg-assistant > :nth-child(2)` (`web/src/assist/assist.css:82`).
-- `web/src/assist/assist.css:8`: `@media (max-width: 1280px)` only reflows the grid to two
-  columns and makes the rail span both; the rail's long profile table stays fully expanded.
-- `web/src/api/index.ts`: `assistantBody()` embeds `current_mapping_text` verbatim,
-  `rawDocumentBody()` sends `{"document":<text>}` verbatim, `runAssistant()` returns
-  `{outcome, rawText}`. **Lossy on the read side**: `getMapping()` uses `response.json()`, so a
-  saved document's numbers are rounded by the browser before they can reach the editor.
-- `web/src/pages/Imports.tsx`: `ImportsPage` (ledger) and `ReportPage` (`/imports/:id`). The
-  report has a files table (`ImportedFile`: filename, sha256, size, format, record_count,
-  mapping id/name/revision, status) and a rejects panel. `ImportedFile` has **no `upload_id`**
-  and there is no upload-lookup route (`backend/.../interfaces/api/routers.py` has
-  `POST /uploads`, `POST /uploads/{id}/profile`, no `GET /uploads`).
-- `backend/.../domain/mapping/mapping-dsl-v1.schema.json`: the DSL v1 shape used below.
-  Parser issue paths are `rules[0].id`, `rules[0].fields.started_at.bounds`,
-  `rules[0].where[1].value`, `rules[0].transforms[2]`, `unmapped[0].reason`, `dsl_version`, `$`
-  (`backend/.../domain/mapping/parser.py:139,257,342,418`).
-- Duplicate detection is **bytes + source**: `uow.imports.find_committed(sha256, source)`
-  (`backend/.../application/use_cases/imports.py:375`). A corrected mapping re-imported over the
-  same bytes into the same source inserts nothing.
-- `SaveMappingRevision` is idempotent by content hash and refuses non-executable documents
-  (`backend/.../application/use_cases/mappings.py`).
-- The fake provider emits exactly two ambiguity shapes:
-  `{target: "model_call.started_at", options: ["epoch_s","epoch_ms"]}` (executable) and
-  `{target: "model_call.token_semantics", options: ["unknown","a validated swe-chat tag"]}`
-  (prose) — `backend/.../infrastructure/llm/fake.py:241,287`.
-- Icons available (`web/src/components/icons.tsx`): overview sessions imports mappings
-  definitions upload sun moon monitor x check alert info clock copy file braces refresh plus
-  trash filter eye play layers arrowRight. **No new icon is added by this issue.**
-- Tests today: `web/src/assist/assistRuntime.test.ts`, `web/src/assist/jsonText.test.ts`,
-  `web/src/pages/Assist.test.tsx`, `web/e2e/assist.spec.ts` (fake provider, source `assist-e2e`).
-- `window.matchMedia` is not used anywhere in `web/src` and jsdom does not provide it.
+Every claim below was re-verified in this worktree before it was accepted. **All 15 findings are
+accepted**; three carry a correction to the finding's own wording, marked *nuance*.
+
+1. **[P1] Warning-only numeric fallback.** Accepted, verified: `assistRuntime.ts:263-267` applies
+   `JSON.stringify(outcome.proposal.mapping, null, 2)` when `extractMappingText` returns null and
+   then attaches `outcome.issues`/`executable` to that re-serialised text (`:267`), so Save is
+   reachable for a document the server never saw. §3.6 now **removes every parsed-object
+   fallback**: on extraction or grammar failure the document, its version, its undo entry and all
+   gates are untouched, and the failure is a recoverable error with the raw text on hand.
+2. **[P1] Grammar, decoded keys, duplicate keys, offset units.** Accepted, verified: the current
+   tokenizer (`jsonText.ts:13-42`) has no number/escape grammar and no structural check, and
+   `lineFor` compares raw token spelling with `JSON.stringify(segment)` (`:164`), so
+   `{"x": …}` is unreachable and duplicate keys split `JSON.parse` (last) from `lineFor`
+   (first). §3.1 adds a real single-value grammar validator, decoded-key comparison with original
+   spans, a duplicate-decoded-key repair policy, and states offsets as **UTF-16 code units**
+   (`String.prototype.slice` semantics), not bytes.
+3. **[P1] Right-to-left sorting is not an atomic multi-edit.** Accepted, verified by construction
+   on `{"a":1,"b":2,"c":3}`: the member span of `b` and the member span of `c` both claim the
+   comma between them. §3.1 replaces offset sorting with a **container-rendering batch planner**
+   (innermost first, one splice per touched container, untouched members copied verbatim), a
+   defined "one missing level" rule for creation, conflict detection, and a single commit through
+   `editDocument`.
+4. **[P1] The table cannot represent the full DSL.** Accepted, verified: `where.value` is `{}` in
+   the schema (any JSON), the parser requires the entity's required fields
+   (`parser.py:266-274`), and the identity inputs write only `state.identity`
+   (`assistRuntime.ts:102-104`) while `buildRequest` refuses a `revise` whose document
+   `name`/`source` differ (`:174-176`). §3.2 adds raw-JSON condition values, explicit field
+   add/delete, a document-head row (`dsl_version`, `target_schema_version`, `input_format`,
+   `name`, `source`) that keeps identity and document in sync in one edit, `default` always
+   visible and removable, and a parent select built from the parser's real rule
+   (`parser.py:304-333`: only a `tool_call` may declare a parent; it must be a `model_call` rule
+   with `select` exactly `$`, declared earlier).
+5. **[P1] The catalogue guesses the operation.** Accepted, verified: `Ambiguity` is
+   `{target, options: string[], what_settles_it}` (`api/types.ts:168`), `min` is both a `unit`
+   and a `bounds` value, `null` is a value of `on_missing`, `on_invalid` and a literal, and
+   revision 1's `suggestionsFor(a, index, target)` had no profile argument at all. §3.3 replaces
+   the guess with **domain matching plus a user operation choice**: an option is executable only
+   when it is a legal value of exactly one applicable option; several candidates render a choice
+   menu; anything else stays prose. Freshness is anchored to the document version created by the
+   proposal's application (revision 1's `lastOutcome.generation` is stale the moment
+   `editDocument` runs, `assistRuntime.ts:258-266`). Profile-path suggestions are cut (§7).
+6. **[P1] Report bootstrap loses the import source.** Accepted, verified: `origin` in revision 1
+   omitted `report.source`, and the page commits with `saved.record.source`
+   (`Assist.tsx:164`), while the backend checks `find_committed(sha256, source)` with the
+   *request's* source (`imports.py:375`) and never requires it to equal the mapping's source.
+   §3.7 carries the file binding, the report source and the file's status in `origin`, keeps
+   mapping identity and execution source distinct with an explicit import-source control, scopes
+   the no-insert sentence to the committed bytes+source pair, treats `failed` and `duplicate`
+   attempts separately, and replaces the rejects-panel default with a file picker.
+7. **[P1] The new e2e spec would never run.** Accepted, verified: `playwright.config.ts:31-33`
+   matches only `/smoke\.spec\.ts/` and `/assist\.spec\.ts/`; `assist-table.spec.ts` matches
+   neither. §4 adds `web/playwright.config.ts` (a third project that depends on `assistant`, so
+   the smoke totals are still measured first) and `web/e2e/assist.spec.ts` to the change list, a
+   `playwright test --list` discovery check to §5, and removes the dependency on #45's upload
+   selectors by creating the upload through `request.post('/api/uploads')` and navigating
+   straight to `/import/assist/:uploadId`.
+8. **[P2] The numeric promise overstated the server contract.** Accepted; the review's
+   reproduction matches Python's JSON behaviour (`1e3` → `1000.0`, long decimals rounded to a
+   double, `-0` → `0`, `"a"` → `"a"`). §3.6 states the guarantee precisely (raw response
+   text → editor → outbound request bytes; whitespace changes once at pretty-print) and adds a
+   real server-boundary test in `backend/tests/` for the issue's own cases.
+9. **[P2] Unknown keys have nowhere to live.** Accepted, verified: `issues.unknown_keys`
+   (`parser.py:90-93`) warns and keeps them, and `_parse_transform` accepts ignored parameters
+   (`parser.py:664-668`). §3.1 adds `extras` to every indexed container and §3.2 forbids
+   render-time cleanup and any form conversion that would drop a member (form conversion is cut
+   to follow-up, §7).
+10. **[P2] Report loading has no lifecycle and the revision sentence is false.** Accepted,
+    verified: state is initialised once from `uploadId` (`Assist.tsx:67`), only the profile effect
+    tracks the route (`:85-91`), and a save can return an existing revision
+    (`mappings.py:21-32`). §3.7 defines an origin-keyed bootstrap transition with
+    loading/error/stale handling, keeps the origin notice out of the `notices` array that
+    `startPrepare` clears (`assistRuntime.ts:196`), and reports the actual returned revision and
+    `created` flag after Save.
+11. **[P2] Re-upload needs the compressed-byte domain and selection generations.** Accepted: the
+    store hashes the bytes it receives (`uploads.py:48`, `RawFileStore.put(data)`), so the digest
+    is over the file's own bytes, gzip container included. §3.7 names that domain in code and
+    copy, adds one active selection with stale-result cancellation, a pre-read size check against
+    the existing 25 MiB limit, and drops the "never leaves the machine" promise for the
+    no-`crypto.subtle` path by disabling the entry there with an explanation.
+12. **[P2] Accessibility specified only for the easy case.** Accepted. §3.2 and §3.5 add table
+    semantics, contextual control names, a draft/commit policy for raw-JSON inputs (so `-`, `1e`
+    and a lone `"` are typable), stable focus across renames, keyboard reorder with
+    `chevronUp`/`chevronDown`, a pressed-state view switch, view-aware issue focus that mounts
+    the control before focusing, collision-safe control ids, and a conservative fallback for
+    ambiguous parser paths (*nuance*: the parser concatenates unescaped keys at
+    `parser.py:92,257`, so a field literally named `a.b` is genuinely ambiguous and the resolver
+    must fall back to the JSON view rather than guess). Layout claims move to a real browser at
+    1279/1280/900 px; jsdom only covers the disclosure's semantics.
+13. **[P2] The receipt fallbacks relax the criterion.** Accepted, and the uncertainty is now
+    gone: the pinned install in the main checkout exposes `useAuiState`
+    (`@assistant-ui/react@0.15.18/src/index.ts:8`) and `ThreadMessageLike.metadata.custom`
+    (`@assistant-ui/core@0.3.17/src/runtime/utils/thread-message-like.ts:80-92`, surfaced as
+    `ThreadAssistantMessage.metadata.custom` at `types/message.ts:459`). §3.8 therefore carries
+    the receipt as message metadata and renders it from a custom `AssistantMessage` via
+    `useAuiState`; the second text part, the text-equality comparison and both fallbacks are
+    removed.
+14. **[P2] Tests do not prove the claims; the estimate has no margin.** Accepted, including the
+    correction that a numeric `bounds` fixture is invalid DSL (`bounds` is `min`/`max`,
+    schema line 100) — revision 1 used exactly that fixture. §5 replaces substring assertions
+    with path-addressed assertions, adds the batch/rename/move preservation cases, a negative
+    catalogue case, and the corrected-same-source re-import case. §7 and §8 re-scope and
+    re-estimate, and put the correctness gate plus one thin vertical slice before the specialised
+    controls.
+15. **[P3] Inventory drift.** Accepted, all four corrections verified: `IssueList.tsx` was missing
+    from New; `chevronDown`/`chevronUp` exist (`components/icons.tsx:28-29`); the parser emits
+    transform paths as `rules[i].fields.x.transforms[j]` (`parser.py:494`), not at rule level as
+    revision 1's Current state claimed; §3.2 lists six columns where §7 said seven. §2 and §4 are
+    corrected.
 
 ## 3. Design
 
-### 3.1 The document is still the only source of truth
+### 3.1 The document text is the only source of truth
 
-No rows→document rebuild exists anywhere in this issue. Every table control performs a
-**text splice**: it replaces the byte span of exactly one value (or inserts/removes exactly one
-member) inside `state.documentText`, and the result goes through the existing
-`setDocumentText()`, so a table edit and a typed edit are indistinguishable to the gates. Key
-order, spacing, unknown keys and every numeric lexeme outside the spliced span are byte-identical
-before and after. This is what answers review findings [2] and [3].
+No rows→document rebuild exists anywhere in this issue. Every control produces an **edit plan**
+that rewrites only the containers it touches, copying the raw text of every untouched member, and
+the result goes through the existing `setDocumentText`/`editDocument`, so a table edit and a typed
+edit are indistinguishable to the gates.
 
-**New module `web/src/assist/document.ts`** (pure, framework-free, built on `jsonText.ts`):
+**`web/src/assist/jsonText.ts` (changed): a real grammar.**
 
 ```ts
-export type DocPath = (string | number)[]            // ['rules', 0, 'fields', 'started_at', 'unit', 'from']
-export interface Span { start: number; end: number } // byte offsets into the document text
-
-export function valueSpanAt(text: string, path: DocPath): Span | null   // the value only
-export function memberSpanAt(text: string, path: DocPath): Span | null  // key + value + one separator comma
-export function rawAt(text: string, path: DocPath): string | null       // the exact source text of that value
-export function existsAt(text: string, path: DocPath): boolean
-
-export type DocEdit =
-  | { op: 'set';    path: DocPath; raw: string }        // replace a value, or add the member if absent
-  | { op: 'remove'; path: DocPath }                     // delete an object member or an array element
-  | { op: 'rename'; path: DocPath; key: string }        // rename an object key, value untouched
-  | { op: 'insert'; path: DocPath; index: number; raw: string } // into an array at index
-
-export function applyEdits(text: string, edits: DocEdit[]): { text: string } | { problem: string }
-export function describeEdits(edits: DocEdit[]): string   // "set rules[1].fields.started_at.timestamp_format to \"epoch_s\""
+export interface Lexeme { kind: 'punct' | 'string' | 'number' | 'literal'; text: string; start: number; end: number }
+export function scan(text: string): { lexemes: Lexeme[] } | { problem: string; offset: number }
+export function validateJsonText(text: string): { ok: true } | { problem: string; offset: number }
+export function decodeJsonString(raw: string): string      // "x" -> x
+export function isOneJsonValue(text: string): boolean       // exactly one value, JSON whitespace only around it
 ```
 
-Mechanics: `valueSpanAt` walks the token stream with the same descent as the existing `lineFor`
-(that descent is extracted into a shared `descend()` so there is one implementation);
-`applyEdits` sorts edits by descending `start` and splices right-to-left so offsets stay valid;
-`set` on an absent member inserts `"key": <raw>` after the last member of the parent object using
-the indentation of its previous sibling (or reformats a `{}` empty object to two lines);
-`remove` takes the member span including the comma that separates it from a sibling (the
-preceding one when it is the last member). A malformed document makes every function return
-`null`/`{problem}` and the table falls back to the repair view (§3.4).
+`scan` enforces JSON proper, not bracket depth: numbers `-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?`
+(so `01`, `1.`, `+1`, `.5`, `Infinity`, `NaN` are rejected), literals exactly `true|false|null`,
+strings with only the seven legal escapes plus `\uXXXX` and no raw control character below
+`U+0020`, delimiters matched **by type**, `:` only between a key and its value, `,` only between
+members, no trailing comma, exactly one top-level value, only JSON whitespace
+(`space`, `\t`, `\n`, `\r`) elsewhere, and EOF after the value. The review's counter-examples
+(`{"x":01}`, `{"x":true false}`, `{"x":1,}`, `{"x":1} trailing`, a comment, `"\q"`, `[1}}`) are
+each a named test. **Offsets are UTF-16 code-unit indices** — the units of `String.prototype.slice`
+and `String.length` — which is why the fixtures include `{"é😀":0,…}`.
 
-`raw` strings are always **raw JSON text**, never JS values: `"epoch_s"`, `1.0`,
-`9007199254740993`, `{"from":"s","to":"ms"}`. `applyEdits` rejects a `raw` that is not exactly one
-balanced JSON value (new `isOneJsonValue(text)` in `jsonText.ts`, tokenizer-based, no
-`JSON.parse` of numbers).
-
-**New module `web/src/assist/documentIndex.ts`** — the indexed *read* view:
+**`web/src/assist/document.ts` (new, pure).**
 
 ```ts
+export type DocPath = (string | number)[]
+export interface Span { start: number; end: number }        // UTF-16 code units
+
+export function scanDocument(text: string): DocTree | { problem: string; offset: number }
+export function valueSpanAt(tree: DocTree, path: DocPath): Span | null
+export function rawAt(tree: DocTree, path: DocPath): string | null
+export function keysAt(tree: DocTree, path: DocPath): { decoded: string; raw: string; span: Span }[] | null
+
+export type DocEdit =
+  | { op: 'set';    path: DocPath; raw: string }   // replace, or create the single missing leaf member
+  | { op: 'remove'; path: DocPath }
+  | { op: 'rename'; path: DocPath; key: string }
+  | { op: 'insert'; path: DocPath; index: number; raw: string }
+  | { op: 'move';   path: DocPath; index: number } // array reorder; the moved value's raw text is reused
+export function planEdits(text: string, edits: DocEdit[]): { text: string } | { problem: string }
+export function describeEdits(edits: DocEdit[]): string
+```
+
+`scanDocument` builds a tree of **spans** over the lexemes: for each object, its members with
+decoded key, key span, value span and member span; for each array, its element spans. Keys are
+matched **decoded** (`decodeJsonString`), so `{"x": 1}` is addressable as `x`, and the
+original spelling is preserved because only spans are ever spliced.
+
+**Duplicate decoded keys** in any object make that object *unaddressable*: `scanDocument` records
+it in `duplicates[]`, every accessor below it returns `null`, and the UI sends that section (or,
+for the root, the whole document) to the repair view with the message "two members named `x`; JSON
+keeps the last one — remove one to edit this section here". Nothing is auto-selected and nothing
+is auto-removed. `rename` refuses a key that collides with an existing decoded key in the same
+object.
+
+**`planEdits` is structural, not offset arithmetic** (finding 3):
+
+1. All paths address the **input snapshot**; the plan is computed once against it.
+2. Edits are grouped by the container that owns them. Conflicts abort the whole plan with a
+   problem: two operations on one path, an operation under a path that another operation removes,
+   a rename collision, an insert index out of range.
+3. Containers are rendered **innermost first**. Rendering a container emits one replacement string
+   for its span from its member list after removes → renames → sets → inserts/moves, reusing the
+   original raw text of every untouched member and of every moved value (never a re-serialisation
+   of a parsed structure). Separators are produced by the renderer, so the "who owns the comma"
+   problem of adjacent removals cannot arise, and two insertions into `{}` are simply two members
+   of the rendered list. Indentation is taken from the container's existing members, or from its
+   depth when it is empty.
+4. `set` creates **at most one missing level**: `set …unit.from` on an absent `unit` is a problem;
+   the caller expresses it as one composite `set …unit = {"from":"s","to":"ms"}`. This rule is why
+   the UI never needs multi-level creation planning.
+5. The rendered document is re-validated with `validateJsonText`; a failure returns a problem and
+   **nothing is applied**.
+6. The page applies a plan through one `applyDocumentEdits(state, edits)` action: one version
+   bump, one undo entry, gates invalidated once; on a problem, text, version, undo and gates are
+   untouched and the reason is shown.
+
+`raw` is always raw JSON *text* (`"epoch_s"`, `1.0`, `9007199254740993`, `{"from":"s","to":"ms"}`)
+and must satisfy `isOneJsonValue`.
+
+**`web/src/assist/documentIndex.ts` (new): the indexed read view.**
+
+```ts
+export interface Member { path: DocPath; raw: string | null }            // raw === null: absent
 export interface FieldView {
-  name: string; path: DocPath                       // ['rules', i, 'fields', name]
-  source: { kind: 'path' | 'paths' | 'literal' | 'none'; raw: string | null }
-  transforms: TransformView[]                       // { index, kind, raw, form: 'short' | 'object' }
-  options: Partial<Record<FieldOption, string>>     // raw lexemes, keyed by option name
-  malformed: string | null                          // "fields.x is not an object"
+  name: string; path: DocPath
+  source: { present: ('path' | 'paths' | 'literal')[]; raw: Record<string, string | null> } // several present = conflict, shown as such
+  transforms: { index: number; form: 'short' | 'object'; name: string | null; raw: string }[]
+  options: Record<FieldOption, Member>                                    // type, timestamp_format, unit, bounds,
+                                                                          // empty_as_missing, on_missing, default, on_invalid
+  extras: Member[]                                                        // unknown keys, kept and shown
+  malformed: string | null
 }
-export interface RuleView {
-  index: number; path: DocPath; id: string | null; entity: string | null
-  select: string | null; where: ConditionView[]; parent: string | null
-  nativeKey: string[] | null; fields: FieldView[]; malformed: string | null
-}
-export interface DocIndex {
-  ok: boolean; problem: string | null
-  head: { dsl_version: string | null; target_schema_version: string | null; name: string | null;
-          source: string | null; input_format: string | null }
-  rules: RuleView[]; unmapped: UnmappedView[]; notes: string | null
-  malformed: { path: DocPath; reason: string }[]
-}
+export interface RuleView { index: number; path: DocPath; id: Member; entity: Member; select: Member
+  where: ConditionView[]; parent: Member; nativeKey: { present: boolean; items: Member[] }
+  fields: FieldView[]; extras: Member[]; malformed: string | null }
+export interface DocIndex { ok: boolean; problem: string | null; duplicates: DocPath[]
+  head: Record<'dsl_version' | 'target_schema_version' | 'name' | 'source' | 'input_format', Member>
+  rules: RuleView[]; unmapped: UnmappedView[]; notes: Member; extras: Member[]
+  malformed: { path: DocPath; reason: string }[] }
 export function indexDocument(text: string): DocIndex
 ```
 
-`indexDocument` uses `JSON.parse` **for structure only** (which keys exist, array lengths, string
-values); every value shown in a cell or written back comes from `rawAt(text, path)`, so a
-`9007199254740993` bound or a `1.0` literal is displayed and re-sent as typed. Structure carries
-no numeric loss. `FieldOption` is the closed list from the DSL schema: `type`,
-`timestamp_format`, `unit`, `bounds`, `empty_as_missing`, `on_missing`, `default`, `on_invalid`.
+Structure comes from the span tree (not `JSON.parse`), so nothing is normalised on the way in;
+every displayed value is `rawAt(...)`, so `9007199254740993` and `1.0` are shown as written.
+`extras` holds every member the DSL does not name, at document, rule, field, condition, unit and
+transform-parameter level, each with a JSON-view jump. **Absent, `null`, `false` and empty are four
+different states** and each renders differently (`native_key` absent vs `[]` is the canonical
+case). Nothing is ever rewritten at render time.
 
 ### 3.2 The field table
 
-`web/src/assist/FieldTable.tsx` renders `DocIndex` as one `<table class="data">` per rule inside a
-`<section>` per rule, with a caption in the Console voice counting rows, ambiguities and invalid
-rows ("12 fields · 1 ambiguity · 2 invalid rows"). Columns:
+`FieldTable.tsx` renders `DocIndex` as one `<section>` per rule containing a `<table class="data">`
+with a `<caption>` in the Console voice ("12 fields · 1 ambiguity · 2 invalid rows") and
+`<th scope="col">` headers. Columns: **Target**, **Source**, **Transforms**, **Options**, **Why**,
+**Issues** (six; §7's earlier "seven" was wrong).
 
-| Column | Control | Document path written |
-| --- | --- | --- |
-| Target | text input with a `<datalist>` of the known target names for the rule's entity; free text allowed (the server is the authority) | rename of `rules[i].fields.<name>` |
-| Source | segmented `path` / `paths` / `literal` (`SourceCell.tsx`); `path` and each `paths[j]` are text inputs with a `<datalist>` of the profile's paths; `literal` is a raw-JSON input | `…fields.x.path` / `.paths` / `.literal` |
-| Transforms | `TransformsCell.tsx`: chips per transform with add (`plus`) / remove (`trash`) / reorder; a `<select>` over `trim/lower/upper/json_decode/enum_map`; short form `"trim"` and object form `{"trim":{}}` both readable and switchable; `enum_map` opens a key/value editor whose values are raw JSON, plus `unmapped: keep/null/reject` | `…fields.x.transforms[j]` |
-| Options | `OptionsCell.tsx`: `type`, `timestamp_format`, `unit.from`/`unit.to`, `bounds`, `empty_as_missing`, `on_missing`, `default` (raw JSON, enabled only when `on_missing = "default"`), `on_invalid`. Every option has a "not set" choice that **removes** the member rather than writing a default | `…fields.x.<option>` |
-| Why | the matching `FieldExplanation` (target, source path, confidence, why) from the last outcome, plus the ambiguity chips of §3.3 | — |
-| Issues | the validation issues resolved to this row (§3.5), severity-coloured, each a button that focuses the offending control | — |
+- **Target** — a text input (`aria-label="Target field of rule model_call"`); free text, the server
+  is the authority. Renaming commits on blur or Enter, never per keystroke, so the focused input is
+  not remounted; a collision with an existing field name is refused with the reason.
+- **Source** — `path` / `paths` / `literal`. Switching kind is one plan that sets the new member and
+  removes the others, so the parser's ambiguous-source error cannot be produced by the switch; when
+  several are already present the cell shows a **conflict marker** listing them and offers "keep
+  only X" as an explicit choice. `path` and each `paths[j]` are text inputs; `literal` is a
+  raw-JSON input. `paths` supports add / remove / reorder (`chevronUp`/`chevronDown`, each with a
+  name and tooltip).
+- **Transforms** — a list of entries, each edited as **raw JSON** (`"trim"` and `{"trim":{}}` are
+  both shown as written and neither is converted), with add / remove / reorder. `enum_map` gets a
+  dedicated editor (mapping entries with raw-JSON values, `unmapped: keep|null|reject`) that edits
+  the smallest path (`…transforms[j].enum_map.mapping.<key>`), so unknown parameters elsewhere in
+  the entry are untouched. No form conversion exists in this slice (§7).
+- **Options** — one control per DSL option, each with an explicit "not set" that **removes** the
+  member: `type`, `timestamp_format`, `unit.from`/`unit.to` (created together as one composite
+  `set`), `bounds` (`min`/`max`), `empty_as_missing`, `on_missing`, `default`, `on_invalid`.
+  `default` is always visible and removable; when `on_missing` is not `default` a chip says it is
+  ignored — the editor is never disabled, so a repair is always possible.
+- **Why** — the matching `FieldExplanation`, shown only while the proposal anchor of §3.3 is
+  current and only when its target resolves to exactly one field; otherwise it stays in the
+  conversation as today.
+- **Issues** — the resolved validation issues for this row (§3.5), each a button that focuses the
+  offending control.
 
-Rule-level controls in the rule header (`RuleHeader.tsx`): `id` (rename; when the id changes,
-every `rules[k].parent` equal to the old id is offered to be updated in the **same edit batch**,
-shown in the confirmation text — never silently), `entity` select, `select` path,
-`parent` select over the other rules' ids plus "none", `native_key` as a token list where the
-empty list is a distinct, explicit state ("declared empty" vs "not declared", per review [2]),
-add rule (`plus`, appends a minimal `{"id":…, "entity":…, "fields":{}}`), delete rule (`trash`,
-refuses with an explanation while another rule references it as `parent`).
+Rule header (`RuleHeader.tsx`): `id` (rename; a rename that would break a `parent` reference is
+**refused** with the list of referring rules and a link to each — no silent cascade, §7), `entity`,
+`select`, `parent` (a select over the parser's valid choices — earlier root `model_call` rules,
+`parser.py:304-333` — plus "none"; an existing invalid value stays selected and is labelled
+"invalid, kept"), `native_key` as a token list where "not declared" and "declared empty" are
+separate states, **add field** (name + source kind, so a new rule reaches a legal shape), **delete
+field**, add rule, delete rule (refused while referenced, with the reason).
 
-`WhereEditor.tsx`: one row per condition — `path` input, `op` select
-(`eq/ne/in/not_in/exists/not_exists`), and a **typed value**: a type select
-(string / number / boolean / null / list) that decides how the raw lexeme is produced, so
-`9007199254740993` is written as a number lexeme verbatim and `"9007199254740993"` as a string;
-the value control is removed (not disabled) for `exists`/`not_exists`, and the existing member is
-deleted from the document. `UnmappedEditor.tsx` (`path` + `reason` rows) and a `notes` textarea
-complete the document surface.
+Document head row: `dsl_version`, `target_schema_version`, `input_format` (a select; a value that
+differs from the upload's sniffed format is flagged, because the import refuses that combination),
+`name` and `source`. **These are the identity inputs**: editing them writes `state.identity` and,
+in the same plan, the document's `name`/`source` when a document exists and is addressable. When
+the document is malformed the fields still edit the identity and a notice says the two are out of
+sync and why `revise` is blocked (`assistRuntime.ts:174-176`).
 
-A `ViewSwitch` (icon-only, `layers` = table, `braces` = JSON, both with names and tooltips) picks
-Table or JSON; the JSON view is today's `DocumentEditor` unchanged. The issue list renders under
-both views. The table is the default when the document parses, the JSON view is the default and
-the table is disabled when it does not.
+`WhereEditor.tsx`: `path`, `op` (`eq/ne/in/not_in/exists/not_exists`) and a value editor that is
+**raw JSON by default** — objects, nested lists and large integers are all first-class — with a
+convenience type picker (string / number / boolean / null) that only writes the corresponding
+lexeme. For `exists`/`not_exists` the `value` member is removed, not disabled.
+`UnmappedEditor.tsx` (`path`, `reason`) and a `notes` textarea complete the surface.
 
-### 3.3 Ambiguities as executable suggestions
+Raw-JSON inputs use a **draft/commit** policy: keystrokes edit local draft state, so `-`, `1e` and
+a lone `"` are typable; the document is written on blur or Enter when `isOneJsonValue` holds; an
+invalid draft shows `aria-invalid` with `aria-describedby` and Escape cancels back to the document
+value.
 
-`web/src/assist/suggestions.ts` (pure):
+`ViewSwitch.tsx` is a grouped pair of icon buttons with `aria-pressed` (`layers` = Table,
+`braces` = JSON). Table is the default when the document is addressable; the JSON view is the
+default (and Table is disabled with the reason) when it is not. Issues render under both views.
+
+### 3.3 Ambiguity options as executable suggestions
 
 ```ts
 export interface Suggestion { id: string; label: string; description: string; edits: DocEdit[] }
-export interface TargetChoice { label: string; path: DocPath }   // when several rules match
-export function resolveTarget(index: DocIndex, target: string): { path: DocPath } | { choices: TargetChoice[] } | null
-export function suggestionsFor(a: Ambiguity, index: DocIndex, target: DocPath): Suggestion[]
+export function resolveTarget(index: DocIndex, target: string):
+  { path: DocPath } | { choices: { label: string; path: DocPath }[] } | null
+export function suggestionsFor(a: Ambiguity, index: DocIndex, field: DocPath):
+  { ready: Suggestion[] } | { operationChoice: Suggestion[][] } | { prose: string }
 ```
 
-Target resolution, in order, never guessing: an exact document path (`rules[0].fields.x`) → an
-`entity.field` pair (`model_call.started_at`) resolved against the rules that declare that entity
-**and** that field → a bare field name unique across all rules. One match is executable; several
-matches render a rule picker and become executable once the user picks (review finding [5]);
-zero matches renders the ambiguity as today's prose with a "insert into the message" action.
+**Targeting** (unchanged from revision 1, which the review accepted): an exact document path, then
+an `entity.field` pair resolved against the rules that declare that entity *and* that field, then
+a bare field name unique across rules. Several matches render a rule picker and become executable
+after the user picks; no match stays prose.
 
-Option → edit is a **closed catalogue** with strict parsing; an option that does not match
-exactly stays prose:
+**Operation** never guessed (finding 5). For a resolved field, the candidate set is
+`{(option, value) : option is a DSL option of a field, value is a legal value of that option's
+closed domain and equals the option string}`. Then:
 
-| Option text | Edit |
-| --- | --- |
-| `iso8601` \| `epoch_s` \| `epoch_ms` | `set …timestamp_format` |
-| `string` \| `integer` \| `number` \| `boolean` \| `timestamp` | `set …type` |
-| `ns` \| `us` \| `ms` \| `s` \| `min` (and `X→Y` / `X to Y` pairs) | `set …unit` to `{"from":…,"to":…}` (single unit sets `to` when `from` exists, else asks) |
-| `min` \| `max` when the field's `path` contains `[*]` | `set …bounds` |
-| `null` \| `default` \| `reject` | `set …on_missing` (`reject`/`null` also for `on_invalid` when the ambiguity's target names it) |
-| `true` \| `false` | `set …empty_as_missing` |
-| a path that exists in the profile (`$.a`) | `set …path` |
+- exactly one candidate → an executable chip;
+- several candidates (`null` → `on_missing` or `on_invalid`; `min` → `bounds` or `unit.from`;
+  `true` → `empty_as_missing`) → a **choice menu** naming each operation with its
+  `describeEdits()` text, so the user picks the operation; nothing is applied until they do;
+- none → prose with "insert into the message", as today.
 
-Every suggestion chip shows `describeEdits()` as its tooltip and its accessible name ("Set
-timestamp_format to epoch_s on rules[1].fields.started_at"), applies only on click, goes through
-`setDocumentText`, and therefore invalidates validation, save and preview. Suggestions are
-derived from `state.lastOutcome` and are dropped as soon as the document version they were
-computed against changes.
+Domains in this slice: `timestamp_format` `{iso8601, epoch_s, epoch_ms}`, `type`
+`{string, integer, number, boolean, timestamp}`, `on_missing` `{null, default, reject}`,
+`on_invalid` `{null, reject}`, `empty_as_missing` `{true, false}`, `bounds` `{min, max}`. That is
+five operations beyond `timestamp_format`, all from closed enums, none inferred from prose.
+`unit` needs an ordered pair, so it is only offered when the option names one explicitly
+(`s→ms`, `s to ms`); free-text unit parsing and profile-path suggestions are cut (§7) — the latter
+also because `suggestionsFor` has no profile and the profile's `path` is root-relative while a
+field path is current-item relative (`api/types.ts:113-116`).
+An `on_missing: default` suggestion additionally requires a `default`; the chip says so and the
+plan includes both members or the chip is not offered.
 
-### 3.4 Malformed sections stay editable as text
+**Freshness**: applying a proposal records `proposalAnchor = { documentVersion }` — the version
+`editDocument` creates, not the pre-application generation. Chips and Why render only while
+`documentVersion === proposalAnchor.documentVersion`; after any edit they are shown as "from an
+earlier draft" prose and cannot be applied. A stale click is impossible, not merely unlikely.
 
-`indexDocument` never throws. A rule that is not an object, a `fields` value that is not an
-object, a `transforms` that is not a list: each becomes a `malformed` marker with the reason, the
-row renders "Not editable here" plus a `braces` button that switches to the JSON view and jumps
-to that line (existing `lineFor`). A document that does not parse renders the repair view only,
-with the parser message and the offset. Nothing about a malformed section is ever rewritten.
+### 3.4 Malformed and unaddressable sections
+
+`indexDocument` never throws. A rule that is not an object, a `fields` value that is not an object,
+a `transforms` that is not a list, an object with duplicate decoded keys: each becomes a marker
+with its reason and a `braces` button that switches to the JSON view and jumps to the line. A
+document that does not pass `validateJsonText` renders the repair view only, with the message and
+the offset. Nothing in a malformed or unaddressable section is ever rewritten.
 
 ### 3.5 Issue-path resolver
 
-`web/src/assist/issuePaths.ts`:
+`issuePaths.ts` maps the parser's real paths — `$`, `dsl_version`, `rules[0].id`,
+`rules[0].fields`, `rules[0].fields.started_at.bounds`, `rules[0].fields.x.transforms[2]`
+(field-level, `parser.py:494`), `rules[0].where[1].value`, `rules[0].native_key[2]`,
+`unmapped[0].reason` — to a `Control` union and a collision-safe `controlId` (each segment
+percent-encoded, so a field named `a.b` cannot collide with a nested path). Because the parser
+concatenates unescaped keys (`parser.py:92,257`), a path that could denote either a dotted field
+name or a nested path is **ambiguous by construction**: the resolver returns `{kind:'document'}`
+and the issue opens the JSON view instead of focusing a possibly wrong control.
 
-```ts
-export type Control =
-  | { kind: 'field-option'; ruleIndex: number; field: string; option: string }
-  | { kind: 'field-source'; ruleIndex: number; field: string }
-  | { kind: 'transform'; ruleIndex: number; field: string; index: number }
-  | { kind: 'condition'; ruleIndex: number; index: number; part: 'path' | 'op' | 'value' }
-  | { kind: 'rule'; ruleIndex: number; part: 'id' | 'entity' | 'select' | 'parent' | 'native_key' | 'fields' }
-  | { kind: 'unmapped'; index: number; part: 'path' | 'reason' }
-  | { kind: 'head'; key: string }
-  | { kind: 'document' }
-export function resolveIssue(path: string): Control            // built on pathSegments()
-export function controlId(control: Control): string            // 'ctl-r1-f-started_at-timestamp_format'
-```
+Focusing is view-aware: switch to the view that owns the control, open its rule section and any
+row disclosure, wait for the control to mount (a layout effect keyed on a pending focus request),
+then focus and scroll it into view. An issue with no control (`rules[0].fields` for
+`required_field_unmapped`, a missing member) focuses the nearest existing parent — the rule's Add
+field control — and, in the JSON view, falls back to the nearest existing parent's line or the
+document start. Row markers only show while `validation.documentVersion === documentVersion`.
 
-`controlId` is the DOM id of the rendered control; clicking an issue focuses it
-(`document.getElementById(...)?.focus()`), scrolls it into view and marks the row. A control that
-does not exist (a missing required field, a reordered rule, a stale validation — review [6])
-falls back to the JSON view and `lineFor`, and the issue list says why. Issues are only shown as
-row markers while `validation.documentVersion === documentVersion`, exactly as today.
+### 3.6 The lossless numeric codec at the API boundary
 
-### 3.6 Lossless numeric codec at the API boundary
+**The guarantee, stated exactly.** Every number and string lexeme in a raw HTTP *response* that
+the user does not edit is preserved character-for-character from that response through the editor
+into the outbound *request* bytes; the only transformation is the single pretty-print, which
+changes whitespace only. It is **not** claimed that a document survives a server round trip
+unchanged: the server parses with Python, so `1e3` comes back as `1000.0`, `-0` as `0`,
+`"a"` as `"a"`, and a decimal beyond double precision is rounded. The issue's two cases —
+large integers and `1.0` vs `1` — do survive, and a backend contract change to promise more is out
+of scope for #39 and would need its own issue and estimate.
 
-Write side is already text-verbatim (`assistantBody`, `rawDocumentBody`); this issue closes the
-read side and the silent fallback:
+Changes:
 
-- `jsonText.ts`: generalise `extractMappingText` into
-  `rawValueOf(rawJson: string, path: DocPath): string | null` (reuses `descend()`);
-  `extractMappingText(raw)` becomes `rawValueOf(raw, ['proposal','mapping'])`.
-- `api/index.ts`: `getMappingText(id): Promise<{ record: MappingDetail; documentText: string }>`
-  — `fetch` + `response.text()` + `rawValueOf(raw, ['document'])` + `prettyJson`, used by the
-  report entry point so a saved mapping is corrected from its exact bytes.
-- `assistRuntime.ts`: when `extractMappingText` fails, the `JSON.stringify` fallback stays but
-  now pushes a warning notice ("the response could not be read as text, so the browser re-encoded
-  its numbers; check large integers and decimals before saving") instead of applying silently.
-- Every table control that writes a value writes a raw lexeme; `applyEdits` refuses anything that
-  is not one balanced JSON value.
-
-The end-to-end proof required by the issue is a single test that starts from a **raw response
-string** containing `9007199254740993`, `1.0` and `1`, walks it through
-`outcomeArrived` → `indexDocument` → a table edit on a neighbouring cell → `saveMappingText`, and
-asserts the captured request body still contains those three lexemes byte-for-byte (§5).
+- `rawValueOf(rawJson, path)` generalises `extractMappingText` over the span tree;
+  `extractMappingText(raw)` becomes `rawValueOf(raw, ['proposal','mapping'])` and now also matches
+  **escaped envelope keys** (`{"proposal": …}`), which today's raw comparison misses.
+- `api/index.ts`: `getMappingText(id)` reads `response.text()` and takes `['document']` from it.
+- **No parsed-object fallback anywhere** (finding 1). If extraction returns null, or the extracted
+  text fails `validateJsonText`, or it is not an object: the document, `documentVersion`, `undo`,
+  `validation`, `saved` and `preview` are untouched, no outcome validation is attached, and the
+  assistant turn carries a recoverable error ("the response could not be read as text; the
+  document was left unchanged") with a disclosure showing `diagnostics.raw_text` so the user can
+  copy it. The same rule governs `getMappingText` failures at bootstrap (§3.7).
+- Every table control writes raw lexemes through `planEdits`, which refuses anything that is not
+  one JSON value.
 
 ### 3.7 Entry from an Import report
 
-No backend change (the alternative, a `GET /api/uploads?file_sha256=…` resolution route, is
-rejected in §7). The report gets a re-upload flow with a SHA check, entirely in the browser:
+No new backend route (the alternative is rejected in §9). The browser re-uploads the bytes with a
+SHA check.
 
-- `ReportPage` (`web/src/pages/Imports.tsx`) gains one icon action per file row and one in the
-  rejects panel head: `IconButton name="mappings"`, accessible name and tooltip "Correct this
-  file's mapping with the assistant". It opens `ReuploadDialog`.
-- `web/src/assist/ReuploadDialog.tsx`: a `<dialog>` naming the file, its full SHA-256 and its
-  mapping revision, with a file input. On pick, it hashes the chosen file locally
-  (`crypto.subtle.digest('SHA-256', …)`) **before uploading**, so a wrong file never leaves the
-  machine; a mismatch shows both hashes in full and refuses. On match it calls `uploadFile()` and
-  asserts the server's `sha256` equals the expected one as defence in depth (this also covers
-  browsers without `crypto.subtle`, where the local hash is skipped and the check happens after
-  the upload, stated in the dialog's text). It then navigates to
-  `/import/assist/${upload.upload_id}` with router state
-  `{ upload, origin: { importId, mappingId, sha256, filename } }`. No new route is added.
-- `AssistPage` reads `origin` from the router state: it prefills the identity from the mapping
-  record and the document text from `getMappingText(origin.mappingId)`, and shows a persistent
-  notice: "This corrects the mapping used by import `imp_…`. That import's observations are
-  unchanged; re-importing these bytes into source `x` inserts nothing (duplicates are decided by
-  file bytes and source), so a correction applies to the next import of this file, under another
-  source or from another file." Saving produces a new revision of the same name (the save route
-  is idempotent by content hash), which the notice states.
-- The upload dialog also reports the new upload's `already_imported[]` list, so the user sees the
-  earlier attempts before doing anything.
+**Origin.** `origin = { importId, importSource, importStatus, fileSha256, filename, fileStatus,
+mappingId | null, mappingName | null, mappingRevision | null }` — the *file's* binding, never the
+report-level mapping echo, which is only the first file's display value
+(`docs/api/v0.1.md:181-218`, `ImportedFile.mapping` is nullable).
 
-### 3.8 Responsive collapse and the receipt part
+**Entry points.** One `IconButton` per row of the report's files table ("Correct this file's
+mapping with the assistant") and one in the rejects panel head; when the rejects panel's file
+filter is "All files" and the report has several files, the action opens a **file picker** listing
+them — it never assumes the first file.
 
-- `web/src/useMediaQuery.ts`: `useMediaQuery(query: string): boolean`, guarded by
-  `typeof window.matchMedia === 'function'` and defaulting to `false` (wide) so tests and older
-  environments keep today's layout; a `matchMedia` stub is added to `web/src/test-setup.ts`.
-- Below 1280 px the evidence rail renders as a real disclosure: a header button with
-  `aria-expanded`/`aria-controls`, collapsed by default, whose label carries the exact summary
-  ("Evidence: 30 of 30 records inspected, 12 paths"), so the collapsed state still states the
-  numbers. Above 1280 px it is a plain always-open `<aside>` with no button. The field table's own
-  wrapper keeps `overflow-x: auto`; the page never scrolls horizontally.
-- The receipt stops being `.chat-msg-assistant > :nth-child(2)`. `Conversation.tsx` passes a
-  custom text-part component to `MessagePrimitive.Parts components={{ Text }}`; the component
-  reads the current message id from the library's message hook and looks the turn up in a
-  `ReceiptContext` the `Conversation` provides, rendering `<p className="chat-receipt">` for the
-  turn's `meta` and a normal paragraph otherwise. The exact hook name is confirmed against the
-  installed `@assistant-ui/react` 0.15.18 types in step 1; the fallback, if the hook is not
-  exported, is to compare the part text with the turn's `meta` string from the same context (no
-  new dependency, no `any`, no positional CSS).
+**Re-upload dialog** (`ReuploadDialog.tsx`): names the file, its full SHA-256 and the file's
+mapping revision, and asks for the same file. The digest is taken over **the file's own bytes as
+they are on disk** — for a `.jsonl.gz` that is the compressed bytes, because the store hashes what
+it receives (`uploads.py:48`); the dialog's copy says so, and nothing is decompressed, decoded or
+re-encoded before hashing. A size over the 25 MiB limit is refused before reading. One selection is
+active at a time: a new pick or a close cancels the previous hash/upload and its result is
+discarded (a generation counter, like the runtime's). On a hash match the file is uploaded and the
+server's `sha256` is compared again; a mismatch at either step shows both digests in full and
+refuses. Where `crypto.subtle` is unavailable (an insecure context) the entry is **disabled** with
+the reason, rather than uploading first — the promise "the wrong file never leaves the machine"
+must hold unconditionally. The dialog also lists the new upload's `already_imported` entries.
+
+**Bootstrap.** Navigating carries `origin` in router state. `AssistPage` runs an origin-keyed
+transition: `bootstrap: 'idle' | 'loading' | 'ready' | 'failed'`; while loading, the document
+editor, the table and every gate are disabled and a live region says what is loading; the result is
+applied atomically (identity + document text + gates invalidated) and only when the origin and
+upload id still match — a late or superseded response is discarded, and a manual edit made
+meanwhile wins (the load is then offered as "load the saved mapping anyway", never silently
+applied). A failed or missing mapping binding is honest ("that file's mapping binding is
+unavailable; start from a proposal instead") with retry. The document text comes from
+`getMappingText(origin.mappingId)` — the exact per-file revision, never the newest by name.
+
+**Source, said honestly.** Mapping identity (`document.name` / `document.source`) and the import's
+execution source are different things; the backend takes them independently
+(`imports.py:375` uses the request's source). With an `origin`, the page shows an explicit **import
+source** control defaulting to `origin.importSource`, and the commit uses it (today the page
+silently uses `saved.record.source`, `Assist.tsx:164`); changing it away from the report's source
+requires an explicit choice and the confirmation names it. The notice is scoped to what is true:
+
+- `committed`: "These bytes are committed in import `imp_…` under source `A`. Re-importing them
+  into `A` inserts nothing (duplicates are decided by file bytes and source), and that import's
+  observations do not change. A corrected revision applies to the next import of this file — under
+  a different source, or of a different file."
+- `duplicate`: names the original import and says the same about it.
+- `failed`: "That attempt inserted nothing, so importing these bytes into `A` is a normal import,
+  not a duplicate."
+
+Re-importing under a different source to "fix" history is never suggested. After Save, the receipt
+states the actual outcome from the response (`created: true` → "saved as revision N", `false` →
+"identical to the existing revision N, nothing new was written"), because a save is idempotent by
+content hash (`mappings.py:21-32`).
+
+### 3.8 Responsive collapse and the receipt
+
+- `useMediaQuery(query)` guarded by `typeof window.matchMedia === 'function'`, defaulting to the
+  wide layout; `web/src/test-setup.ts` gains a stub. Below 1280 px the evidence rail is a real
+  disclosure (`aria-expanded` / `aria-controls`, collapsed by default) whose button label carries
+  the exact summary ("Evidence: 30 of 30 records inspected, 12 paths"), so the numbers are legible
+  while collapsed; at 1280 px and above it is a plain `<aside>` with no button. The table scrolls
+  inside its own `overflow-x: auto` container; the page never scrolls horizontally. The layout
+  claim is verified in a real browser at 1279, 1280 and 900 px, in both themes; jsdom only asserts
+  the disclosure's semantics.
+- The receipt travels as **message metadata**, not a second text part:
+  `convertMessage` sets `metadata: { custom: { receipt } }`
+  (`ThreadMessageLike.metadata.custom`, verified in the pinned
+  `@assistant-ui/core@0.3.17/src/runtime/utils/thread-message-like.ts:80-92`), and a custom
+  `AssistantMessage` reads it with
+  `useAuiState(s => s.message.metadata.custom.receipt as string | undefined)` (`useAuiState` is
+  exported from `@assistant-ui/react@0.15.18/src/index.ts:8`) and renders one
+  `<p className="chat-receipt">` after `MessagePrimitive.Parts`. The text-equality fallback, the
+  duplicate text part and the `nth-child` CSS rule are all removed. The exact selector is
+  typechecked against the pinned install in step 1 of §10.
 
 ## 4. Files touched (exhaustive)
 
-New (`web/src/assist/` unless stated):
+New, in `web/src/assist/` unless stated: `document.ts`, `documentIndex.ts`, `issuePaths.ts`,
+`suggestions.ts`, `FieldTable.tsx`, `RuleHeader.tsx`, `FieldRow.tsx`, `SourceCell.tsx`,
+`TransformsCell.tsx`, `OptionsCell.tsx`, `WhereEditor.tsx`, `UnmappedEditor.tsx`, `RawJsonInput.tsx`
+(the draft/commit input), `Suggestions.tsx`, `ViewSwitch.tsx`, `IssueList.tsx`,
+`ReuploadDialog.tsx`; `web/src/useMediaQuery.ts`.
 
-- `document.ts` — spans, `DocEdit`, `applyEdits`, `describeEdits`.
-- `documentIndex.ts` — `indexDocument` and the view types.
-- `issuePaths.ts` — `resolveIssue`, `controlId`.
-- `suggestions.ts` — `resolveTarget`, `suggestionsFor`.
-- `targetFields.ts` — the target-name suggestion lists per entity (a datalist only; the server
-  stays the authority) with a comment naming `backend/.../domain/schema.py` as the origin.
-- `FieldTable.tsx`, `RuleHeader.tsx`, `FieldRow.tsx`, `SourceCell.tsx`, `TransformsCell.tsx`,
-  `OptionsCell.tsx`, `WhereEditor.tsx`, `UnmappedEditor.tsx`, `Suggestions.tsx`, `ViewSwitch.tsx`,
-  `ReuploadDialog.tsx`.
-- `web/src/useMediaQuery.ts`.
-- Tests: `document.test.ts`, `documentIndex.test.ts`, `issuePaths.test.ts`, `suggestions.test.ts`,
-  `FieldTable.test.tsx`, `codec.test.ts`, `ReuploadDialog.test.tsx`,
-  `web/e2e/assist-table.spec.ts`.
+New tests: `jsonText.grammar.test.ts`, `document.test.ts`, `documentIndex.test.ts`,
+`issuePaths.test.ts`, `suggestions.test.ts`, `FieldTable.test.tsx`, `RawJsonInput.test.tsx`,
+`codec.test.ts`, `Conversation.test.tsx`, `ReuploadDialog.test.tsx`,
+`web/e2e/assist-table.spec.ts`, `backend/tests/interfaces/test_api_mapping_numerics.py`.
 
-Changed:
+Changed: `web/src/assist/jsonText.ts` (grammar, decode, `rawValueOf`; `extractMappingText` becomes
+a wrapper and keeps its tests), `assistRuntime.ts` (no parsed fallback, `applyDocumentEdits`,
+`proposalAnchor`, `origin`, `bootstrap`, an `importSource`), `Conversation.tsx` (metadata receipt),
+`EvidenceRail.tsx` (disclosure), `DocumentEditor.tsx` (issue rendering moves to `IssueList.tsx`,
+plus a "focus in table" action — §3.2's "the JSON view is today's editor" is therefore *this*
+change, not "unchanged"), `assist.css`, `web/src/pages/Assist.tsx`, `web/src/pages/Imports.tsx`
+(report page only), `web/src/api/index.ts`, `web/src/test-setup.ts`, `web/playwright.config.ts`
+(third project, `dependencies: ['assistant']`), `web/e2e/assist.spec.ts` and
+`web/src/pages/Assist.test.tsx` (select the JSON view explicitly where they assert on the
+textarea), `web/src/assist/assistRuntime.test.ts`, and this plan.
 
-- `web/src/assist/jsonText.ts` — extract `descend()`, add `rawValueOf`, `isOneJsonValue`; keep
-  `extractMappingText` as a thin wrapper (its tests stay green).
-- `web/src/assist/assistRuntime.ts` — a `documentIndex` is *not* stored in state (it is derived);
-  add the fallback warning notice, an `applyEdits`-based `applyDocumentEdits(state, edits)`
-  action that routes through `editDocument`, and `origin` on the state for the report entry.
-- `web/src/assist/Conversation.tsx` — receipt part component and `ReceiptContext`.
-- `web/src/assist/EvidenceRail.tsx` — disclosure below 1280 px.
-- `web/src/assist/DocumentEditor.tsx` — issue list shared with the table view (issue rendering
-  moves into a small `IssueList.tsx` used by both) and a "focus in table" action.
-- `web/src/assist/assist.css` — table, chips, disclosure, `.chat-receipt`; drop the `nth-child`
-  rule.
-- `web/src/pages/Assist.tsx` — view switch, field table wiring, `origin` bootstrap, suggestions.
-- `web/src/pages/Imports.tsx` — the two entry actions and the dialog mount (report page only;
-  `/import` belongs to issue #45 and is untouched).
-- `web/src/api/index.ts` — `getMappingText`.
-- `web/src/test-setup.ts` — `matchMedia` stub.
-- `web/src/assist/assistRuntime.test.ts`, `web/src/pages/Assist.test.tsx` — extended, not
-  rewritten.
-- `docs/superpowers/plans/2026-09-08-assistant-field-table.md` (this file).
-
-Not touched: any `backend/**` file, `web/src/pages/Import.tsx`, `web/src/components/icons.tsx`,
-`docs/api/v0.1.md` (no contract change).
+Not touched: `web/src/pages/Import.tsx` and the `/import` route (issue #45),
+`web/src/components/icons.tsx` (`chevronUp`/`chevronDown` already exist),
+`backend/src/**`, `docs/api/v0.1.md` (no contract change). Shared-file coordination: `Imports.tsx`
+report surfaces are also touched by #33's diagnostics notice and #10's report/history work —
+the two entry actions are additive and are the last commit in the branch so a rebase is cheap.
 
 ## 5. Tests (named)
 
-`web/src/assist/document.test.ts`
+**Grammar** (`jsonText.grammar.test.ts`): rejects `{"x":01}`, `{"x":1.}`, `{"x":+1}`, `{"x":.5}`,
+`{"x":true false}`, `{"x":1,}`, `{"x":1} trailing`, `{"x":/*c*/1}`, `"\q"`, a raw newline inside a
+string, `[1}}`; accepts CRLF, tabs, compact text, `{}`/`[]`, trailing whitespace, `1e3`, `-0`,
+`\uXXXX` escapes; `decodeJsonString` round-trips escaped keys; offsets are code units
+(`{"é😀":0,"b":1}` fixture).
 
-- `keeps every byte outside the spliced span` — a document with `9007199254740993`, `1.0`, `1e3`,
-  a unicode-escaped key and trailing spaces; set one unrelated option; assert the rest is
-  byte-identical and the three lexemes survive.
-- `sets an absent member with the siblings' indentation`, `removes the last member and its comma`,
-  `removes a middle member and its comma`, `renames a key without touching its value`,
-  `inserts and removes array elements`, `applies a batch right to left`,
-  `refuses a raw value that is not one balanced JSON value`,
-  `returns a problem for a malformed document instead of throwing`.
+**Spans and batches** (`document.test.ts`): byte-identical preservation of an untouched document
+around every edit kind; adjacent removals (`{"a":1,"b":2,"c":3}` removing `b` and `c` in one plan);
+removing every member; two insertions into `{}`; `set` on a one-level-missing member; `set` two
+levels missing → problem; composite `unit` creation; rename + child edit in one plan; rename
+collision refused; repeated edits of one path refused; array `move` reusing the moved value's raw
+text; a plan whose result would be invalid leaves the input untouched; duplicate decoded keys make
+the container unaddressable; non-ASCII before an edited span; escaped-key edits (editing `"x"`
+itself, not only a neighbour).
 
-`web/src/assist/documentIndex.test.ts`
+**Index** (`documentIndex.test.ts`): all four states (absent / `null` / `false` / empty) for
+`native_key`, `default`, `empty_as_missing`; both transform forms preserved verbatim; unknown keys
+surfaced as `extras` at document, rule, field, condition, unit and transform-parameter level; a
+malformed rule marked without touching its siblings; raw lexemes (`9007199254740993`,
+`1.0`) shown as written — the numeric fixture uses a **valid** location (a `literal`, a `where`
+value), never `bounds`, which is `min`/`max`.
 
-- `indexes rules, fields, transforms in both forms, conditions, unmapped and notes`.
-- `shows raw lexemes, not parsed numbers` (bounds `9007199254740993`, literal `1.0`).
-- `marks a rule whose fields are not an object as malformed and indexes the others`.
-- `distinguishes native_key absent from native_key: []`.
-- `keeps unknown keys visible and untouched`.
+**Issue paths** (`issuePaths.test.ts`): every parser path listed in §3.5 maps to a control and a
+stable id; a field named `a.b` resolves to `{kind:'document'}`; ids are collision-safe.
 
-`web/src/assist/issuePaths.test.ts` — the parser's real paths: `$`, `dsl_version`, `rules[0].id`,
-`rules[0].fields`, `rules[0].fields.started_at.bounds`, `rules[0].fields.x.transforms[2]`,
-`rules[0].where[1].value`, `rules[0].native_key[2]`, `unmapped[0].reason`; each maps to a control
-and a stable `controlId`; an unknown path falls back to `{kind:'document'}`.
+**Suggestions** (`suggestions.test.ts`): `epoch_s` → one chip; `reject` → `on_missing`; `null` →
+an operation choice of `on_missing` and `on_invalid`; `min` → a choice of `bounds` and `unit.from`;
+`"a validated swe-chat tag"` → prose; two rules emitting the entity → a rule picker; a click after
+an edit is refused because the anchor moved; `on_missing: default` without a `default` is not
+offered.
 
-`web/src/assist/suggestions.test.ts`
+**Codec** (`codec.test.ts`): from a raw run-response string containing `"literal": 1.0`,
+`"value": 9007199254740993` and `"sequence": 1`, through `outcomeArrived`, a table edit on another
+field, to a mocked `fetch`; the captured body is **parsed and asserted at its paths** (and the
+lexemes located by span), not by substring. Negative cases: an escaped envelope key
+(`{"proposal": …}`) and a mapping that fails the grammar each leave the document, its version
+and every gate untouched, attach no validation, and surface a recoverable error.
 
-- `resolves model_call.started_at to the only rule that emits it` (the fake's epoch document).
-- `asks which rule when two rules emit the entity and the field`.
-- `turns epoch_s into a timestamp_format edit and leaves "a validated swe-chat tag" as prose`.
-- `never returns an edit for an option outside the catalogue`.
-- `drops suggestions computed against an older document version`.
+**Server boundary** (`backend/tests/interfaces/test_api_mapping_numerics.py`): `POST /api/mappings`
+then `GET /api/mappings/{id}` with `9007199254740993` in a `where` value and `1.0` vs `1` literals
+at valid DSL locations; asserts the values at their paths, and documents `1e3 → 1000.0` as the
+known, stated limit rather than a bug.
 
-`web/src/assist/codec.test.ts` (the end-to-end numeric proof required by the issue) — a raw
-`/assistant/run` response string containing `"literal": 1.0`, `"value": 9007199254740993` and
-`"sequence": 1`; `outcomeArrived` applies it; a table edit sets `on_missing` on another field;
-`saveMappingText` is called with a mocked `fetch`; the captured `body` string is asserted to
-contain `1.0`, `9007199254740993` and `"sequence": 1` and to parse to one object; a second case
-with a mapping that cannot be extracted asserts the warning notice appears.
+**Table** (`FieldTable.test.tsx`): each control writes the expected text; the source switch removes
+the other members in one plan; a conflicting source shows the marker; "not set" removes; a new rule
+reaches a legal shape through Add field; a rename that would break a `parent` is refused with the
+referring rules; `default` stays editable when `on_missing` is not `default`; the parent select
+offers only earlier root `model_call` rules and keeps an invalid value labelled; a raw-JSON input
+accepts `-`, `1e` and a lone `"` as drafts and commits on blur; renaming does not remount the
+focused input; every icon-only control has a name and a tooltip; table semantics
+(`caption`, `th scope`) are present.
 
-`web/src/assist/FieldTable.test.tsx` — every control writes the expected document text
-(`path`↔`paths`↔`literal` switch removes the other member; "not set" removes the option; a
-transform added in object form; an `enum_map` value typed as raw JSON); renaming a rule id offers
-the `parent` update in the same batch and says so; deleting a referenced rule is refused with a
-reason; every icon-only control has an accessible name and a `data-tip`; the caption counts rows,
-ambiguities and invalid rows; a malformed rule renders "Not editable here" with a jump.
+**Conversation** (`Conversation.tsx`): the receipt comes from message metadata — several turns, two
+turns with identical receipts, a reply whose text equals its receipt, a refusal and a pending state
+each render exactly one receipt, with no positional CSS.
 
-`web/src/assist/ReuploadDialog.test.tsx` — a mismatching file is refused with both hashes and no
-`POST /api/uploads` is issued (request log); a matching file uploads and navigates; a server hash
-that disagrees with the local hash aborts.
+**Page** (`Assist.test.tsx`, extended): bootstrap loading disables the gates; a late load after a
+manual edit does not overwrite it; a failed load offers retry; the origin notice survives a send
+(it is not in `notices`); the import source defaults to the report's source and the confirmation
+names it; issue focus switches views and focuses the control; the rail disclosure's semantics
+under a stubbed 1279 px.
 
-`web/src/pages/Assist.test.tsx` (extended) — entering with `origin` prefills identity and the
-document from `getMappingText` (raw text, large integer preserved) and shows the
-"observations are unchanged" notice; the view switch keeps the text; an issue click focuses the
-resolved control; the rail collapses under a stubbed 1279 px `matchMedia` and its button carries
-the summary numbers.
+**Re-upload** (`ReuploadDialog.test.tsx`): a mismatching file is refused with both digests and no
+`POST /api/uploads`; two gzip files with the same payload but different gzip headers are correctly
+refused as different bytes; a replaced selection while hashing discards the first result; a server
+digest disagreeing with the local one aborts; no `crypto.subtle` disables the entry with the
+reason; an oversize file is refused before reading.
 
-`web/e2e/assist-table.spec.ts` (its own source `assist-table-e2e`, fake provider, epoch fixture,
-serial like the existing spec) — upload → identity → propose → the ambiguity chip "Set
-timestamp_format to epoch_s on rules[1].fields.started_at" → the table cell shows `epoch_s` and
-the JSON view shows it on the expected line → validate → save → preview shows an ISO timestamp
-→ import → the report shows the committed attempt → from the report, "Correct this file's
-mapping" → a wrong file is refused → the right file passes and the assistant opens with the saved
-document and the "unchanged observations" notice. Negative assertions: no `POST /api/mappings`
-and no `POST /api/imports` before the explicit clicks; no `POST /api/uploads` on the refused file.
+**End to end** (`web/e2e/assist-table.spec.ts`, its own source `assist-table-e2e`, its own project
+depending on `assistant`): the upload is created with `request.post('/api/uploads')` and the test
+navigates straight to `/import/assist/:uploadId`, so it does not depend on the import page's
+selectors (#45). Propose → an ambiguity chip sets `timestamp_format` → a table edit sets
+`on_missing` → validate → save → preview → import → open the report → "Correct this file's
+mapping" → a wrong file is refused → the right file passes → the assistant reopens with the exact
+saved document (a large integer intact) → correct it → save → import into the **same** source →
+the second report is `duplicate`, nothing inserted, and the first import's counts are unchanged.
+Negative assertions: no `POST /api/mappings`, `/api/imports` or `/api/uploads` before the explicit
+clicks. Verification includes `pnpm --dir web exec playwright test --list` showing the new spec and
+the run output showing it executed.
 
-CI gates, all green before the PR: `pnpm --dir web lint`, `typecheck`, `test`, `build`,
-`pnpm --dir web e2e`. No backend command is affected, but `uv --directory backend run pytest -q`
-is run once to prove nothing moved.
+Gates before the PR: `pnpm --dir web lint`, `typecheck`, `test`, `build`, `e2e` (with the discovery
+listing), plus `uv --directory backend run pytest -q`, `ruff check`, `mypy src`,
+`lint-imports` for the one new backend test.
 
 ## 6. Acceptance checks mapped to the issue's scope
 
-1. **Field table bound to the DSL, rows as an indexed view, never a rebuild** — `document.test.ts`
-   byte-identity test + `FieldTable.test.tsx` per-control writes; every option in the issue's list
-   (`path`/`paths`/`literal`, `transforms` in both forms, `enum_map`, `timestamp_format`, `unit`,
-   `bounds`, `type`, `empty_as_missing`, `on_missing`/`default`, `on_invalid`) has a named control
-   in §3.2 and a case in the test; rules add/delete/rename with parent references and `where` with
-   typed values are covered by the rule-header and `WhereEditor` cases; `unmapped` and `notes`
-   have their own editors; malformed sections keep the JSON repair view
-   (`documentIndex.test.ts`, `FieldTable.test.tsx`).
-2. **Lossless numeric codec at the API boundary with tests from raw response text through the
-   editor to the server** — `codec.test.ts` (raw string → editor → captured request body),
-   `document.test.ts`, and the `getMappingText` case in `Assist.test.tsx`.
-3. **Ambiguity options as executable suggestions with unambiguous targeting** —
-   `suggestions.test.ts` (catalogue, prose fallback, rule picker) and the e2e chip step.
-4. **Entry from an Import report with a SHA check, without replacing committed observations** —
-   `ReuploadDialog.test.tsx`, the `origin` cases in `Assist.test.tsx`, the e2e round trip, and the
-   notice quoting the bytes+source duplicate rule.
-5. **Responsive collapse below 1280 px; per-message receipt styling via the library's hooks** —
-   the `matchMedia` case in `Assist.test.tsx` and a `Conversation` case asserting the receipt is
-   rendered by the part component with `class="chat-receipt"` (no positional CSS in
-   `assist.css`).
-6. **Issue-path resolver** — `issuePaths.test.ts` over the parser's real paths, plus the focus
-   case in `Assist.test.tsx`.
+1. **Field table over the canonical document** — `document.test.ts` (preservation through every
+   edit kind and batch), `documentIndex.test.ts` (all options, both transform forms, `enum_map`,
+   four absent/null/false/empty states, unknown keys), `FieldTable.test.tsx` (rules add/delete/
+   rename with parent references, field add/delete, `where` with object and large-integer values,
+   `unmapped`, `notes`), §3.4 + its tests (malformed and duplicate-key sections in the repair
+   view).
+2. **Lossless numeric codec, raw response text → editor → server** — `codec.test.ts` with
+   path-addressed assertions, the grammar suite, and the server-boundary test; the guarantee is
+   stated exactly in §3.6.
+3. **Executable suggestions beyond `timestamp_format`** — `suggestions.test.ts`: five further
+   operations from closed enums, an operation choice instead of a guess, prose for the rest, a
+   rule picker for ambiguous targets, and a stale-anchor refusal.
+4. **Report entry with a SHA check and honest duplicate semantics** — `ReuploadDialog.test.tsx`,
+   the bootstrap cases in `Assist.test.tsx`, and the e2e round trip that ends in a `duplicate`
+   report with the first import's counts unchanged.
+5. **Rail collapse below 1280 px and receipts through the message hook** — the browser pass at
+   1279/1280/900 px in both themes, plus `Conversation.tsx`'s metadata cases.
+6. **Issue-path resolver** — `issuePaths.test.ts` over the parser's real paths and the view-aware
+   focus case in `Assist.test.tsx`.
 
-## 7. Risks
+## 7. Scope for v0.1.0 and what moves to follow-up
 
-- **Rejected alternative: an upload-resolution route.** A `GET /api/uploads?file_sha256=…` would
-  be a smaller click path, but it touches `backend/.../interfaces/api/routers.py`,
-  `schemas.py`, the ports and `docs/api/v0.1.md` — all owned by other wave-1 agents (#10, #33,
-  #18) — and it would hand out an upload id for bytes the user has not presented in this session.
-  The re-upload flow with a local hash check is browser-only, keeps the wrong file on the machine,
-  and is explicitly allowed by the issue. Recorded here so the reviewer can overrule it.
-- **`@assistant-ui/react` part hooks.** The receipt component depends on an API of 0.15.18 that
-  this plan has not run (`node_modules` is not installed in this worktree). Step 1 of §8 confirms
-  it against the installed types; the stated fallback needs no library API beyond
-  `components={{ Text }}`. If neither works, the receipt becomes a sibling element outside
-  `MessagePrimitive.Parts` and the CSS hack is still removed.
-- **Splice correctness is the whole issue.** A wrong span silently corrupts a document. Mitigation:
-  `document.ts` is pure and tested first (TDD), every edit path in the UI goes through
-  `applyEdits`, and `applyEdits` re-tokenizes the result and refuses to return text that does not
-  tokenize.
-- **Table width at 1280 px.** Seven columns plus inputs is tight (review [11]). Mitigation: the
-  rail collapses first, the Why and Issues columns collapse into a per-row disclosure below
-  1280 px, and the table scrolls inside its own container.
-- **Target-name drift** between `targetFields.ts` and `backend/.../domain/schema.py`. It is a
-  suggestion list only; drift shows up as a server validation issue, never as a silent change. A
-  cheap guard (a vitest reading the Python file and comparing names, skipped when the file is
-  absent) is included if it does not slow the suite.
-- **Conflict surface.** `web/src/pages/Imports.tsx` (report only) and `web/src/test-setup.ts` are
-  the only files outside `web/src/assist/` and `web/src/api/index.ts` that this issue changes;
-  #45 owns `web/src/pages/Import.tsx` and the `/import` route. No `App.tsx` change is needed.
-- **E2E database sharing.** `web/playwright.config.ts` shares one database across specs; the new
-  spec uses its own source (`assist-table-e2e`) and its own synthetic file so the smoke and
-  existing assist specs keep their totals.
+The review is right that none of the six bullets can be dropped without leaving #39 open, so the
+cuts are depth, not coverage. Each cut names the acceptance criterion it does **not** touch.
 
-## 8. Cost estimate and order
+Cut to a follow-up issue ("#39b assistant table depth"):
 
-1. Confirm the `@assistant-ui/react` part-hook API and stub `matchMedia`; receipt component and
-   rail disclosure (0.3 day).
-2. `document.ts` + `jsonText.ts` extraction, TDD (0.5 day).
-3. `documentIndex.ts`, `issuePaths.ts`, `targetFields.ts`, tests (0.4 day).
-4. `FieldTable` and its cells, `WhereEditor`, `RuleHeader`, `UnmappedEditor`, `ViewSwitch`,
-   CSS (0.7 day).
-5. `suggestions.ts` and the chips (0.3 day).
-6. `getMappingText`, `ReuploadDialog`, report actions, `origin` bootstrap and the notice
-   (0.4 day).
-7. `codec.test.ts`, the extended page tests, the e2e spec, docs touch-ups (0.4 day).
+1. **Target-name and profile-path autocomplete, and the Python drift guard.** Free-text inputs
+   remain and the server stays the authority, so bullet 1 is unaffected; only typing convenience
+   is lost.
+2. **Natural-language and free-text unit parsing in the suggestion catalogue.** Bullet 3 asks for
+   executable options beyond `timestamp_format`; the closed-enum catalogue delivers five, tested.
+   Prose options already have a defined behaviour (insert into the message).
+3. **Transform form conversion and chip polish.** Both forms stay readable and editable as raw
+   JSON with add/remove/reorder, and `enum_map` keeps its editor, so bullet 1's "transforms in
+   both forms" is met; only conversion between them is deferred — which also removes the member-
+   discarding risk of finding 9.
+4. **Automatic `parent` reference cascades on rename/delete.** Renames and deletes that would
+   break a reference are refused with the list of referring rules, and each `parent` is editable,
+   so bullet 1's "rules add/delete/rename with parent references" is met by explicit editing.
+5. **Profile-path suggestions.** They need a profile the suggestion API does not receive and a
+   root-relative vs current-item path translation; bullet 3 is met without them.
+6. **Per-row Why/Issues disclosure below 1280 px.** The rail disclosure (bullet 5's actual text)
+   plus a horizontally scrolling table container keeps the page free of horizontal scroll.
 
-About **3.0 engineer-days**, inside the 3-to-4-day remainder the Codex review left for this
-follow-up. Steps 2 and 3 are the ones that must not be rushed: every later step writes through
-them.
+Kept, because they are the acceptance criteria: the grammar and span contract, the batch planner,
+the full option/rule/condition/`unmapped`/`notes` surface with repair, the codec with no parsed
+fallback, the closed-enum suggestions with operation choice, the SHA-checked report entry with
+honest source semantics, the rail collapse and metadata receipts, the issue-to-control navigation,
+and the accessibility and browser passes.
+
+## 8. Risks
+
+- **Schedule (the largest one).** See §10: 4.0 days of work against three calendar days to the
+  2026-09-11 freeze, with #10, #33, #18 and #45 also in flight. This plan does not assert that it
+  fits; it names the owner's two options.
+- **Rejected alternative: an upload-resolution route.** `GET /api/uploads?file_sha256=…` would be
+  a shorter path but touches `routers.py`, `schemas.py`, the ports and `docs/api/v0.1.md` — files
+  other wave-1 agents hold — and would hand out an upload id for bytes the user has not presented.
+  The re-upload flow is explicitly allowed by the issue. Recorded so the reviewer can overrule it.
+- **Span correctness is the whole issue.** Mitigated by building `jsonText`/`document` first under
+  TDD, by re-validating every planned result with the grammar, and by refusing rather than
+  guessing whenever a container is unaddressable.
+- **`Imports.tsx` and `playwright.config.ts` are shared** with #10/#33 and (indirectly) #45. The
+  report actions and the Playwright project are additive and land last in the branch.
+- **Table density at 1280 px** with six columns: the rail collapses first and the table scrolls in
+  its own container; verified in a real browser, not in jsdom.
+- **E2E ordering**: the new project depends on `assistant`, which depends on `chromium`, so the
+  smoke spec's unscoped totals are still measured before any assistant import.
+
+## 9. Verification of the review's own claims
+
+Everything in §2 was re-checked here before acceptance; three points are recorded with a nuance
+rather than as plain restatements: the dotted-field-name ambiguity in finding 12 is a property of
+the parser's path concatenation and is therefore handled by refusing to resolve rather than by a
+better parser (§3.5); finding 8's decimal and `1e3` cases are Python JSON semantics, so the plan
+states the guarantee's boundary instead of promising a fix (§3.6); finding 13's uncertainty is
+removed rather than mitigated, because the pinned package does expose both the metadata field and
+the hook (§3.8). No claim in the review was contested.
+
+## 10. Order and estimate
+
+Correctness gate first, then one thin vertical slice, then breadth (the review's ordering
+requirement):
+
+1. Grammar, spans, `planEdits`, their tests; typecheck the `useAuiState` receipt selector against
+   the pinned install (0.9 day).
+2. Thin vertical slice: `indexDocument` + one field row with two options + `ViewSwitch` + issue
+   focus → edit → validate → save, in the browser (0.6 day).
+3. The rest of the table: rules, fields add/delete, source kinds, transforms, `where`, `unmapped`,
+   `notes`, document head and identity sync (0.9 day).
+4. Suggestions with the operation choice and the anchor (0.35 day).
+5. Report entry: `getMappingText`, dialog, origin bootstrap, import source, notices (0.6 day).
+6. Codec tests, server-boundary test, Playwright project + discovery + the two adapted specs, the
+   1279/1280/900 px and both-theme browser pass, receipt tests (0.65 day).
+
+**Total ≈ 4.0 engineer-days**, up from revision 1's 3.0 because the contracts are now specified
+rather than assumed, and because the review's test, discovery and browser work is delivery, not
+optional QA. This is a task estimate; it is **not** a claim of capacity. Three calendar days remain
+to the 2026-09-11 freeze and other wave-1 work is in flight, so the owner picks:
+
+- **(a)** #39 is this agent's only remaining feature work and the freeze is measured at the end of
+  2026-09-11 — the slice of §7 fits with roughly half a day of margin, and step 1 is the gate: if
+  it is not green by the end of its first day, escalate rather than compress the tests.
+- **(b)** v0.1.0 releases with the #15 JSON slice as shipped, and #39 lands in v0.1.1 against this
+  same plan with no further acceptance split — the review's explicit recommendation if (a) does
+  not hold.
+
+Either way, no second undeclared split of #39's acceptance criteria is proposed.
