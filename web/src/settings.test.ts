@@ -18,6 +18,9 @@ beforeEach(reset)
 afterEach(() => {
   reset()
   setTheme('system')
+  // One test re-imports the module to stand in for a page load; leave the
+  // registry in a defined state so nothing after it inherits a half-reset one.
+  vi.resetModules()
 })
 
 describe('defaults and persistence', () => {

@@ -3,12 +3,14 @@ import { Link, Navigate, Route, Routes, useLocation, useParams } from 'react-rou
 import { AppShell } from './AppShell'
 import { FileBar, ScopeBar, ScopeReceipt } from './components'
 import { ShellProvider } from './shellContext'
+import { useSettings } from './settingsContext'
 import { useShellContext } from './shellHooks'
 import DefinitionsPage from './pages/Definitions'
 import ImportPage from './pages/Import'
 import { ImportsPage, ReportPage } from './pages/Imports'
 import MappingsPage from './pages/Mappings'
 import OverviewPage from './pages/Overview'
+import SettingsPage from './pages/Settings'
 import SessionPage from './pages/Session'
 import SessionsPage from './pages/Sessions'
 
@@ -37,6 +39,10 @@ function Bar() {
 }
 
 export default function App() {
+  // Consuming the settings here is what makes a change reach every page without
+  // a reload: ShellProvider passes its children through, so only a consumer
+  // re-renders, and App recreates the whole routed element tree.
+  useSettings()
   return <ShellProvider><AppShell bar={<Bar />}>
     <Routes>
       <Route path="/" element={<RedirectKeepingSearch to="/overview" />} />
@@ -50,6 +56,7 @@ export default function App() {
       <Route path="/imports/:id" element={<ReportPage />} />
       <Route path="/mappings" element={<MappingsPage />} />
       <Route path="/definitions" element={<DefinitionsPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
       {GalleryPage && <Route path="/gallery" element={<Suspense fallback={<p>Loading gallery…</p>}><GalleryPage /></Suspense>} />}
       <Route path="*" element={<><h1>Page not found</h1><Link to="/overview">Back to the overview</Link></>} />
     </Routes>

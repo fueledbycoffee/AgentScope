@@ -6,6 +6,7 @@ import '@fontsource-variable/geist-mono'
 import './styles/tokens.css'
 import './styles/base.css'
 import App from './App.tsx'
+import { SettingsProvider } from './settingsContext'
 import { applyTheme } from './theme'
 
 // index.html stamps the saved theme before first paint; this keeps it in sync after hydration.
@@ -13,6 +14,6 @@ applyTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter><App /></BrowserRouter>
+    <SettingsProvider><BrowserRouter><App /></BrowserRouter></SettingsProvider>
   </StrictMode>,
 )

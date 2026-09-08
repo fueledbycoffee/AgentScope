@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { getMetricsSummary, listSessions } from '../api'
 import { Pagination, StateBlock } from '../components'
-import { PAGE_SIZE } from '../format'
+import { PAGE_SIZE, num } from '../format'
 import { useScope } from '../scope'
 import { useScopeBar } from '../shellHooks'
 import { useResource } from '../useResource'
@@ -19,7 +19,7 @@ export default function SessionsPage() {
   )
   const empty = offset > 0 ? 'No sessions on this page.' : 'No sessions match this scope. Clear the scope or import traces.'
   return <>
-    <div className="page-head"><h1>Sessions</h1>{metrics.data && <span className="sub">{metrics.data.sessions.value?.toLocaleString('en-US') ?? 'Unavailable'} in scope</span>}</div>
+    <div className="page-head"><h1>Sessions</h1>{metrics.data && <span className="sub">{num(metrics.data.sessions.value)} in scope</span>}</div>
     <section className="panel">
       <StateBlock loading={sessions.loading} error={sessions.error} retry={sessions.retry} lines={6}>
         {sessions.data && <>

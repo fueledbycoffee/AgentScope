@@ -181,3 +181,18 @@ details.disclosure > summary { cursor: pointer; color: var(--accent); font-size:
   .bar .receipt { margin-left: 0; }
   dialog.drawer { width: 100vw; border-left: 0; }
 }
+
+/* --- #46: settings, dates and scope cells. Appended so #11's edits above cannot conflict. --- */
+.settings-form { display: grid; gap: var(--sp-4); max-width: 720px; }
+.settings-form fieldset { border: 0; margin: 0; padding: 0; }
+.settings-form legend { font-size: var(--fs-1); color: var(--ink-3); padding: 0 0 var(--sp-2); }
+.settings-form label { cursor: pointer; }
+.settings-form .field + .field { margin-top: var(--sp-4); }
+.settings-form fieldset + .field, .settings-form .notice + .field { margin-top: var(--sp-4); }
+.settings-form select { max-width: 380px; }
+.sample { font-family: var(--mono); font-size: var(--fs-1); color: var(--ink-3); }
+p.hint { font-size: var(--fs-1); color: var(--ink-3); margin-top: var(--sp-2); max-width: 60ch; }
+/* The rail's toggle clipped its own tooltip and the outward focus ring. */
+.theme-toggle { overflow: visible; }
+.theme-toggle button:first-child { border-radius: var(--r-2) 0 0 var(--r-2); }
+.theme-toggle button:last-child { border-radius: 0 var(--r-2) var(--r-2) 0; }

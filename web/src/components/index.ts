@@ -11,3 +11,5 @@ export { Icon, IconButton } from './icons'
 export type { IconName } from './icons'
 export { Counts, ErrorNotice, JsonView, ResourceState, Table } from './compat'
 export { abbreviate } from '../format'
+// #46 additions, appended so #11's edits to this file cannot conflict.
+export { ThemeToggle } from './ThemeToggle'
