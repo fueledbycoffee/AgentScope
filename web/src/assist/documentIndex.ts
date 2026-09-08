@@ -109,6 +109,9 @@ export interface DocIndex {
   unmapped: UnmappedView[]
   notes: Member
   extras: Member[]
+  /** Present but not a JSON array: creation controls stay away, the repair route stays open. */
+  rulesProblem: string | null
+  unmappedProblem: string | null
   malformed: { path: DocPath; reason: string }[]
 }
 
@@ -273,6 +276,8 @@ export function indexDocument(text: string): DocIndex {
     unmapped: [],
     notes: { path: ['notes'], raw: null },
     extras: [],
+    rulesProblem: null,
+    unmappedProblem: null,
     malformed: [],
   }
   if (text.trim() === '') return { ...empty, problem: 'The mapping document is empty' }
@@ -282,9 +287,9 @@ export function indexDocument(text: string): DocIndex {
 
   const malformed: { path: DocPath; reason: string }[] = []
   const ruleCount = lengthOf(tree, ['rules'])
-  wrongType(tree, ['rules'], 'array', malformed)
+  const rulesProblem = wrongType(tree, ['rules'], 'array', malformed)
   const unmappedCount = lengthOf(tree, ['unmapped'])
-  wrongType(tree, ['unmapped'], 'array', malformed)
+  const unmappedProblem = wrongType(tree, ['unmapped'], 'array', malformed)
   return {
     ok: true,
     problem: null,
@@ -300,6 +305,8 @@ export function indexDocument(text: string): DocIndex {
     })),
     notes: member(tree, ['notes']),
     extras: extrasOf(tree, [], DOC_KEYS),
+    rulesProblem,
+    unmappedProblem,
     malformed,
   }
 }

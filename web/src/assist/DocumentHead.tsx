@@ -119,7 +119,7 @@ export function DocumentHead({ index, identity, disabled, onEdit, issueId }: Doc
       <div className="unmapped">
         <span className="dim">
           <span>Unmapped</span>
-          {index.unmapped.length === 0 && <span className="muted">nothing declared</span>}
+          {index.unmapped.length === 0 && index.unmappedProblem === null && <span className="muted">nothing declared</span>}
         </span>
         {index.unmapped.map(entry => (
           <span key={entry.index} className="path-entry">
@@ -150,19 +150,21 @@ export function DocumentHead({ index, identity, disabled, onEdit, issueId }: Doc
             />
           </span>
         ))}
-        <IconButton
-          name="plus"
-          label="Declare an unmapped path"
-          className="btn small icon-only"
-          disabled={disabled}
-          onClick={() =>
-            onEdit(
-              index.unmapped.length === 0 && index.malformed.every(entry => String(entry.path[0]) !== 'unmapped')
-                ? [{ op: 'set', path: ['unmapped'], raw: '[{"path": "$", "reason": ""}]' }]
-                : [{ op: 'insert', path: ['unmapped'], index: index.unmapped.length, raw: '{"path": "$", "reason": ""}' }],
-            )
-          }
-        />
+        {index.unmappedProblem === null && (
+          <IconButton
+            name="plus"
+            label="Declare an unmapped path"
+            className="btn small icon-only"
+            disabled={disabled}
+            onClick={() =>
+              onEdit(
+                index.unmapped.length === 0
+                  ? [{ op: 'set', path: ['unmapped'], raw: '[{"path": "$", "reason": ""}]' }]
+                  : [{ op: 'insert', path: ['unmapped'], index: index.unmapped.length, raw: '{"path": "$", "reason": ""}' }],
+              )
+            }
+          />
+        )}
       </div>
 
       <label className="dim notes">

@@ -128,7 +128,9 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
         </p>
       ))}
 
-      {index.rules.length === 0 && <p className="state-block">No rules yet: add one, or ask the assistant to propose the mapping.</p>}
+      {index.rules.length === 0 && index.rulesProblem === null && (
+        <p className="state-block">No rules yet: add one, or ask the assistant to propose the mapping.</p>
+      )}
 
       {index.rules.map(rule => {
         const ruleName = asString(rule.id) ?? `rule ${rule.index + 1}`
@@ -296,14 +298,17 @@ export function FieldTable({ index, identity, issues, current, disabled, onEdit,
         )
       })}
 
-      <div className="row add-rule">
-        <span className="dim"><span>Add a rule</span></span>
-        {Object.keys(SEEDS).map(entity => (
-          <button key={entity} type="button" className="btn small" disabled={disabled} onClick={() => addRule(entity)}>
-            {entity}
-          </button>
-        ))}
-      </div>
+      {/* creation is offered only where there is nothing to destroy: absent, or an empty list */}
+      {index.rulesProblem === null && (
+        <div className="row add-rule">
+          <span className="dim"><span>Add a rule</span></span>
+          {Object.keys(SEEDS).map(entity => (
+            <button key={entity} type="button" className="btn small" disabled={disabled} onClick={() => addRule(entity)}>
+              {entity}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
