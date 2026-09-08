@@ -138,7 +138,6 @@ export default function ImportPage() {
   }
 
   function goTo(step: ImportStep, replace = false) {
-    setError(null)
     setSearchParams({ step: String(step) }, { replace })
   }
 
@@ -243,7 +242,6 @@ export default function ImportPage() {
         <p className="title">Uploading {uploadBytes.toLocaleString('en-US')} bytes</p>
         <p>Server work: storing → hashing → counting. No records have been imported.</p>
       </div></div>}
-      {error?.stop === 1 && <RouteError error={error.cause} filename={error.filename} />}
       {single && <section className="import-route-stack" aria-labelledby="uploaded-file-heading">
         <div className="import-route-section-title">
           <h2 id="uploaded-file-heading">Uploaded file</h2>
@@ -350,7 +348,6 @@ export default function ImportPage() {
         ? 'The saved mappings were applied to a bounded sample. Nothing was written.'
         : 'Run the saved mappings against a bounded sample. Nothing will be written.'}</StageHeader>
       {busy === 'preview' && <div className="notice"><div><p className="title">Running the dry run</p><p>Applying each mapping to up to 200 records, nothing written.</p></div></div>}
-      {previewError && <RouteError error={previewError.cause} filename={previewError.filename} />}
       {!busy && !previewError && allPreviewed && <>
         <StatGroup items={[
           { label: 'Records sampled', value: aggregate.records.sampled, detail: state.entries.length > 1 ? `across ${state.entries.length} files` : 'from this file' },
@@ -412,7 +409,6 @@ export default function ImportPage() {
           { label: 'Outcome', value: state.entries.some(entry => entry.upload.already_imported.length) ? 'Previously seen same-source bytes insert no observations; all other records remain subject to the atomic import.' : 'On failure nothing is kept and the report shows the reason.' },
         ]} />
       </div>
-      {error?.stop === 4 && <RouteError error={error.cause} />}
       {busy === 'import' && <div className="notice"><div>
         <p className="title">Importing {records.toLocaleString('en-US')} records in one transaction</p>
         <p>If anything fails, nothing is kept.</p>
@@ -423,10 +419,11 @@ export default function ImportPage() {
     </>
   }
 
-  return <ImportRoute step={effectiveStep} facts={facts} onSelect={goTo}>
+  return <ImportRoute step={effectiveStep} facts={facts} onSelect={goTo} backtrackingDisabled={busy === 'import'}>
     {storageWarning && <div className="notice warn import-route-storage-warning" role="status"><div>
       <p className="title">This import will not survive a reload.</p><p>Browser session storage is unavailable or full. You can safely continue in this tab.</p>
     </div></div>}
+    {error && <RouteError error={error.cause} filename={error.filename} />}
     {effectiveStep === 1 && FileStop()}
     {effectiveStep === 2 && MappingStop()}
     {effectiveStep === 3 && PreviewStop()}
