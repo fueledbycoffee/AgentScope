@@ -190,6 +190,27 @@ describe('Assist page', () => {
     expect(screen.getByText(/Re-importing them into “tracelab” inserts nothing/)).toBeInTheDocument()
   })
 
+  it('blocks the identity and the composer while the saved revision loads', async () => {
+    let release: ((value: unknown) => void) | undefined
+    const held = new Promise(resolve => { release = resolve })
+    const base = globalThis.fetch as unknown as (url: string, init?: RequestInit) => Promise<Response>
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/mappings/map_1')) {
+        await held
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '{"id": "map_1", "name": "tracelab-v1", "source": "tracelab", "revision": 1, "created_by": "user", "input_format": "jsonl", "issues": [], "document": {"name": "tracelab-v1", "source": "tracelab", "rules": []}}' } as unknown as Response
+      }
+      return base(url, init)
+    }))
+    renderPage(ORIGIN)
+    await screen.findByRole('complementary', { name: 'Evidence' })
+    // nothing may be typed into a document that is about to be replaced
+    expect(screen.getByLabelText('Mapping name')).toBeDisabled()
+    expect(screen.getByLabelText('Message to the assistant')).toBeDisabled()
+    release!(null)
+    await waitFor(() => expect(screen.getByLabelText('Mapping name')).toBeEnabled())
+    expect(screen.getByLabelText('Message to the assistant')).toBeEnabled()
+  })
+
   it('warns when the import source is changed away from the report’s', async () => {
     renderPage(ORIGIN)
     await screen.findByRole('complementary', { name: 'Evidence' })

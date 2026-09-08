@@ -270,8 +270,13 @@ export default function AssistPage() {
   }, [index])
 
   const identityIssue = identityProblem(state.identity)
+  // the saved revision is about to replace the document: nothing may be typed into the one on
+  // screen, and no message may be built from it
+  const loadingRevision = state.bootstrap.phase === 'loading'
   const busyLabel = { none: '', preparing: 'Preparing the context…', awaiting_ack: 'Waiting for you to review the payload', running: 'Asking the assistant…', validating: 'Validating…', saving: 'Saving…', previewing: 'Previewing…', importing: 'Importing…' }[state.busy]
-  const chatDisabled = identityIssue ? `Enter a mapping name and source first (${identityIssue})` : undefined
+  const chatDisabled = loadingRevision
+    ? 'Loading the saved revision…'
+    : identityIssue ? `Enter a mapping name and source first (${identityIssue})` : undefined
   const validateReason = state.busy !== 'none' ? 'Wait for the current operation to finish' : state.documentText.trim() === '' ? 'No document yet' : null
 
   return (
@@ -282,10 +287,10 @@ export default function AssistPage() {
       </div>
       <form className="row identity" onSubmit={e => e.preventDefault()} aria-label="Mapping identity">
         <label className="field">Mapping name
-          <input value={state.identity.name} disabled={state.busy !== 'none'} onChange={e => update(s => setIdentity(s, { ...s.identity, name: e.target.value }))} placeholder="my-source-v1" />
+          <input value={state.identity.name} disabled={state.busy !== 'none' || loadingRevision} onChange={e => update(s => setIdentity(s, { ...s.identity, name: e.target.value }))} placeholder="my-source-v1" />
         </label>
         <label className="field">Source
-          <input value={state.identity.source} disabled={state.busy !== 'none'} onChange={e => update(s => setIdentity(s, { ...s.identity, source: e.target.value }))} placeholder="my-source" />
+          <input value={state.identity.source} disabled={state.busy !== 'none' || loadingRevision} onChange={e => update(s => setIdentity(s, { ...s.identity, source: e.target.value }))} placeholder="my-source" />
         </label>
         {identityIssue && state.identity.name && state.identity.source && <p className="muted">{identityIssue}</p>}
       </form>

@@ -161,8 +161,30 @@ export function setImportSource(state: AssistState, source: string): AssistState
 
 // --- context mutations (each one invalidates prepared/ack/run) --------------------------------
 
+/** Said when a change to the context ends a request whose reply would be discarded anyway. */
+export const RUN_SUPERSEDED =
+  'The context changed while the assistant was answering, so that reply no longer applies and was dropped. Your message is kept below; send it again when you are ready.'
+
+/**
+ * A context mutation makes every conversation request stale: `preparedArrived`, `runnable` and
+ * `outcomeArrived` all refuse a result from an older generation. So the operation has to *end*
+ * here as well — leaving `busy` at `running` for a reply that will be discarded disables every
+ * control for good, which is exactly what a report bootstrap landing mid-run used to do.
+ *
+ * The gate operations (validating, saving, previewing, importing) keep their state: their handlers
+ * check the document version or the saved id, and clearing `busy` would re-enable a second click
+ * while the first is still in flight.
+ */
 function invalidate(state: AssistState): AssistState {
-  return { ...state, generation: state.generation + 1, prepared: null, acknowledged: null, busy: state.busy === 'awaiting_ack' || state.busy === 'preparing' ? 'none' : state.busy }
+  const inConversation = state.busy === 'preparing' || state.busy === 'awaiting_ack' || state.busy === 'running'
+  return {
+    ...state,
+    generation: state.generation + 1,
+    prepared: null,
+    acknowledged: null,
+    busy: inConversation ? 'none' : state.busy,
+    notices: state.busy === 'running' ? [...state.notices, { kind: 'warn', text: RUN_SUPERSEDED }] : state.notices,
+  }
 }
 
 /** Every change to the document text moves the version and clears validation, save and preview. */
@@ -300,6 +322,11 @@ export function buildRequest(state: AssistState, message: string): { request: As
 
 export function startPrepare(state: AssistState, message: string): { state: AssistState; request: AssistantRequest; generation: number } | { state: AssistState } {
   if (state.busy !== 'none') return { state }
+  if (state.bootstrap.phase === 'loading') {
+    // the document is about to be replaced by the saved revision: a request built from the one on
+    // screen would be answered about a draft that no longer exists
+    return { state: { ...state, notices: [...state.notices, { kind: 'warn', text: 'The saved revision is still loading; send this once it is here.' }] } }
+  }
   const built = buildRequest(state, message)
   if ('problem' in built) return { state: { ...state, notices: [...state.notices, { kind: 'error', text: built.problem }] } }
   const next: AssistState = { ...state, busy: 'preparing', pendingMessage: message, omittedHistory: built.omitted, notices: [], staleRetries: 0 }

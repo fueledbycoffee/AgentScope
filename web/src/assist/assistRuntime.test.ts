@@ -13,6 +13,7 @@ import {
   canSave,
   identityProblem,
   initialState,
+  RUN_SUPERSEDED,
   outcomeArrived,
   preparedArrived,
   previewArrived,
@@ -267,6 +268,47 @@ describe('entering from an import report', () => {
     const started = startBootstrap(initialState('upl_1'), { ...origin, mappingId: null })
     expect(started.bootstrap.phase).toBe('failed')
     expect(started.bootstrap.problem).toMatch(/no mapping binding/)
+  })
+
+  it('never leaves a run stranded when the saved revision arrives', () => {
+    // the run is in flight when the load lands: its reply will be discarded as stale, so the
+    // operation has to be ended here or every control stays disabled for good
+    let state = setIdentity(startBootstrap(initialState('upl_1'), origin), { name: 'tracelab-v1', source: 'tracelab' })
+    const started = startPrepare({ ...state, bootstrap: { ...state.bootstrap, phase: 'ready' } }, 'analyse')
+    if (!('request' in started)) throw new Error('could not start')
+    state = preparedArrived(started.state, started.generation, started.request, prepared('d1'))
+    expect(state.busy).toBe('running')
+
+    const loaded = bootstrapArrived({ ...state, bootstrap: { ...state.bootstrap, phase: 'loading' } }, 'imp_1', DOC, { name: 'tracelab-v1', source: 'tracelab' })
+    expect(loaded.documentText).toBe(DOC)
+    expect(loaded.busy).toBe('none')
+    expect(loaded.notices.at(-1)?.text).toBe(RUN_SUPERSEDED)
+    // the reply that arrives afterwards changes nothing at all
+    const late = outcomeArrived(loaded, started.generation, outcome({ name: 'x', source: 'y' }), '{"proposal":{"mapping":{"a":1}}}')
+    expect(late).toBe(loaded)
+    expect(late.busy).toBe('none')
+    // and the message is still there to send again
+    expect(loaded.pendingMessage).toBe('analyse')
+  })
+
+  it('refuses to send while the saved revision is still loading', () => {
+    const state = setIdentity(startBootstrap(initialState('upl_1'), origin), { name: 'tracelab-v1', source: 'tracelab' })
+    const started = startPrepare(state, 'analyse')
+    expect('request' in started).toBe(false)
+    expect(started.state.busy).toBe('none')
+    expect(started.state.notices.at(-1)?.text).toMatch(/loading/i)
+  })
+
+  it('ends a run that any other context change invalidates, not just a load', () => {
+    let state = setIdentity(initialState('upl_1'), { name: 'a', source: 'b' })
+    const started = startPrepare(state, 'analyse')
+    if (!('request' in started)) throw new Error('could not start')
+    state = preparedArrived(started.state, started.generation, started.request, prepared('d1'))
+    expect(state.busy).toBe('running')
+    // an edit, an identity change or a sample toggle all discard the reply: none may leave it busy
+    expect(setDocumentText(state, '{"name": "a", "source": "b"}').busy).toBe('none')
+    expect(setIdentity(state, { name: 'c', source: 'b' }).busy).toBe('none')
+    expect(setIncludeSample(state, true).busy).toBe('none')
   })
 
   it('keeps the import source editable and separate from the mapping', () => {
