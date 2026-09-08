@@ -213,7 +213,9 @@ def _scope_clauses(grain: EntityGrain, scope: TraceScope) -> list[Any]:
 def _dimension(grain: EntityGrain, dimension: Dimension) -> Any:
     table = VIEWS[grain]
     if dimension == Dimension.STARTED_DAY:
-        return func.date(table.c.started_at)
+        # UtcDateTime stores fixed-format UTC text. SQLite's date parser can
+        # round the final microsecond into the next day (or NULL at year 9999).
+        return func.substr(table.c.started_at, 1, 10)
     if dimension == Dimension.LINKED:
         return table.c.model_call_id.is_not(None)
     if dimension == Dimension.SESSION_ID and grain == EntityGrain.SESSION:

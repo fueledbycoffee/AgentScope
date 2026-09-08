@@ -446,7 +446,15 @@ def test_unknown_timestamp_population_round_trips_tool_witness_over_http(client,
             assert query("sessions", part["drill_scope"])["overall"]["value_text"] == "1"
 
 
-@pytest.mark.parametrize("stamp", ["0001-01-01T00:00:00Z", "9999-12-31T23:59:59.999999Z"])
+@pytest.mark.parametrize(
+    "stamp",
+    [
+        "0001-01-01T00:00:00Z",
+        "0001-01-01T23:59:59.999999Z",
+        "9999-12-30T23:59:59.999999Z",
+        "9999-12-31T23:59:59.999999Z",
+    ],
+)
 def test_limit_day_scopes_and_inclusive_witnesses_round_trip_over_http(client, stamp):
     container = client.app.state.container
     mapping_id = container.list_mappings.execute()[0].id
@@ -469,7 +477,7 @@ def test_limit_day_scopes_and_inclusive_witnesses_round_trip_over_http(client, s
         result = query("model_calls", initial, ["started_day"])
         assert result["buckets"][0]["keys"] == [stamp[:10]]
         drill = result["buckets"][0]["drill_scope"]
-        if stamp.startswith("9999"):
+        if stamp.startswith("9999-12-31"):
             assert drill["started_before"] is None
             assert drill["started_through"] == stamp
         for target in ["model_calls", "tool_calls", "sessions", "imports_in_scope"]:

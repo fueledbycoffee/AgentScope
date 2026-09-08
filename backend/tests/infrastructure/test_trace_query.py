@@ -6,7 +6,7 @@ import pytest
 from alembic import command
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import Column, Integer, inspect, select, text
+from sqlalchemy import Column, Integer, inspect, literal, select, text
 from sqlalchemy.orm import Session
 
 from agentscope_app.application.dto import FileBinding
@@ -19,7 +19,7 @@ from agentscope_app.infrastructure.db.engine import (
     run_migrations,
 )
 from agentscope_app.infrastructure.db.metric_sql import create_metric_views, drop_metric_views
-from agentscope_app.infrastructure.db.trace_query import SqlAlchemyTraceQuery
+from agentscope_app.infrastructure.db.trace_query import VIEWS, SqlAlchemyTraceQuery, _dimension
 from agentscope_app.infrastructure.db.unit_of_work import make_uow_factory
 from tests.infrastructure.test_database import _pipeline, _report, _tracelab_line, mapping_record
 from tests.metric_reference import oracle, oracle_evaluation, population, synthetic_rows
@@ -884,6 +884,35 @@ def test_every_returned_day_scope_preserves_partitions_through_every_population(
     engine.dispose()
 
 
+@pytest.mark.parametrize("grain", [EntityGrain.MODEL_CALL, EntityGrain.TOOL_CALL])
+@pytest.mark.parametrize(
+    "stored, expected",
+    [
+        (None, None),
+        ("0001-01-01 00:00:00.000000", "0001-01-01"),
+        ("0001-01-01 23:59:59.999999", "0001-01-01"),
+        ("9999-12-30 23:59:59.999999", "9999-12-30"),
+        ("9999-12-31 23:59:59.999999", "9999-12-31"),
+    ],
+)
+def test_started_day_expression_preserves_exact_storage_text(database, grain, stored, expected):
+    engine, _ = database
+    model = m.ModelCall if grain == EntityGrain.MODEL_CALL else m.ToolCall
+    view = VIEWS[grain]
+    with Session(engine) as session:
+        row_id = session.scalar(select(model.id).limit(1))
+        # Bind the reviewer's exact strings without datetime parsing or formatting.
+        session.execute(
+            model.__table__.update().where(model.id == row_id).values(started_at=literal(stored))
+        )
+        assert (
+            session.scalar(
+                select(_dimension(grain, Dimension.STARTED_DAY)).where(view.c.id == row_id)
+            )
+            == expected
+        )
+
+
 @pytest.mark.parametrize("metric_id", ["model_calls", "input_tokens", "tool_calls"])
 def test_day_buckets_at_representable_limits_round_trip_from_import(tmp_path, metric_id):
     import json
@@ -915,6 +944,8 @@ def test_day_buckets_at_representable_limits_round_trip_from_import(tmp_path, me
     assert report.status == "committed" and report.records["accepted"] == len(stamps)
     assert report.reject_count == 0
     query = QueryMetric(factory)
+    with Session(engine) as session:
+        session_ids = dict(session.execute(select(m.Session.external_id, m.Session.id)).all())
     result = query.execute(metric_id, group_by=(Dimension.STARTED_DAY,))
     assert result.overall.coverage.total == len(stamps)
     assert {b.keys: b.result.coverage.total for b in result.buckets} == {
@@ -925,9 +956,25 @@ def test_day_buckets_at_representable_limits_round_trip_from_import(tmp_path, me
         ("9999-12-31",): 3,
     }
     for bucket in result.buckets:
-        assert (
-            query.execute(metric_id, bucket.drill_scope).overall.coverage == bucket.result.coverage
-        )
+        expected_ids = {
+            session_ids[f"claude:{index}"]
+            for index, stamp in enumerate(stamps)
+            if (stamp[:10] if stamp else None) == bucket.keys[0]
+        }
+        with Session(engine) as session:
+            members = SqlAlchemyTraceQuery(session).aggregate(
+                MetricQuerySpec(
+                    REGISTRY.get(metric_id),
+                    bucket.drill_scope,
+                    (Dimension.SESSION_ID, Dimension.STARTED_DAY),
+                )
+            )
+        assert {row.keys for row in members.rows} == {
+            (session_id, bucket.keys[0]) for session_id in expected_ids
+        }
+        followed = query.execute(metric_id, bucket.drill_scope).overall
+        assert followed.coverage == bucket.result.coverage
+        assert followed.value_text == bucket.result.value_text
         assert query.execute("sessions", bucket.drill_scope).overall.value_text == str(
             bucket.result.coverage.total
         )
@@ -939,17 +986,23 @@ def test_day_buckets_at_representable_limits_round_trip_from_import(tmp_path, me
         if bucket.keys == ("0001-01-01",):
             assert bucket.drill_scope.started_from == datetime.min.replace(tzinfo=UTC)
             assert bucket.drill_scope.started_before == datetime(1, 1, 2, tzinfo=UTC)
-    for year, month, day in [(1, 1, 1), (9999, 12, 31)]:
-        noon = datetime(year, month, day, 12, tzinfo=UTC)
+    for stamp in stamps:
+        if stamp is None:
+            continue
+        instant = datetime.fromisoformat(stamp)
         bounded = query.execute(
             metric_id,
-            TraceScope(started_from=noon, started_through=noon),
+            TraceScope(started_from=instant, started_through=instant),
             (Dimension.STARTED_DAY,),
         )
         assert bounded.overall.coverage.total == 1
         assert bounded.excluded_unknown_timestamps == 1
+        assert [b.keys for b in bounded.buckets] == [(stamp[:10],)]
         drill = bounded.buckets[0].drill_scope
-        assert drill.started_from == drill.started_through == noon
+        assert drill.started_from == drill.started_through == instant
+        reproduced = query.execute(metric_id, drill).overall
+        assert reproduced.coverage == bounded.buckets[0].result.coverage
+        assert reproduced.value_text == bounded.buckets[0].result.value_text
         for target in ["model_calls", "tool_calls"]:
             switched = query.execute(target, drill)
             assert switched.overall.value_text == "1"
