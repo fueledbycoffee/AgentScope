@@ -105,3 +105,86 @@ def test_loader_rejects_invalid_units_count_currency_and_rates(tmp_path, public_
     path.write_text(json.dumps(data))
     with pytest.raises(ValueError):
         load_price_schedule(path)
+
+
+def test_pinned_aliases_resolve_reviewed_fixture_ids_and_conservative_variants():
+    loaded = load_price_schedule()
+    assert loaded.alias_version == "aliases-v1"
+    assert loaded.version.endswith("+aliases-v1")
+    expected = {
+        "claude-opus-4-6": "anthropic/claude-opus-4.6",
+        "claude-opus-4-7": "anthropic/claude-opus-4.7",
+        "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4.5",
+        "claude-opus-4-5-20251101": "anthropic/claude-opus-4.5",
+        "claude-opus-4-8": "anthropic/claude-opus-4.8",
+        "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+        **{
+            m: f"openai/{m}"
+            for m in ("gpt-5.4", "gpt-5.5", "gpt-5.2-codex", "gpt-5.4-mini", "gpt-5.3-codex")
+        },
+    }
+    for source_id, target in expected.items():
+        assert loaded.resolve_model(source_id) == target
+        assert loaded.resolve_model(target) == target
+    for variant in ("claude-opus-4.7", "anthropic/claude-opus-4-7"):
+        assert loaded.resolve_model(variant) == "anthropic/claude-opus-4.7"
+    for unresolved in (
+        None,
+        "",
+        "codex-auto-review",
+        "gpt-5-codex",
+        "gpt-5.3-codex-spark",
+        "CLAUDE-OPUS-4-7",
+        " claude-opus-4-7",
+        "other/claude-opus-4-7",
+        "claude-opus-4-7-20990101",
+        "gpt-5.5:free",
+        "claude-opus-4-7:batch",
+    ):
+        assert loaded.resolve_model(unresolved) is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"schema_version": 2},
+        {"schedule_version": "wrong"},
+        {"alias_version": ""},
+        {"aliases": {"model": "missing/model"}},
+        {"aliases": {"model": "other-alias", "other-alias": "vendor/model"}},
+        {"aliases": {"": "vendor/model"}},
+        {"aliases": {"vendor/free": "vendor/model"}},
+    ],
+)
+def test_alias_loader_rejects_unreviewable_tables(tmp_path, public_body, change):
+    path = tmp_path / "schedule.json"
+    data = fetcher.build_schedule(public_body, datetime(2026, 9, 8, tzinfo=UTC))
+    path.write_text(json.dumps(data))
+    aliases_path = path.with_suffix(".aliases.json")
+    aliases_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "schedule_version": data["schedule_version"],
+                "alias_version": "aliases-v1",
+                "aliases": {"model": "vendor/model"},
+                **change,
+            }
+        )
+    )
+    with pytest.raises(ValueError):
+        load_price_schedule(path)
+
+
+def test_alias_loader_rejects_duplicate_keys(tmp_path, public_body):
+    path = tmp_path / "schedule.json"
+    data = fetcher.build_schedule(public_body, datetime(2026, 9, 8, tzinfo=UTC))
+    path.write_text(json.dumps(data))
+    path.with_suffix(".aliases.json").write_text(
+        '{"schema_version": 1, "schedule_version": '
+        + json.dumps(data["schedule_version"])
+        + ', "alias_version": "aliases-v1", "aliases": '
+        '{"model": "vendor/model", "model": "vendor/free"}}'
+    )
+    with pytest.raises(ValueError, match="Duplicate alias table key"):
+        load_price_schedule(path)

@@ -39,6 +39,7 @@ from agentscope_app.infrastructure.llm.fake import FakeMappingAssistant
 from agentscope_app.infrastructure.llm.openai_compatible import OpenAICompatibleAssistant
 from agentscope_app.infrastructure.llm.unavailable import UnavailableMappingAssistant
 from agentscope_app.infrastructure.mappings.bundled import load_bundled_mappings
+from agentscope_app.infrastructure.prices import load_price_schedule
 from agentscope_app.infrastructure.readers.router import FormatRouter
 from agentscope_app.infrastructure.settings import Settings
 
@@ -165,7 +166,7 @@ def build_container(settings: Settings) -> Container:
         get_session=GetSession(uow_factory),
         get_raw_record=GetRawRecord(uow_factory),
         metrics_summary=MetricsSummary(uow_factory),
-        list_metric_definitions=ListMetricDefinitions(),
+        list_metric_definitions=ListMetricDefinitions(price_schedule_loader=load_price_schedule),
         query_metric=QueryMetric(uow_factory),
         profile_file=profile_file,
         prepare_context=prepare_context,

@@ -7,10 +7,20 @@ import re
 from datetime import datetime
 from fractions import Fraction
 from pathlib import Path
+from typing import Any
 
 from agentscope_app.domain.pricing import ModelRates, PriceSchedule
 
 DEFAULT_SCHEDULE_PATH = Path(__file__).resolve().parents[3] / "prices" / "openrouter-v1.json"
+
+
+def _unique_alias_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate alias table key: {key}")
+        result[key] = value
+    return result
 
 
 def load_price_schedule(path: Path = DEFAULT_SCHEDULE_PATH) -> PriceSchedule | None:
@@ -48,4 +58,22 @@ def load_price_schedule(path: Path = DEFAULT_SCHEDULE_PATH) -> PriceSchedule | N
         or re.fullmatch(r"[0-9a-f]{64}", provenance["response_sha256"]) is None
     ):
         raise ValueError("Invalid public-fetch provenance")
-    return PriceSchedule(data["schedule_version"], models, data["currency"])
+    aliases_path = path.with_suffix(".aliases.json")
+    aliases = {}
+    alias_version = None
+    version = data["schedule_version"]
+    if aliases_path.exists():
+        table = json.loads(
+            aliases_path.read_text(encoding="utf-8"), object_pairs_hook=_unique_alias_keys
+        )
+        if (
+            table["schema_version"] != 1
+            or table["schedule_version"] != version
+            or not isinstance(table["alias_version"], str)
+            or not table["alias_version"]
+            or not isinstance(table["aliases"], dict)
+        ):
+            raise ValueError("Invalid alias table schema, version or schedule binding")
+        aliases, alias_version = table["aliases"], table["alias_version"]
+        version = f"{version}+{alias_version}"
+    return PriceSchedule(version, models, data["currency"], aliases, alias_version)
