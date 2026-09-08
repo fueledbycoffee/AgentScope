@@ -138,7 +138,20 @@ every icon-only control keeps an accessible name and a visible tooltip.
 - **`e2e/assist.spec.ts` now clicks "JSON document"** before asserting on the textarea, because the
   table leads. It is otherwise unchanged.
 
-## Review round (adversarial review of this PR)
+## Review rounds (adversarial review of this PR)
+
+**Second round.** One P1 and six more, each closed as a class, failing test first: a report
+bootstrap that left `busy` at `running` for a reply its own generation check would discard, which
+disabled the page for good (any context change now ends a superseded conversation request, and
+sends are blocked while the revision loads); creation controls offered over a malformed container
+(every "add" is now gated on absent-or-empty, completing the audit); a unit *suggestion* replacing
+the object the dropdown already edited by member; control ids built with `encodeURIComponent`,
+which throws on the unpaired surrogates the grammar accepts; the longest-name rule for dotted
+field paths, which is a guess where the parser emits one path for two fields (ambiguity now goes
+to the JSON view); "Open in the JSON view" going through the issue handler and never switching
+views; and a focus test that never applied its edit.
+
+**First round.**
 
 One P1, five P2 and one P3, each closed as a class with the failing test written first:
 the P1 crash on an ambiguity target naming `unit` or `default` (now every option in the DSL
@@ -155,7 +168,7 @@ ids made injective so `getElementById` cannot return another field's control.
 ```
 pnpm --dir web lint          # 3 warnings, all pre-existing
 pnpm --dir web typecheck
-pnpm --dir web test          # 259 tests, 15 files
+pnpm --dir web test          # 294 tests, 17 files
 pnpm --dir web build
 E2E_PORT=8795 pnpm --dir web exec playwright test --list   # 9 tests in 3 projects
 E2E_PORT=8795 pnpm --dir web exec playwright test          # 9 passed
