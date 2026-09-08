@@ -89,6 +89,71 @@ def test_0005_backfill_matches_live_claims(env: Env):
     ]
 
 
+def test_0005_filtered_numeric_rule_preserves_claims_and_reexport_coverage(env: Env):
+    original = mapping_record()
+    document = original.document
+    document["rules"] = [
+        {
+            "id": "session",
+            "entity": "session",
+            "select": "$",
+            "native_key": ["external_id"],
+            "fields": {"external_id": {"literal": "s"}, "agent": {"literal": "h"}},
+        },
+        {
+            "id": "model_call",
+            "entity": "model_call",
+            "select": "$",
+            "native_key": ["external_id"],
+            "fields": {
+                "external_id": {"path": "$.id"},
+                "session_external_id": {"literal": "s"},
+            },
+        },
+        {
+            "id": "alternate",
+            "entity": "session",
+            "select": "$",
+            "where": [{"path": "$.type", "op": "eq", "value": "alternate"}],
+            "native_key": ["external_id"],
+            "fields": {"external_id": {"path": "$.number"}, "agent": {"literal": "h"}},
+        },
+    ]
+    mapping = replace(
+        original, id="filtered", name="filtered", content_hash="filtered", document=document
+    )
+    with env.uow_factory() as uow:
+        uow.mappings.add(mapping)
+        uow.commit()
+    data = b'{"type":"normal","id":"m","number":1}\n'
+    upload, report = commit_data(env, data, mapping=mapping.id)
+    assert report.entities == {"session": 1, "model_call": 1}
+    query = (
+        "SELECT s.scope_text,p.projection_text,c.locator,c.emission_path "
+        "FROM entity_claims c JOIN claim_scopes s ON s.id=c.scope_id "
+        "JOIN claim_projections p ON p.scope_id=c.scope_id "
+        "AND p.projection_sha256=c.projection_sha256 ORDER BY c.emission_path"
+    )
+    live = env.sql(query)
+    assert len(live) == 2
+    before = snapshots(env)
+    migrate(env, "downgrade", "0004")
+    run_migrations(env.engine)
+    assert snapshots(env) == before
+    assert env.sql("SELECT code,message FROM import_claim_conditions") == []
+    assert env.sql(query) == live
+
+    reexport, report = commit_data(env, b" " + data, mapping=mapping.id)
+    assert reexport.sha256 != upload.sha256
+    assert report.status == "committed"
+    assert report.warnings == {"matching_claim_equal_projection": 2}
+    with env.uow_factory() as uow:
+        diagnostics = uow.imports.diagnostics(report.import_id, None, None, None, 50, 0)
+    assert diagnostics.total == 2
+    assert {d.entity for d in diagnostics.items} == {"session", "model_call"}
+    assert all(d.peer.file_sha256 == upload.sha256 for d in diagnostics.items)
+
+
 def numeric_mapping(env, field, value, mode):
     original = mapping_record()
     document = original.document
