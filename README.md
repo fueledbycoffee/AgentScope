@@ -10,30 +10,100 @@ AgentScope takes trace files (JSONL, Parquet), normalises them into a common rel
 
 Pre-release. The plan for v0.1.0 lives in [`docs/planning/`](docs/planning/2026-09-07-consolidated-plan.md). Work is tracked on the GitHub Project linked to this repository.
 
-## Development
+## Quickstart from a clean clone
 
-Requirements: [uv](https://docs.astral.sh/uv/) (provisions Python 3.12), Node 24 and [pnpm](https://pnpm.io/).
+Use uv 0.11.15, Node.js 24 and pnpm 10.28.1. From the repository root, install
+only from the checked-in lockfiles, build the SPA, and create the backend's
+gitignored configuration:
 
-```bash
-# Backend (FastAPI)
-cd backend
-uv sync --locked --all-groups
-cp ../.env.example .env          # then fill in your LLM endpoint and key
-uv run uvicorn agentscope_app.interfaces.api.main:app --reload
-# On first start the backend creates ./data/agentscope.sqlite3, runs the migrations and
-# loads the bundled mappings from backend/mappings/. Try it: open http://127.0.0.1:8000/docs
-# and upload fixtures/tracelab/tracelab-sample.jsonl.gz.
-uv run pytest                    # tests
-uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run lint-imports
-
-# Web (React + Vite), in a second terminal
-cd web
-pnpm install --frozen-lockfile
-pnpm dev                         # proxies /api to the backend on :8000
-pnpm test && pnpm typecheck && pnpm lint && pnpm build
+```sh
+uv --directory backend sync --locked --all-groups
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web build
+cp .env.example backend/.env
 ```
 
-CI runs all of the above on every pull request; `ci-required` is the single status check that must pass before merging to `main`.
+In `backend/.env`, set `AGENTSCOPE_LLM_PROVIDER=fake` and leave
+`AGENTSCOPE_LLM_API_KEY=` empty. This is the deterministic offline assistant
+used by the browser tests: it requires no account, key, or network call.
+
+The checked-in example intentionally names a real hosted model while leaving
+its key empty. If you copy it without selecting `fake` or supplying a valid key
+for your own endpoint, the application still starts but the first assistant
+call can fail authentication. Set `AGENTSCOPE_LLM_PROVIDER=none` only when you
+want the assistant disabled; saved mappings and imports remain available.
+
+Start the documented server from `backend/`:
+
+```sh
+cd backend
+uv run uvicorn agentscope_app.interfaces.api.main:app --host 127.0.0.1 --port 8000
+```
+
+The first start creates `backend/data/agentscope.sqlite3`, applies migrations,
+loads `backend/mappings/`, and serves the built SPA. The first upload creates
+its content-addressed path under `backend/data/raw-files/`. In another terminal,
+this checks application liveness:
+
+```sh
+curl -fsS http://127.0.0.1:8000/api/health
+```
+
+Open <http://127.0.0.1:8000/import> and reproduce the main path:
+
+1. Upload `fixtures/tracelab/tracelab-sample.jsonl.gz`.
+2. Choose `tracelab-v1 · revision 1 · tracelab`, then select **Preview**.
+3. Confirm that 200 sampled records are accepted with no rejects, then select
+   **Import**. The report must show 4,770 of 4,770 accepted and 0 rejected.
+4. Open the overview. It must show 80 sessions, 4,770 recorded model-call
+   observations, 5,723 recorded tool-call observations and 553,447,877 input
+   tokens with coverage 4,770 / 4,770 calls.
+
+Read those four totals from this server, not from a test harness:
+
+```sh
+curl -fsS http://127.0.0.1:8000/api/metrics/summary
+```
+
+To confirm the keyless assistant path, upload the fixture again, select
+**Draft a mapping with the assistant**, enter `tracelab-offline-check` as the
+mapping name and `tracelab-offline` as its source, include a redacted sample,
+and send `Propose a mapping for this file`. Review the exact payload in the
+drawer before selecting **Send this**. The receipt must name
+`fake/deterministic-1`; validate the executable document and save revision 1.
+This check saves a mapping but does not import the fixture under the second
+source, so the totals above remain unchanged.
+
+Stop the backend before resetting local state. Removing `backend/data/`
+deletes the local database and content-addressed uploads; it is intentionally
+gitignored and will be recreated on the next start.
+
+## Development
+
+For backend hot reload, run from `backend/` after the locked setup above:
+
+```sh
+uv run uvicorn agentscope_app.interfaces.api.main:app --reload
+```
+
+In a second terminal, run Vite from `web/`; it proxies `/api` to port 8000:
+
+```sh
+pnpm dev
+```
+
+The complete contributor checks, including the exact CI commands and Chromium
+setup, are in [`CONTRIBUTING.md`](CONTRIBUTING.md). The e2e command rebuilds
+`web/dist` and starts its own throwaway backend; it is regression evidence, not
+evidence for the README server or its `backend/data/` state.
+
+After the backend locked install, run the same browser setup and suite as CI
+from `web/`:
+
+```sh
+pnpm exec playwright install --with-deps chromium-headless-shell
+pnpm e2e
+```
 
 Layout: `backend/src/agentscope_app/{domain,application,infrastructure,interfaces}` follows Clean Architecture with the dependency direction enforced by import-linter (see `backend/pyproject.toml`). `web/` is the single-page front end.
 

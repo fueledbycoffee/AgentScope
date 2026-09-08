@@ -9,6 +9,60 @@ anything. Decisions behind the design are in
 [`mapping-dsl-v1.schema.json`](../../backend/src/agentscope_app/domain/mapping/mapping-dsl-v1.schema.json);
 the worked example is [`backend/mappings/tracelab-v1.json`](../../backend/mappings/tracelab-v1.json).
 
+## Source mapping inventory
+
+The repository contains one bundled mapping family and one reviewed replay
+family. A replay document proves that the deterministic engine can execute that
+reviewed JSON; it is not automatically installed for arbitrary user data.
+
+### TraceLab
+
+| Item | Current contract |
+| --- | --- |
+| Status | Bundled and loaded at backend startup |
+| Artifact | [`backend/mappings/tracelab-v1.json`](../../backend/mappings/tracelab-v1.json), revision 1, JSONL input |
+| Record grain | One root row is one recorded model-call observation; nested `tools[*]` emit tool-call observations |
+| Session identity | `session_id`, already prefixed by harness, reconciled only inside source `tracelab` |
+| Model fields | Sequence, provider, model, earliest/latest timing event, input/output/cache/reasoning token counts |
+| Tool fields | Claimed id, sequence, name, start/end, wall/internal latency, error, exit code and status |
+| Comparability | Provider is mapped to `tracelab-claude` or `tracelab-codex` for `token_semantics`; totals stay split by that tag |
+
+`round_id` and `trace_key` are not trusted as globally unique source IDs.
+TraceLab-only token splits, the timing-event stream, context-composition
+counters, source-store label, Codex turn id and removed tool payload sizes stay
+in the raw record with reasons in `unmapped`. Provenance uniqueness comes from
+the source/file/locator/emission occurrence key, not the claimed native key.
+
+### SWE-chat
+
+SWE-chat has two Parquet tables and three reviewed mapping documents, each with
+an adjacent expected-result fixture:
+
+| Table and run | Document | Review evidence |
+| --- | --- | --- |
+| sessions, A-sessions-3; `dots-studio/dots-3-note-preview:free` | [`swe-chat-sessions-v1.json`](../../backend/tests/verification/documents/swe-chat-sessions-v1.json) and [expected result](../../backend/tests/verification/documents/swe-chat-sessions-v1.expected.json) | Maps session id, agent, repository, user and `created_at.iso`; leaves aggregate tokens/call counts and an uncertain end time unmapped. The same fields also replayed for config B. |
+| conversations, B-conversations-5; `nvidia/nemotron-3-super-120b-a12b:free` | [`swe-chat-conversations-v1.json`](../../backend/tests/verification/documents/swe-chat-conversations-v1.json) and [expected result](../../backend/tests/verification/documents/swe-chat-conversations-v1.expected.json) | NVIDIA proposal with four recorded human corrections plus post-run semantic corrections. |
+| conversations, A-conversations-6; `dots-studio/dots-3-note-preview:free` | [`swe-chat-conversations-v1-a.json`](../../backend/tests/verification/documents/swe-chat-conversations-v1-a.json) and [expected result](../../backend/tests/verification/documents/swe-chat-conversations-v1-a.expected.json) | dots-studio proposal with the same four recorded human corrections and the reviewed call-end correction. |
+
+Both conversations documents select `role == "assistant"` for model-call
+observations and `role == "tool_use"` for tool-call observations. Arrow
+timestamps use their `.iso` accessors. A row supplies one instant, so call ends
+and latency remain unavailable: the corresponding result is on another row and
+the DSL intentionally has no cross-record join. The source has no provider
+field, and its token semantics are unvalidated. Assistant thinking rows satisfy
+the model predicate even though an assistant row is not necessarily a provider
+API call; `tool_use` and `tool_result` rows can share a `tool_call_id`, so result
+rows are not emitted as calls.
+
+These three documents are regression/replay evidence, not bundled defaults:
+they live under `backend/tests/verification/documents/`, not
+`backend/mappings/`. The [two-model verification
+report](../verification/2026-09-08-second-source-two-models.md) records the
+human decisions and limits. A user importing gated SWE-chat files must review
+and save suitable mappings for those files before preview and import. The two
+table mappings share source `swe-chat`, but the committed evidence replays each
+document independently; it does not claim a combined multi-file run.
+
 ## Document
 
 ```json
