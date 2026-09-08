@@ -111,6 +111,22 @@ describe('Import flow', () => {
     expect(within(screen.getByRole('table', { name: 'Rejects sample' })).getByRole('cell', { name: '—' })).toBeInTheDocument()
   })
 
+  it('shows ignored records in preview stats, the completed rail fact, and the confirm receipt', async () => {
+    fetchMock.mockImplementation((url, options) => url === '/api/imports/preview'
+      ? Promise.resolve(json({ ...preview, records: { ...preview.records, ignored: 1, sampled: 4 } }))
+      : defaultResponse(url, options))
+    start()
+    await makePreview()
+
+    const previewStats = screen.getByText('Records sampled').closest('section')!
+    expect(within(within(previewStats).getByText('Ignored').parentElement!).getByText('1')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Looks right, continue' }))
+    await screen.findByRole('heading', { name: 'Confirm and run' })
+    expect(screen.getByRole('complementary', { name: 'Progress' })).toHaveTextContent('4 sampled · 1 rejected · 1 ignored')
+    expect(screen.getByText('4 sampled: 2 accepted, 0 partial, 1 rejected, 1 ignored')).toBeInTheDocument()
+  })
+
   it('shows the decode error for an undecodable upload preview line', async () => {
     fetchMock.mockImplementation((url, options) => url === '/api/uploads'
       ? Promise.resolve(json({ ...upload, preview: [{ locator: 'line:1', payload: null, error: 'Invalid JSON at line 1' }] }))
@@ -118,6 +134,18 @@ describe('Import flow', () => {
     start()
     await uploadOne()
     expect(screen.getByRole('table', { name: 'First decoded records (up to 20)' })).toHaveTextContent('Invalid JSON at line 1')
+  })
+
+  it('removes the only selected file and resets the File stop', async () => {
+    start()
+    await uploadOne()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove sample.jsonl.gz' }))
+
+    expect(screen.queryByRole('heading', { name: 'Uploaded file' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Trace file')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to mapping' })).toBeDisabled()
+    await waitFor(() => expect(sessionStorage.getItem('agentscope-import-page')).toBeNull())
   })
 
   it('invalidates confirmation when the mapping or file changes', async () => {
@@ -198,6 +226,25 @@ describe('Import flow', () => {
     expect(screen.getByRole('table', { name: 'Imported files' })).toHaveTextContent('tracelab-v1 · rev 1')
   })
 
+  it('shows a decoded-sample disclosure and decode errors for every file in a batch', async () => {
+    start()
+    await uploadOne()
+    fetchMock.mockResolvedValueOnce(json({
+      ...upload,
+      upload_id: 'upl_2',
+      sha256: 'b'.repeat(64),
+      filename: 'broken.jsonl',
+      preview: [{ locator: 'line:2', payload: null, error: 'Invalid JSON at line 2' }],
+    }))
+    fireEvent.change(screen.getByLabelText('Add another trace file'), { target: { files: [new File(['{'], 'broken.jsonl')] } })
+    await screen.findByRole('heading', { name: 'Uploaded files' })
+
+    fireEvent.click(screen.getByText('Show the first 20 decoded records for sample.jsonl.gz'))
+    fireEvent.click(screen.getByText('Show the first 20 decoded records for broken.jsonl'))
+    expect(screen.getByRole('table', { name: 'First decoded records for sample.jsonl.gz (up to 20)' })).toHaveTextContent('native_1')
+    expect(screen.getByRole('table', { name: 'First decoded records for broken.jsonl (up to 20)' })).toHaveTextContent('Invalid JSON at line 2')
+  })
+
   it('restores and submits a fully previewed batch', async () => {
     const secondUpload = { ...upload, upload_id: 'upl_2', sha256: 'b'.repeat(64), filename: 'second.jsonl' }
     sessionStorage.setItem('agentscope-import-page', serializeImportState({ entries: [
@@ -213,6 +260,20 @@ describe('Import flow', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/imports', expect.objectContaining({
       body: JSON.stringify({ source: 'tracelab', files: [{ upload_id: 'upl_1', mapping_id: 'map_1' }, { upload_id: 'upl_2', mapping_id: 'map_2' }] }),
     }))
+  })
+
+  it('does not claim a restored preview had no rejects when reject details were not retained', async () => {
+    sessionStorage.setItem('agentscope-import-page', serializeImportState({ entries: [{
+      upload,
+      mappingId: 'map_1',
+      preview: { value: preview, detailsAvailable: true },
+    }] }))
+
+    start('/import?step=3')
+
+    await screen.findByRole('heading', { name: 'Dry run on up to 200 records per file' })
+    expect(screen.getByText('Reject details are unavailable after this reload.')).toBeInTheDocument()
+    expect(screen.queryByText('No rejects in this sample.')).not.toBeInTheDocument()
   })
 
   it('does not redirect away from a new page when an earlier import finishes', async () => {

@@ -29,6 +29,7 @@ async function uploadFixtureAndPreview(page: Page, screenshots = false) {
   await expect(progress.getByRole('button')).toHaveCount(0)
   await page.getByLabel(/Trace file|Add another trace file/).setInputFiles(FIXTURE)
   await expect(page.getByRole('heading', { name: 'Uploaded file' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Remove tracelab-sample.jsonl.gz' })).toBeVisible()
   await expect(page.getByText('4,770').first()).toBeVisible()
   if (screenshots) {
     await page.setViewportSize({ width: 1440, height: 1000 })
@@ -43,6 +44,7 @@ async function uploadFixtureAndPreview(page: Page, screenshots = false) {
   if (screenshots) await page.screenshot({ path: `${SHOTS}/2-mapping.png`, fullPage: true })
   await page.getByRole('button', { name: 'Run a dry run' }).click()
   await expect(page.getByRole('heading', { name: 'Dry run on up to 200 records per file' })).toBeVisible()
+  await expect(page.getByText('Ignored').locator('..')).toContainText('0')
   await expect(page.getByText('No rejects in this sample.')).toBeVisible()
   if (screenshots) await page.screenshot({ path: `${SHOTS}/3-preview.png`, fullPage: true })
 }
@@ -91,7 +93,7 @@ test('day-1 path: guided import, deep links, report, re-import leaves totals unc
 
   await page.getByRole('button', { name: 'Looks right, continue' }).click()
   await expect(page.getByRole('heading', { name: 'Confirm and run' })).toBeFocused()
-  await expect(progress).toContainText('200 sampled · 0 rejected') // the Preview stop is complete now; the dry run samples 200 per file
+  await expect(progress).toContainText('200 sampled · 0 rejected · 0 ignored') // the Preview stop is complete now; the dry run samples 200 per file
   await page.screenshot({ path: `${SHOTS}/4-confirm.png`, fullPage: true })
   const reportShown = page.waitForURL(/\/imports\/imp_/, { timeout: 120_000 })
   await page.getByRole('button', { name: 'Import 4,770 records' }).click()

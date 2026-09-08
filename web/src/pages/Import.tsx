@@ -132,7 +132,7 @@ export default function ImportPage() {
     2: resolvedMappings ? (resolvedMappings.length === 1
       ? `${resolvedMappings[0].name} · rev ${resolvedMappings[0].revision}`
       : `${resolvedMappings.length} mappings · ${resolvedMappings[0].source}`) : undefined,
-    3: allPreviewed ? `${aggregate.records.sampled.toLocaleString('en-US')} sampled · ${aggregate.records.rejected.toLocaleString('en-US')} rejected` : undefined,
+    3: allPreviewed ? `${aggregate.records.sampled.toLocaleString('en-US')} sampled · ${aggregate.records.rejected.toLocaleString('en-US')} rejected · ${aggregate.records.ignored.toLocaleString('en-US')} ignored` : undefined,
   }
 
   function goTo(step: ImportStep, replace = false) {
@@ -246,7 +246,11 @@ export default function ImportPage() {
         <p className="title">This import will not survive a reload.</p><p>Browser session storage is unavailable or full. You can safely continue in this tab.</p>
       </div></div>}
       {single && <section className="import-route-stack" aria-labelledby="uploaded-file-heading">
-        <h2 id="uploaded-file-heading">Uploaded file</h2>
+        <div className="import-route-section-title">
+          <h2 id="uploaded-file-heading">Uploaded file</h2>
+          <IconButton name="trash" label={`Remove ${single.upload.filename}`} className="btn small icon-only" disabled={busy !== null}
+            onClick={() => dispatch({ type: 'remove', uploadId: single.upload.upload_id })} />
+        </div>
         <Receipt items={[
           { label: 'Filename', value: single.upload.filename },
           { label: 'Exact size', value: `${single.upload.size_bytes.toLocaleString('en-US')} bytes` },
@@ -279,6 +283,13 @@ export default function ImportPage() {
               onClick={() => dispatch({ type: 'remove', uploadId: entry.upload.upload_id })} /></td>
           </tr>)}
         </Table>
+        {state.entries.map(entry => <details key={entry.upload.upload_id} className="disclosure import-route-disclosure">
+          <summary>Show the first 20 decoded records for {entry.upload.filename}</summary>
+          <Table caption={`First decoded records for ${entry.upload.filename} (up to 20)`} headers={['Locator', 'Payload', 'Error']}>
+            {entry.upload.preview.map(row => <tr key={row.locator}><td>{row.locator}</td><td><JsonView value={row.payload} /></td><td>{row.error ?? '—'}</td></tr>)}
+          </Table>
+          {entry.upload.preview.length === 0 && <p className="muted">Decoded sample rows were not retained across this reload.</p>}
+        </details>)}
         {state.entries.some(entry => entry.upload.already_imported.length > 0) && <div className="notice"><div>
           <p className="title">Some bytes were seen before.</p><p>A same-source re-import inserts no observations for those files.</p>
         </div></div>}
@@ -343,6 +354,7 @@ export default function ImportPage() {
           { label: 'Records sampled', value: aggregate.records.sampled, detail: state.entries.length > 1 ? `across ${state.entries.length} files` : 'from this file' },
           { label: 'Accepted', value: aggregate.records.accepted, detail: `${aggregate.records.partial.toLocaleString('en-US')} partial` },
           { label: 'Rejected', value: aggregate.records.rejected, detail: 'each with a reason' },
+          { label: 'Ignored', value: aggregate.records.ignored, detail: 'no rule selected the record' },
         ]} />
         <StatGroup title="Entity observations" note="one record can emit several observations" items={Object.entries(entityCounts(aggregate.entities)).map(([label, value]) => ({ label: label.replaceAll('_', ' '), value }))} />
         <StatGroup title="Warnings" note="fields the mapping tolerates" items={Object.keys(aggregate.warnings).length
@@ -352,7 +364,11 @@ export default function ImportPage() {
         <section className="import-route-stack"><h2>Rejects in the sample</h2>
           {aggregate.rejects.length > 0 ? <Table caption="Rejects sample" headers={['Locator', 'Rule', 'Path', 'Code', 'Field', 'Message']}>
             {aggregate.rejects.map((row, index) => <tr key={`${row.locator}-${index}`}><td>{row.locator}</td><td>{row.rule_id}</td><td>{row.path}</td><td>{row.code}</td><td>{row.field ?? '—'}</td><td>{row.message}</td></tr>)}
-          </Table> : <div className="import-route-empty"><strong>No rejects in this sample.</strong><p>The full run can still reject records; the report lists each reason.</p></div>}
+          </Table> : !detailsAvailable
+            ? <div className="import-route-empty"><strong>Reject details are unavailable after this reload.</strong><p>Run the dry run again to restore the reject rows.</p></div>
+            : aggregate.records.rejected > 0
+              ? <div className="import-route-empty"><strong>Reject details are unavailable for this sample.</strong><p>Run the dry run again before confirming the import.</p></div>
+              : <div className="import-route-empty"><strong>No rejects in this sample.</strong><p>The full run can still reject records; the report lists each reason.</p></div>}
         </section>
         <section className="import-route-stack"><div className="import-route-section-title"><h2>Emissions sample</h2><span>first five across the ordered files</span></div>
           <Table caption="Emissions sample" headers={['Entity', 'Path', 'Locator', 'Fields']}>
@@ -381,7 +397,7 @@ export default function ImportPage() {
         ]} />)}
         <Receipt items={[
           { label: 'Import', value: `${records.toLocaleString('en-US')} records into source ${selected[0]?.source ?? ''}` },
-          { label: 'Dry run', value: `${aggregate.records.sampled.toLocaleString('en-US')} sampled: ${aggregate.records.accepted.toLocaleString('en-US')} accepted, ${aggregate.records.partial.toLocaleString('en-US')} partial, ${aggregate.records.rejected.toLocaleString('en-US')} rejected` },
+          { label: 'Dry run', value: `${aggregate.records.sampled.toLocaleString('en-US')} sampled: ${aggregate.records.accepted.toLocaleString('en-US')} accepted, ${aggregate.records.partial.toLocaleString('en-US')} partial, ${aggregate.records.rejected.toLocaleString('en-US')} rejected, ${aggregate.records.ignored.toLocaleString('en-US')} ignored` },
           { label: 'Warnings', value: warningCount.toLocaleString('en-US') },
           { label: 'Outcome', value: state.entries.some(entry => entry.upload.already_imported.length) ? 'Previously seen same-source bytes insert no observations; all other records remain subject to the atomic import.' : 'On failure nothing is kept and the report shows the reason.' },
         ]} />

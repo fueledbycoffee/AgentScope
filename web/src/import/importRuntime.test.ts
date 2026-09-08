@@ -24,7 +24,7 @@ const mapping = (id = 'map_1', revision = 1, created_by = 'bundled'): Mapping =>
   input_format: 'jsonl',
 })
 const preview: ImportPreview = {
-  records: { accepted: 2, partial: 0, rejected: 1, sampled: 3 },
+  records: { accepted: 2, partial: 0, rejected: 1, ignored: 0, sampled: 3 },
   entities: { session: 2 },
   rejects: [{ locator: 'line:3', rule_id: 'session', path: '$', code: 'bad', field: null, message: 'bad' }],
   warnings: { absent: 1 },
@@ -100,14 +100,18 @@ describe('guided import runtime', () => {
   })
 
   it('aggregates exact counts and keeps only the first five emissions', () => {
-    const many = { ...preview, emissions: Array.from({ length: 4 }, (_, index) => ({ entity: 'session', path: '$', locator: `line:${index}`, fields: {} })) }
+    const many = {
+      ...preview,
+      records: { ...preview.records, ignored: 1 },
+      emissions: Array.from({ length: 4 }, (_, index) => ({ entity: 'session', path: '$', locator: `line:${index}`, fields: {} })),
+    }
     const result = aggregatePreview([])
     expect(result.records.sampled).toBe(0)
     const aggregate = aggregatePreview([
       { upload: upload(), mappingId: 'map_1', preview: { value: many, detailsAvailable: true } },
       { upload: upload('upl_2'), mappingId: 'map_1', preview: { value: many, detailsAvailable: true } },
     ])
-    expect(aggregate.records).toEqual({ accepted: 4, partial: 0, rejected: 2, sampled: 6 })
+    expect(aggregate.records).toEqual({ accepted: 4, partial: 0, rejected: 2, ignored: 2, sampled: 6 })
     expect(aggregate.entities.session).toBe(4)
     expect(aggregate.emissions).toHaveLength(5)
   })

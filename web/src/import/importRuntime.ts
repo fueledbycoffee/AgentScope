@@ -166,7 +166,7 @@ export function totalRecords(entries: ImportEntry[]): number {
 
 export function aggregatePreview(entries: ImportEntry[]): ImportPreview {
   const aggregate: ImportPreview = {
-    records: { accepted: 0, partial: 0, rejected: 0, sampled: 0 },
+    records: { accepted: 0, partial: 0, rejected: 0, ignored: 0, sampled: 0 },
     entities: {},
     rejects: [],
     warnings: {},
@@ -175,7 +175,7 @@ export function aggregatePreview(entries: ImportEntry[]): ImportPreview {
   for (const entry of entries) {
     if (!entry.preview) continue
     const preview = entry.preview.value
-    for (const key of ['accepted', 'partial', 'rejected', 'sampled'] as const) aggregate.records[key] += preview.records[key]
+    for (const key of ['accepted', 'partial', 'rejected', 'ignored', 'sampled'] as const) aggregate.records[key] += preview.records[key] ?? 0
     for (const [key, count] of Object.entries(preview.entities)) {
       const entity = key as keyof typeof aggregate.entities
       aggregate.entities[entity] = (aggregate.entities[entity] ?? 0) + (count ?? 0)
@@ -238,7 +238,7 @@ function restorePreview(value: unknown): PreviewState | null {
       rejects: Array.isArray(value.rejects) ? value.rejects as ImportPreview['rejects'] : [],
       emissions: Array.isArray(value.emissions) ? value.emissions as ImportPreview['emissions'] : [],
     },
-    detailsAvailable: Array.isArray(value.rejects) || Array.isArray(value.emissions),
+    detailsAvailable: Array.isArray(value.rejects) && Array.isArray(value.emissions),
   }
 }
 
