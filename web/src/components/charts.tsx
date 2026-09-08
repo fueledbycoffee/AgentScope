@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { ChartPoint, TokenMeasure, TokenRow } from '../dashboard/dashboardData'
+import { groupExactText } from './exactText'
 import { abbreviateDecimalText } from './primitives'
 
 interface ShapeProps {
@@ -29,20 +30,20 @@ export function AccessibleBarShape({ shape, onSelect, onFocus }: {
   }
   return <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={3} fill={shape.fill}
     className="chart-bar" role={onSelect ? 'button' : undefined} tabIndex={onSelect ? 0 : undefined}
-    aria-label={`${point.label}: ${point.valueText}${point.coverage ? `; coverage ${point.coverage.known} / ${point.coverage.total}` : ''}`} onClick={activate}
+    aria-label={`${point.label}: ${groupExactText(point.valueText)}${point.coverage ? `; coverage ${groupExactText(String(point.coverage.known))} / ${groupExactText(String(point.coverage.total))}` : ''}`} onClick={activate}
     onFocus={() => onFocus(point)} onBlur={() => onFocus()} onKeyDown={key} />
 }
 
 function Tip({ active, payload, unit }: { active?: boolean; payload?: { payload: ChartPoint }[]; unit?: string }) {
   if (!active || !payload?.length) return null
   const point = payload[0].payload
-  return <div className="chart-tip"><b>{point.label}</b> · <span className="exact">{point.valueText}</span>{unit ? ` ${unit}` : ''} · coverage {point.coverage.known} / {point.coverage.total}</div>
+  return <div className="chart-tip"><b>{point.label}</b> · <span className="exact">{groupExactText(point.valueText)}</span>{unit ? ` ${unit}` : ''} · coverage {groupExactText(String(point.coverage.known))} / {groupExactText(String(point.coverage.total))}</div>
 }
 
 function HiddenTable({ title, data, unit }: { title: string; data: ChartPoint[]; unit?: string }) {
   return <table className="visually-hidden"><caption>{title}, exact values</caption>
     <thead><tr><th scope="col">Item</th><th scope="col">{unit ?? 'Value'}</th><th scope="col">Coverage</th></tr></thead>
-    <tbody>{data.map(point => <tr key={point.key}><td>{point.label}</td><td>{point.valueText}</td><td>{point.coverage.known} / {point.coverage.total}</td></tr>)}</tbody>
+    <tbody>{data.map(point => <tr key={point.key}><td>{point.label}</td><td>{groupExactText(point.valueText)}</td><td>{groupExactText(String(point.coverage.known))} / {groupExactText(String(point.coverage.total))}</td></tr>)}</tbody>
   </table>
 }
 
@@ -63,7 +64,7 @@ export function DayBars({ title, data, unit, onSelect, hint, color = 'var(--s1)'
           shape={props => <AccessibleBarShape shape={props as ShapeProps} onSelect={onSelect} onFocus={setFocused} />} />
       </BarChart>
     </ResponsiveContainer></div></div>}
-    <p className="hint" aria-live="polite">{focused ? `${focused.label}: ${focused.valueText}${unit ? ` ${unit}` : ''} · coverage ${focused.coverage.known} / ${focused.coverage.total}` : hint}</p>
+    <p className="hint" aria-live="polite">{focused ? `${focused.label}: ${groupExactText(focused.valueText)}${unit ? ` ${unit}` : ''} · coverage ${groupExactText(String(focused.coverage.known))} / ${groupExactText(String(focused.coverage.total))}` : hint}</p>
     <HiddenTable title={title} data={data} unit={unit} />
   </section>
 }
@@ -84,7 +85,7 @@ export function HBars({ title, data, unit, onSelect, hint, color = 'var(--s2)' }
           shape={props => <AccessibleBarShape shape={props as ShapeProps} onSelect={onSelect} onFocus={setFocused} />} />
       </BarChart>
     </ResponsiveContainer></div>}
-    <p className="hint" aria-live="polite">{focused ? `${focused.label}: ${focused.valueText}${unit ? ` ${unit}` : ''} · coverage ${focused.coverage.known} / ${focused.coverage.total}` : hint}</p>
+    <p className="hint" aria-live="polite">{focused ? `${focused.label}: ${groupExactText(focused.valueText)}${unit ? ` ${unit}` : ''} · coverage ${groupExactText(String(focused.coverage.known))} / ${groupExactText(String(focused.coverage.total))}` : hint}</p>
     <HiddenTable title={title} data={data} unit={unit} />
   </section>
 }
@@ -101,7 +102,7 @@ function TokenShape({ shape, series, onSelect, onFocus }: {
   const row = shape.payload
   const measure = row?.[series]
   if (!row || !measure || measure.valueText === null || !shape.width || !shape.height) return null
-  const label = `${row.label}, ${series}: ${measure.valueText}`
+  const label = `${row.label}, ${series}: ${groupExactText(measure.valueText)}`
   const activate = () => onSelect?.(row, measure)
   return <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={3} fill={shape.fill}
     className="chart-bar" role={onSelect ? 'button' : undefined} tabIndex={onSelect ? 0 : undefined}
@@ -126,7 +127,7 @@ export function TokenBars({ title, rows, onSelect }: { title: string; rows: Toke
         <Tooltip formatter={(_value, name, item) => {
           const row = item.payload as TokenPlotRow
           const measure = row[name === 'Input' ? 'input' : 'output']
-          return [measure?.valueText ?? 'Unavailable', name]
+          return [measure?.valueText === null || measure?.valueText === undefined ? 'Unavailable' : groupExactText(measure.valueText), name]
         }} />
         <Bar name="Input" dataKey="inputPlot" fill="var(--s1)" isAnimationActive={false} barSize={10}
           shape={props => <TokenShape shape={props as TokenShapeProps} series="input" onSelect={onSelect} onFocus={setFocused} />} />
@@ -137,7 +138,7 @@ export function TokenBars({ title, rows, onSelect }: { title: string; rows: Toke
     <p className="hint" aria-live="polite">{focused ?? 'Select a bar to list its matching sessions.'}</p>
     <table className="visually-hidden"><caption>{title}, exact values</caption>
       <thead><tr><th>Model and accounting</th><th>Input</th><th>Input coverage</th><th>Output</th><th>Output coverage</th></tr></thead>
-      <tbody>{rows.map(row => <tr key={row.key}><td>{row.label}</td><td>{row.input?.valueText ?? 'Unavailable'}</td><td>{row.input ? `${row.input.coverage.known} / ${row.input.coverage.total}` : 'Unavailable'}</td><td>{row.output?.valueText ?? 'Unavailable'}</td><td>{row.output ? `${row.output.coverage.known} / ${row.output.coverage.total}` : 'Unavailable'}</td></tr>)}</tbody>
+      <tbody>{rows.map(row => <tr key={row.key}><td>{row.label}</td><td>{row.input?.valueText == null ? 'Unavailable' : groupExactText(row.input.valueText)}</td><td>{row.input ? `${groupExactText(String(row.input.coverage.known))} / ${groupExactText(String(row.input.coverage.total))}` : 'Unavailable'}</td><td>{row.output?.valueText == null ? 'Unavailable' : groupExactText(row.output.valueText)}</td><td>{row.output ? `${groupExactText(String(row.output.coverage.known))} / ${groupExactText(String(row.output.coverage.total))}` : 'Unavailable'}</td></tr>)}</tbody>
     </table>
   </section>
 }

@@ -454,12 +454,14 @@ describe('Dashboard', () => {
     }
     expect(tokens).toHaveTextContent('Not comparable')
     expect(tokens).toHaveTextContent('not comparable: 2 token semantics in selection')
-    expect(tokens).toHaveTextContent('tracelab-claude: 186454781')
-    expect(tokens).toHaveTextContent('tracelab-codex: 366993096')
+    expect(tokens).toHaveTextContent('tracelab-claude: 186,454,781')
+    expect(tokens).toHaveTextContent('tracelab-codex: 366,993,096')
     expect(tokens).not.toHaveTextContent('553447877')
     expect(within(screen.getByRole('region', { name: 'Tool-call observations' })).getByText('0')).toBeInTheDocument()
     expect(within(screen.getAllByRole('region', { name: 'Sessions' })[0]).getByText('1')).toBeInTheDocument()
-    expect(within(screen.getByRole('region', { name: 'Model-call observations' })).getByText('2')).toBeInTheDocument()
+    const modelCalls = screen.getByRole('region', { name: 'Model-call observations' })
+    expect(within(modelCalls).getByText('4,770')).toBeInTheDocument()
+    expect(modelCalls).toHaveTextContent('coverage 4,770 / 4,770')
     const cost = screen.getByRole('region', { name: 'Scheduled cost' })
     expect(cost).toHaveTextContent('No recorded tokens have both a rate and validated billing semantics.')
     expect(cost).toHaveTextContent('priced token coverage 0 / 15')
@@ -495,7 +497,7 @@ describe('Dashboard', () => {
       expect(unknown.searchParams.has('started_from')).toBe(false)
       expect(unknown.searchParams.has('started_before')).toBe(false)
     })
-    expect(screen.getByRole('group', { name: 'Scope' })).toHaveTextContent('1 sessions · 2 model calls · from 1 imports')
+    expect(screen.getByRole('group', { name: 'Scope' })).toHaveTextContent('1 sessions · 4,770 model calls · from 1 imports')
   })
 
   it('opens only attributable quality populations with the full returned drill scope', async () => {

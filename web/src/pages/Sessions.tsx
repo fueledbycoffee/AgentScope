@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react'
 import { getMetricsSummary, getScopeFacets, listSessions, queryMetric } from '../api'
-import { Pagination, StateBlock } from '../components'
+import { groupExactText, Pagination, StateBlock } from '../components'
 import { scopeDimensions } from '../dashboard/dashboardData'
 import { PAGE_SIZE } from '../format'
 import { resolvePeriod, useScope } from '../scope'
@@ -31,7 +31,7 @@ export default function SessionsPage() {
   )
   const empty = offset > 0 ? 'No sessions on this page.' : 'No sessions match this scope. Clear the scope or import traces.'
   return <>
-    <div className="page-head"><h1>Sessions</h1>{metrics.data && <span className="sub">{metrics.data.sessions.value_text ?? 'Unavailable'} in scope</span>}</div>
+    <div className="page-head"><h1>Sessions</h1>{metrics.data && <span className="sub">{metrics.data.sessions.value_text === null ? 'Unavailable' : groupExactText(metrics.data.sessions.value_text)} in scope</span>}</div>
     <div data-scope-chips-slot="sessions-table" />
     <section className="panel">
       <StateBlock loading={sessions.loading} error={sessions.error} retry={sessions.retry} lines={6}>

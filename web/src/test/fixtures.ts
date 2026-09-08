@@ -51,7 +51,7 @@ const metric = (metric_id: string, value_text: string | null, known: number, tot
 
 export const metrics: MetricsSummary = {
   sessions: metric('sessions', '1', 1, 1),
-  model_calls: metric('model_calls', '2', 2, 2),
+  model_calls: metric('model_calls', '4770', 4770, 4770),
   tool_calls: metric('tool_calls', '0', 0, 0),
   input_tokens: {
     ...metric('input_tokens', null, 2, 2, 'tokens'), value: 553447877,

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { SCOPE_LABELS, formatScopeValue, useScope } from '../scope'
 import type { ScopeKey } from '../scope'
+import { groupExactText } from './exactText'
 import { Icon, IconButton } from './icons'
 
 export interface Dimension { key: ScopeKey; label: string; options: readonly string[] }
@@ -46,9 +47,9 @@ export interface ScopeReceiptProps {
 
 export function ScopeReceipt({ sessionsText, modelCallsText, importsText, resolvedPeriodText }: ScopeReceiptProps) {
   const parts: ReactNode[] = []
-  if (sessionsText != null) parts.push(<><b>{sessionsText}</b> sessions</>)
-  if (modelCallsText != null) parts.push(<><b>{modelCallsText}</b> model calls</>)
-  if (importsText != null) parts.push(<>from <b>{importsText}</b> imports</>)
+  if (sessionsText != null) parts.push(<><b>{groupExactText(sessionsText)}</b> sessions</>)
+  if (modelCallsText != null) parts.push(<><b>{groupExactText(modelCallsText)}</b> model calls</>)
+  if (importsText != null) parts.push(<>from <b>{groupExactText(importsText)}</b> imports</>)
   if (resolvedPeriodText) parts.push(<>{resolvedPeriodText}</>)
   if (parts.length === 0) return <span>Scope receipt unavailable</span>
   return <>{parts.map((node, index) => <span key={index}>{index > 0 && ' · '}{node}</span>)}</>

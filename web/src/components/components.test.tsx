@@ -32,12 +32,12 @@ describe('KpiTile', () => {
     expect(screen.getByRole('region', { name: 'Count' })).toHaveTextContent('0')
     const exact = screen.getByRole('region', { name: 'Exact' })
     expect(exact).toHaveTextContent('9007.2T')
-    expect(exact).toHaveTextContent('exact 9007199254740993')
+    expect(exact).toHaveTextContent('exact 9,007,199,254,740,993')
     expect(screen.getByRole('region', { name: 'Unavailable metric' })).toHaveTextContent('Unavailable')
     const mixedTile = screen.getByRole('region', { name: 'Mixed' })
     expect(mixedTile).toHaveTextContent('Not comparable')
-    expect(mixedTile).toHaveTextContent('tracelab-claude: 186454781')
-    expect(mixedTile).toHaveTextContent('tracelab-codex: 366993096')
+    expect(mixedTile).toHaveTextContent('tracelab-claude: 186,454,781')
+    expect(mixedTile).toHaveTextContent('tracelab-codex: 366,993,096')
     expect(mixedTile).not.toHaveTextContent('553447877')
   })
 
@@ -71,7 +71,7 @@ describe('KpiTile', () => {
     render(<HeadlineTile label="Observed span" display={{ ...comparable, valueText: '60000', recordedSumText: '60000' }} headlineText="1.0 min" note="Neither active time nor task duration." />)
     const tile = screen.getByRole('region', { name: 'Observed span' })
     expect(tile).toHaveTextContent('1.0 min')
-    expect(tile).toHaveTextContent('exact 60000')
+    expect(tile).toHaveTextContent('exact 60,000')
     expect(tile).toHaveTextContent('Neither active time nor task duration.')
   })
   it('abbreviates only above 99,999', () => {
@@ -79,6 +79,13 @@ describe('KpiTile', () => {
     expect(abbreviate(100_000)).toBe('100k')
     expect(abbreviate(1_204_331)).toBe('1.2M')
     expect(abbreviateDecimalText('9007199254740993.5')).toBe('9007.2T')
+  })
+
+  it('groups an exact count and its coverage line', () => {
+    render(<KpiTile label="Grouped count" display={{ ...comparable, valueText: '4770', recordedSumText: '4770', coverage: { known: 4770, total: 4770 } }} coverageUnit="calls" />)
+    const tile = screen.getByRole('region', { name: 'Grouped count' })
+    expect(tile).toHaveTextContent('4,770')
+    expect(tile).toHaveTextContent('coverage 4,770 / 4,770 calls')
   })
 })
 
@@ -181,7 +188,7 @@ describe('exact charts', () => {
     const select = vi.fn()
     const focus = vi.fn()
     render(<svg><AccessibleBarShape shape={{ x: 0, y: 0, width: 10, height: 20, payload: point }} onSelect={select} onFocus={focus} /></svg>)
-    const bar = screen.getByRole('button', { name: /2026-09-07: 9007199254740993; coverage 2 \/ 2/ })
+    const bar = screen.getByRole('button', { name: /2026-09-07: 9,007,199,254,740,993; coverage 2 \/ 2/ })
     fireEvent.focus(bar)
     fireEvent.click(bar)
     fireEvent.keyDown(bar, { key: 'Enter' })
@@ -194,15 +201,15 @@ describe('exact charts', () => {
   it('keeps exact text and coverage in the complete fallback tables', () => {
     const row = { key: 'claude\u0000sem', label: 'claude · sem', model: 'claude', semantics: 'sem', input: { valueText: '9007199254740993', plotValue: Number('9007199254740993'), coverage: { known: 1, total: 2 }, drill: point.drill } }
     render(<><DayBars title="Activity" data={[point]} /><TokenBars title="Tokens" rows={[row]} /></>)
-    expect(screen.getByRole('table', { name: 'Activity, exact values' })).toHaveTextContent('9007199254740993')
-    expect(screen.getByRole('table', { name: 'Tokens, exact values' })).toHaveTextContent('90071992547409931 / 2UnavailableUnavailable')
+    expect(screen.getByRole('table', { name: 'Activity, exact values' })).toHaveTextContent('9,007,199,254,740,993')
+    expect(screen.getByRole('table', { name: 'Tokens, exact values' })).toHaveTextContent('9,007,199,254,740,9931 / 2UnavailableUnavailable')
   })
 })
 
 describe('ScopeReceipt', () => {
-  it('prints authoritative text and the resolved UTC period without conversion', () => {
+  it('groups authoritative text and prints the resolved UTC period without numeric conversion', () => {
     render(<ScopeReceipt sessionsText="9007199254740993" modelCallsText="4" importsText="2" resolvedPeriodText="2026-09-02 → 2026-09-09 UTC" />)
-    expect(screen.getByText('9007199254740993')).toBeInTheDocument()
+    expect(screen.getByText('9,007,199,254,740,993')).toBeInTheDocument()
     expect(screen.getByText(/2026-09-02 → 2026-09-09 UTC/)).toBeInTheDocument()
   })
 })

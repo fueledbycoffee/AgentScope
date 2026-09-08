@@ -1,6 +1,7 @@
 export { DayBars, HBars, TokenBars } from './charts'
 export { ScopeBar, ScopeChip, ScopeReceipt, FileBar } from './bars'
 export type { Dimension, FileItem, ScopeReceiptProps } from './bars'
+export { groupExactText } from './exactText'
 export {
   abbreviateDecimalText, DataTable, Drawer, HeadlineTile, JsonText, KpiTile, Notice, Pagination, Popover, QualityStrip, Skeleton, StateBlock, StatusPill,
 } from './primitives'

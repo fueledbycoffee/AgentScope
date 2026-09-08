@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { listSessions } from '../api'
 import type { MetricDefinition, MetricQuery } from '../api'
-import { DayBars, HBars, HeadlineTile, Icon, KpiTile, QualityStrip, StateBlock, TokenBars } from '../components'
+import { DayBars, groupExactText, HBars, HeadlineTile, Icon, KpiTile, QualityStrip, StateBlock, TokenBars } from '../components'
 import {
   activityPoints, displayFromResult, displayFromSummary, loadDashboard, scopeDimensions,
   tokenRows, toolPoints,
@@ -103,8 +103,8 @@ export default function OverviewPage() {
           <HeadlineTile label="Observed span" display={displayFromResult(data.observedSpan.overall)} definition={data.observedSpan.definition} unit="ms" coverageUnit="sessions" headlineText={durationHeadline(data.observedSpan.overall.value_text)} note={data.observedSpan.definition.caveat ?? undefined} />
         </div>
         <div className="token-overall" aria-label="Token usage totals">
-          <span><b>Input</b> {data.summary.input_tokens.value_text ?? (data.summary.input_tokens.coverage.known ? 'Not comparable' : 'Unavailable')} · coverage {data.summary.input_tokens.coverage.known} / {data.summary.input_tokens.coverage.total}</span>
-          <span><b>Output</b> <span className="exact">{data.summary.output_tokens.value_text ?? (data.summary.output_tokens.coverage.known ? 'Not comparable' : 'Unavailable')}</span> · coverage {data.summary.output_tokens.coverage.known} / {data.summary.output_tokens.coverage.total}</span>
+          <span><b>Input</b> {data.summary.input_tokens.value_text === null ? (data.summary.input_tokens.coverage.known ? 'Not comparable' : 'Unavailable') : groupExactText(data.summary.input_tokens.value_text)} · coverage {groupExactText(String(data.summary.input_tokens.coverage.known))} / {groupExactText(String(data.summary.input_tokens.coverage.total))}</span>
+          <span><b>Output</b> <span className="exact">{data.summary.output_tokens.value_text === null ? (data.summary.output_tokens.coverage.known ? 'Not comparable' : 'Unavailable') : groupExactText(data.summary.output_tokens.value_text)}</span> · coverage {groupExactText(String(data.summary.output_tokens.coverage.known))} / {groupExactText(String(data.summary.output_tokens.coverage.total))}</span>
         </div>
         <div className="grid charts dashboard-charts">
           <DayBars title="Activity by day" unit="model calls" data={activityPoints(data.activity)} onSelect={point => activateDrill(point.drill)} hint="Select a UTC day to list matching sessions." />

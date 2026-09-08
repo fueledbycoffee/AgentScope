@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { Session } from '../api'
-import { DataTable } from '../components'
+import { DataTable, groupExactText } from '../components'
 import type { Column } from '../components'
 import { display } from '../format'
 import { useScope } from '../scope'
@@ -8,7 +8,7 @@ export { dimensionsFrom } from '../scopeDimensions'
 
 function inputUsage(session: Session) {
   const metric = session.input_tokens
-  if (metric.value_text !== null) return <span className="exact">{metric.value_text}</span>
+  if (metric.value_text !== null) return <span className="exact">{groupExactText(metric.value_text)}</span>
   if (metric.coverage.known === 0) return <span title={metric.reason}>Unavailable</span>
   return <span title={`${metric.reason} ${metric.semantics_partitions.map(part => `${part.semantics}: ${part.value_text ?? 'Unavailable'}`).join('; ')}`}>Not comparable</span>
 }
@@ -25,7 +25,7 @@ export function SessionsTable({ rows, caption, count, empty, hideCaption }: { ro
     { key: 'calls', header: 'Model calls', align: 'num', render: session => display(session.model_call_count) },
     { key: 'tools', header: 'Tool calls', align: 'num', render: session => display(session.tool_call_count) },
     { key: 'tokens', header: 'Input tokens', align: 'num', render: inputUsage },
-    { key: 'coverage', header: 'Coverage', align: 'num', render: session => `${session.input_tokens.coverage.known} / ${session.input_tokens.coverage.total} calls` },
+    { key: 'coverage', header: 'Coverage', align: 'num', render: session => `${groupExactText(String(session.input_tokens.coverage.known))} / ${groupExactText(String(session.input_tokens.coverage.total))} calls` },
   ]
   return <DataTable caption={caption} count={count} columns={columns} rows={rows} rowKey={session => session.id} empty={empty} hideCaption={hideCaption} />
 }
