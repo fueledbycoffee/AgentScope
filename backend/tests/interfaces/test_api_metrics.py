@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 import pytest
@@ -205,6 +206,69 @@ def test_day_drill_round_trip_preserves_original_tool_witness(client):
     # An independently requested same-day tool filter still correctly requires that day's tool.
     params["witness_time_override"] = False
     assert client.get("/api/metrics/query", params=params).json()["overall"]["value_text"] == "0"
+
+
+@pytest.mark.parametrize("origin", ["tool_calls", "model_calls"])
+@pytest.mark.parametrize("bounded_witness", [False, True])
+def test_returned_scopes_round_trip_after_every_grain_switch(client, origin, bounded_witness):
+    container = client.app.state.container
+    mapping_id = container.list_mappings.execute()[0].id
+    records = []
+    for session, tokens, other_day in [("s1", 10, "01"), ("s2", 5, "02")]:
+        record = json.loads(_tracelab_line(session))
+        model_day = other_day if origin == "model_calls" else "01"
+        tool_day = other_day if origin == "tool_calls" else "01"
+        record["input_tokens_total"] = tokens
+        record["timing_events"] = [{"timestamp": f"2026-01-{model_day}T12:00:00Z"}]
+        record["tools"] = [{"tool_name": "shell", "emitted_at": f"2026-01-{tool_day}T12:00:00Z"}]
+        records.append(json.dumps(record) + "\n")
+    info = container.store_upload.execute("january.jsonl", "".join(records).encode())
+    report = container.commit_import.execute("tracelab", [FileBinding(info.upload_id, mapping_id)])
+    assert report.status == "committed"
+
+    def query(metric_id, scope, group_by=()):
+        params = {key: value for key, value in scope.items() if value is not None}
+        response = client.get(
+            "/api/metrics/query", params={**params, "metric_id": metric_id, "group_by": group_by}
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    initial_scope = {"model": "m", "tool": "shell"}
+    if bounded_witness:
+        initial_scope.update(
+            started_from="2026-01-01T00:00:00Z", started_before="2026-02-01T00:00:00Z"
+        )
+    january = query(origin, initial_scope, ["started_day"])["buckets"][0]
+    assert january["keys"] == ["2026-01-01"]
+    assert january["result"]["value_text"] == "1"
+
+    def check_scopes(metric_id, scope):
+        groups = [] if metric_id == "imports_in_scope" else ["source"]
+        result = query(metric_id, scope, groups)
+        assert result["overall"]["value_text"] == ("10" if metric_id == "input_tokens" else "1")
+        assert result["overall"]["coverage"] == {"known": 1, "total": 1}
+        assert query(metric_id, result["scope"], groups) == result
+        for expected, returned_scope in [
+            (result["overall"], result["scope"]),
+            *((bucket["result"], bucket["drill_scope"]) for bucket in result["buckets"]),
+        ]:
+            followed = query(metric_id, returned_scope)["overall"]
+            for field in ("value_text", "recorded_sum_text", "coverage", "distribution"):
+                assert followed[field] == expected[field]
+            for partition in expected["semantics_partitions"]:
+                followed = query(metric_id, partition["drill_scope"])["overall"]
+                for field in ("value_text", "coverage", "distribution"):
+                    assert followed[field] == partition[field]
+                assert query("sessions", partition["drill_scope"])["overall"]["value_text"] == "1"
+        return result["buckets"][0]["drill_scope"]
+
+    # Each grain can follow each other grain, including another switch after a returned drill.
+    metrics = ("input_tokens", "tool_calls", "sessions", "imports_in_scope")
+    for first in metrics:
+        scope = check_scopes(first, january["drill_scope"])
+        for second in metrics:
+            check_scopes(second, scope)
 
 
 @pytest.mark.parametrize(

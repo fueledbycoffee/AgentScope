@@ -364,7 +364,7 @@ def _result(
                 p.semantics,
                 _text(p.value),
                 Coverage(p.known, p.total),
-                replace(scope, token_semantics=p.semantics, activity_grain=EntityGrain.MODEL_CALL),
+                replace(_activity_scope(scope, spec.definition.grain), token_semantics=p.semantics),
                 distribution(p.samples) if p.semantics != "unknown" else None,
                 Coverage(p.priced_tokens, p.total_tokens) if is_cost else None,
                 schedule_version,
