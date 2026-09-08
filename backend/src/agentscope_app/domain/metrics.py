@@ -92,6 +92,7 @@ class MetricDefinition:
     semantics_field: str | None = None
     comparability_rule: ComparabilityRule = ComparabilityRule.OBSERVATIONS
     population: str | None = None
+    headline_kpi: bool = False
 
     @property
     def supported_dimensions(self) -> tuple[Dimension, ...]:
@@ -197,9 +198,11 @@ def evaluate(definition: MetricDefinition, parts: Sequence[AggregatePart]) -> Ev
     elif "unknown" in tags or None in tags:
         status, reason = "unknown", "Contributing usage has unvalidated accounting."
         if len(tags) > 1:
-            reason += " Multiple accounting tags are present."
+            reason = (
+                f"not comparable: {len(tags)} token semantics in selection; unknown is unvalidated"
+            )
     elif len(tags) > 1:
-        status, reason = "mixed", "Contributing accounting tags differ; use the partition values."
+        status, reason = "mixed", f"not comparable: {len(tags)} token semantics in selection"
     else:
         status, reason = "comparable", "Known usage shares one accounting tag."
     return Evaluation(
@@ -213,7 +216,11 @@ def _count(
     return MetricDefinition(
         metric_id,
         1,
-        metric_id.replace("_", " ").capitalize(),
+        {
+            "model_calls": "Model-call observations",
+            "tool_calls": "Tool-call observations",
+            "input_tokens": "Input usage by accounting group",
+        }.get(metric_id, metric_id.replace("_", " ").capitalize()),
         description,
         grain,
         Aggregation.COUNT,
@@ -223,6 +230,7 @@ def _count(
         description,
         "Every eligible ID contributes; empty population is 0 with coverage 0/0.",
         population=population,
+        headline_kpi=metric_id in {"sessions", "model_calls", "tool_calls"},
     )
 
 
@@ -231,8 +239,18 @@ def _sum(metric_id: str, grain: EntityGrain, field: str, unit: str) -> MetricDef
     return MetricDefinition(
         metric_id,
         1,
-        metric_id.replace("_", " ").capitalize(),
-        f"Sum of recorded {grain}.{field}; no fallback or unit conversion.",
+        {
+            "model_calls": "Model-call observations",
+            "tool_calls": "Tool-call observations",
+            "input_tokens": "Input usage by accounting group",
+        }.get(metric_id, metric_id.replace("_", " ").capitalize()),
+        f"Sum of recorded {grain}.{field}; no fallback or unit conversion."
+        + (
+            " Instrumentation question: do zero/near-zero latencies reflect timer resolution, "
+            "missing instrumentation, or real elapsed time? Every recorded value is included."
+            if unit == "ms"
+            else ""
+        ),
         grain,
         Aggregation.SUM,
         field,
@@ -243,6 +261,7 @@ def _sum(metric_id: str, grain: EntityGrain, field: str, unit: str) -> MetricDef
         field,
         "token_semantics" if tokens else None,
         ComparabilityRule.TOKEN_SEMANTICS if tokens else ComparabilityRule.OBSERVATIONS,
+        headline_kpi=metric_id == "input_tokens",
     )
 
 

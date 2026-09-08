@@ -56,6 +56,7 @@ def test_metrics_http_metadata_coverage_and_exact_text(client):
     assert metric["value"] == 2**63 + 2**53
     assert metric["recorded_sum_text"] == str(2**63 + 2**53)
     assert metric["value_text"] is None and metric["comparability"] == "mixed"
+    assert metric["reason"] == "not comparable: 2 token semantics in selection"
     assert metric["coverage"] == {"known": 2, "total": 3}
     assert metric["by_semantics"] == {"a": 2**63 - 1, "b": 2**53 + 1}
     assert len(metric["semantics_partitions"]) == 3
@@ -65,6 +66,12 @@ def test_metrics_http_metadata_coverage_and_exact_text(client):
         assert metric["definition"] and metric["unit"] and metric["reason"]
         assert set(metric["coverage"]) == {"known", "total"}
     definitions = client.get("/api/metrics/definitions").json()
+    assert {d["id"] for d in definitions if d["headline_kpi"]} == {
+        "sessions",
+        "model_calls",
+        "tool_calls",
+        "input_tokens",
+    }
     assert len(definitions) == 14
     by_id = {d["id"]: d for d in definitions}
     assert by_id["tool_wall_latency_ms"]["field"] == "wall_latency_ms"

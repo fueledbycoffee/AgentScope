@@ -82,7 +82,7 @@ def test_semantics_partitions_interpret_known_contributors_only():
     assert result.recorded_sum == 10
     parts.append(AggregatePart(0, 1, 1, "unknown"))
     result = evaluate(definition, parts)
-    assert result.comparability == "unknown" and "Multiple" in result.reason
+    assert result.comparability == "unknown" and "3 token semantics" in result.reason
 
 
 def test_registry_itself_is_immutable_and_rejects_unknown_comparability():
